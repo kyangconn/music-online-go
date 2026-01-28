@@ -45,6 +45,25 @@ func AuthMiddleware() gin.HandlerFunc {
 	}
 }
 
+// OptionalAuthMiddleware 尝试解析Token，如果失败也不阻止请求
+func OptionalAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader != "" {
+			parts := strings.Split(authHeader, " ")
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				claims, err := jwt.ParseToken(parts[1])
+				if err == nil {
+					c.Set("userID", claims.UserID)
+					c.Set("username", claims.Username)
+					c.Set("role", claims.Role)
+				}
+			}
+		}
+		c.Next()
+	}
+}
+
 // RoleMiddleware 角色权限中间件
 func RoleMiddleware(allowedRoles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {

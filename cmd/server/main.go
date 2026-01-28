@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/time/rate"
 
 	"github.com/kyangconn/music-online-web/internal/config"
 	"github.com/kyangconn/music-online-web/internal/handler"
@@ -41,6 +42,10 @@ func main() {
 	userService := service.NewUserService(userRepo)
 	userHandler := handler.NewUserHandler(userService)
 
+	musicRepo := repository.NewMusicRepository(database.DB)
+	musicService := service.NewMusicService(musicRepo)
+	musicHandler := handler.NewMusicHandler(musicService)
+
 	// 5. 设置Gin模式
 	if config.AppConfig.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -53,6 +58,7 @@ func main() {
 	router.Use(
 		middleware.LoggerMiddleware(),
 		middleware.CORSMiddleware(),
+		middleware.RateLimitMiddleware(rate.Limit(20), 50), // 全局限流：每秒20请求，突发50
 		gin.Recovery(),
 	)
 
@@ -69,6 +75,8 @@ func main() {
 	{
 		// 公开路由
 		public := api.Group("/users")
+		// 登录注册限流：每秒1请求，突发5
+		public.Use(middleware.RateLimitMiddleware(rate.Limit(1), 5))
 		{
 			public.POST("/register", userHandler.Register)
 			public.POST("/login", userHandler.Login)
@@ -90,6 +98,29 @@ func main() {
 				admin.GET("", userHandler.ListUsers)
 				admin.GET("/:id", userHandler.GetUserByID)
 			}
+		}
+
+		// 音乐模块路由
+		// 公开/可选认证
+		musicPublic := api.Group("/musics")
+		musicPublic.Use(middleware.OptionalAuthMiddleware())
+		{
+			musicPublic.GET("", musicHandler.Search)
+			musicPublic.GET("/:id", musicHandler.GetByID)
+		}
+
+		api.GET("/users/:id/musics", middleware.OptionalAuthMiddleware(), musicHandler.ListUserMusic)
+		api.GET("/users/:id/likes", middleware.OptionalAuthMiddleware(), musicHandler.ListUserLikedMusic)
+
+		// 需要认证
+		musicProtected := api.Group("/musics")
+		musicProtected.Use(middleware.AuthMiddleware())
+		{
+			musicProtected.POST("", musicHandler.Create)
+			musicProtected.PUT("/:id", musicHandler.Update)
+			musicProtected.DELETE("/:id", musicHandler.Delete)
+			musicProtected.POST("/:id/like", musicHandler.Like)
+			musicProtected.DELETE("/:id/like", musicHandler.Unlike)
 		}
 	}
 

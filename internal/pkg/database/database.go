@@ -47,6 +47,8 @@ func Connect() error {
 func AutoMigrate() error {
 	return DB.AutoMigrate(
 		&domain.User{},
+		&domain.Music{},
+		&domain.UserMusicLike{},
 	)
 }
 
