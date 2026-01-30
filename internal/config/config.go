@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -10,7 +11,6 @@ type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
 	JWT      JWTConfig
-	Security SecurityConfig
 }
 
 type ServerConfig struct {
@@ -45,6 +45,8 @@ func LoadConfig() error {
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
 	viper.AddConfigPath("./config")
+	viper.AddConfigPath("..")
+	viper.AddConfigPath("../..")
 
 	// 设置默认值
 	viper.SetDefault("server.port", "3060")
@@ -60,6 +62,7 @@ func LoadConfig() error {
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			log.Fatalf("Error reading config file: %v", err)
 			return err
 		}
 	}
@@ -83,10 +86,9 @@ func LoadConfig() error {
 			Secret:     viper.GetString("jwt.secret"),
 			ExpireHour: viper.GetInt("jwt.expire_hour"),
 		},
-		Security: SecurityConfig{
-			PasswordSalt: viper.GetString("security.password_salt"),
-		},
 	}
+	log.Printf("Loaded config file: %s", viper.ConfigFileUsed())
+	log.Printf("Loaded config: %+v\n", AppConfig)
 
 	return nil
 }
