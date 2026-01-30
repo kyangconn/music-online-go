@@ -25,6 +25,10 @@ type UserRepository interface {
 	ExistsByUsername(username string) (bool, error)
 	ExistsByEmail(email string) (bool, error)
 	List(page, pageSize int) ([]*domain.User, int64, error)
+	// Admin specific methods
+	UpdateStatus(id uint, isActive bool) error
+	UpdateRole(id uint, role string) error
+	Search(query string, page, pageSize int) ([]*domain.User, int64, error)
 }
 
 type userRepository struct {

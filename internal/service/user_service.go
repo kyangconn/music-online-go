@@ -20,6 +20,10 @@ type UserService interface {
 	ChangePassword(userID uint, oldPassword, newPassword string) error
 	VerifyUser(id uint) error
 	ListUsers(page, pageSize int) ([]*domain.UserResponse, int64, error)
+	// Admin methods
+	UpdateUserStatus(id uint, isActive bool) error
+	UpdateUserRole(id uint, role string) error
+	SearchUsers(query string, page, pageSize int) ([]*domain.UserResponse, int64, error)
 }
 
 type userService struct {

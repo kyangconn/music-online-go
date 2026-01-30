@@ -15,6 +15,8 @@ type MusicService interface {
 	Like(userID, musicID uint) error
 	Unlike(userID, musicID uint) error
 	ListLikedByUserID(userID uint, page, pageSize int, currentUserID *uint) ([]*domain.MusicResponse, int64, error)
+	// Admin
+	AdminDelete(id uint) error
 }
 
 type musicService struct {

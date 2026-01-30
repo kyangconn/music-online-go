@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"embed"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,6 +22,11 @@ import (
 	"github.com/kyangconn/music-online-web/internal/repository"
 	"github.com/kyangconn/music-online-web/internal/service"
 )
+
+// 嵌入前端构建产物
+//
+//go:embed dist/*
+var webDist embed.FS
 
 func main() {
 	// 1. 加载配置
@@ -45,6 +53,8 @@ func main() {
 	musicRepo := repository.NewMusicRepository(database.DB)
 	musicService := service.NewMusicService(musicRepo)
 	musicHandler := handler.NewMusicHandler(musicService)
+
+	adminHandler := handler.NewAdminHandler(userService, musicService)
 
 	// 5. 设置Gin模式
 	if config.AppConfig.Server.Mode == "release" {
@@ -91,12 +101,14 @@ func main() {
 			protected.DELETE("/profile", userHandler.DeleteUser)
 			protected.POST("/change-password", userHandler.ChangePassword)
 
-			// 管理员路由
-			admin := protected.Group("")
-			admin.Use(middleware.RoleMiddleware("admin"))
+			// 管理员路由 (使用 StrictAdminMiddleware 强制查库验证)
+			admin := protected.Group("/admin")
+			admin.Use(middleware.StrictAdminMiddleware(database.DB))
 			{
-				admin.GET("", userHandler.ListUsers)
-				admin.GET("/:id", userHandler.GetUserByID)
+				admin.GET("/users", adminHandler.ListUsers)
+				admin.PUT("/users/:id/status", adminHandler.UpdateUserStatus)
+				admin.PUT("/users/:id/role", adminHandler.UpdateUserRole)
+				admin.DELETE("/musics/:id", adminHandler.DeleteMusic)
 			}
 		}
 
@@ -124,7 +136,39 @@ func main() {
 		}
 	}
 
-	// 10. 启动服务器
+	// 10. 静态资源托管 (支持 SPA)
+	// 获取 dist 子目录文件系统
+	distFS, err := fs.Sub(webDist, "dist")
+	if err != nil {
+		log.Fatalf("Failed to create dist fs: %v", err)
+	}
+	httpFS := http.FS(distFS)
+
+	router.NoRoute(func(c *gin.Context) {
+		// 1. 如果是 API 请求，返回 404 JSON
+		if strings.HasPrefix(c.Request.URL.Path, "/api") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			return
+		}
+
+		// 2. 尝试查找静态文件
+		path := strings.TrimPrefix(c.Request.URL.Path, "/")
+		if path == "" {
+			path = "index.html"
+		}
+
+		// 检查文件是否存在
+		if _, err := distFS.Open(path); err != nil {
+			// 文件不存在，返回 index.html (SPA History 模式支持)
+			c.FileFromFS("index.html", httpFS)
+			return
+		}
+
+		// 文件存在，直接返回
+		c.FileFromFS(path, httpFS)
+	})
+
+	// 11. 启动服务器
 	port := config.AppConfig.Server.Port
 	if port == "" {
 		port = "8080"
