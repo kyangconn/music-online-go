@@ -34,3 +34,8 @@ go.work.sum
 # config yaml
 *.yaml
 !config-example.yaml
+
+# Frontend build artifacts (do not commit these)
+cmd/server/dist/
+web/dist/
+web/node_modules/
