@@ -1,0 +1,3 @@
+[submodule "web"]
+	path = web
+	url = gitea:kyangconn/music-online-pages.git
