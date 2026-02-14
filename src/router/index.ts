@@ -37,6 +37,12 @@ const routes = [
         component: () => import('@/views/music/Detail.vue').catch(() => import('@/views/Home.vue'))
       },
       {
+        path: '/music/add',
+        name: 'MusicAdd',
+        component: () => import('@/views/music/Add.vue').catch(() => import('@/views/Home.vue')),
+        meta: { requiresAuth: true }
+      },
+      {
         path: '/admin',
         name: 'Admin',
         component: () => import('@/views/admin/Dashboard.vue').catch(() => import('@/views/Home.vue')),

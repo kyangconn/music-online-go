@@ -30,3 +30,19 @@ body {
   max-width: 1200px;
   margin: 0 auto;
 }
+
+/* Dark mode variables */
+html.dark {
+  --primary-color: #1f2937; /* slate-800 */
+  --secondary-color: #111827; /* slate-900 */
+  --accent-color: #3b82f6; /* blue-500 */
+  --bg-light: #0d1117; /* github dark */
+  --bg-white: #111827;
+  --text-dark: #e5e7eb; /* text in dark */
+  --text-light: #9ca3af;
+}
+
+html.dark body {
+  background-color: var(--bg-light);
+  color: var(--text-dark);
+}

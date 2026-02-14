@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/store/user'
-import { Search } from '@element-plus/icons-vue'
+import { Search, Moon, Sunny } from '@element-plus/icons-vue'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 
 const searchQuery = ref('')
@@ -13,10 +14,26 @@ const handleSearch = () => {
     router.push({ name: 'Home', query: { q: searchQuery.value } })
   }
 }
+const hideSearch = computed(() => route.name === 'Login' || route.name === 'Register')
 
 const handleLogout = () => {
   userStore.logout()
   router.push('/login')
+}
+
+const isDark = ref(false)
+const applyTheme = () => {
+  document.documentElement.classList.toggle('dark', isDark.value)
+  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+}
+onMounted(() => {
+  const saved = localStorage.getItem('theme')
+  isDark.value = saved === 'dark'
+  applyTheme()
+})
+const toggleTheme = () => {
+  isDark.value = !isDark.value
+  applyTheme()
 }
 </script>
 
@@ -28,17 +45,18 @@ const handleLogout = () => {
           🎵 Music Online
         </div>
         
-        <div class="search-bar">
+        <div class="search-bar" v-if="!hideSearch">
           <el-input
             v-model="searchQuery"
             placeholder="Search music..."
-            class="w-50 m-2"
+            class="header-search"
             :prefix-icon="Search"
             @keyup.enter="handleSearch"
           />
         </div>
 
         <div class="user-actions">
+          <el-button circle @click="toggleTheme" :icon="isDark ? Sunny : Moon" />
           <template v-if="userStore.isLoggedIn">
             <el-dropdown>
               <span class="el-dropdown-link text-white">
@@ -89,6 +107,10 @@ const handleLogout = () => {
   font-weight: bold;
   cursor: pointer;
   color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
 }
 
 .search-bar {
@@ -116,17 +138,38 @@ const handleLogout = () => {
   padding: 20px 0;
 }
 
-:deep(.el-input__wrapper) {
+.search-bar :deep(.el-input__wrapper) {
   background-color: rgba(255, 255, 255, 0.1);
   box-shadow: none;
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-:deep(.el-input__inner) {
+.search-bar :deep(.el-input__inner) {
   color: #fff;
 }
 
-:deep(.el-input__inner::placeholder) {
+.search-bar :deep(.el-input__inner::placeholder) {
   color: rgba(255, 255, 255, 0.6);
+}
+
+@media (max-width: 768px) {
+  .logo {
+    max-width: 120px;
+    font-size: 1.2rem;
+  }
+  .search-bar {
+    margin: 0 1rem;
+    max-width: 300px;
+  }
+}
+
+@media (max-width: 480px) {
+  .logo {
+    max-width: 100px;
+    font-size: 1rem;
+  }
+  .search-bar {
+    display: none;
+  }
 }
 </style>

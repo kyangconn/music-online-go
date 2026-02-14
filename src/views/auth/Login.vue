@@ -78,6 +78,11 @@ const handleLogin = async (formEl: FormInstance | undefined) => {
             Login
           </el-button>
         </el-form-item>
+        <el-form-item>
+          <el-button class="w-100" @click="router.push('/')">
+            Back to Home
+          </el-button>
+        </el-form-item>
       </el-form>
 
       <div class="auth-footer">
@@ -105,7 +110,7 @@ const handleLogin = async (formEl: FormInstance | undefined) => {
 
 .card-header h2 {
   margin: 0 0 8px;
-  color: var(--primary-color);
+  color: var(--text-dark);
   text-align: center;
 }
 
