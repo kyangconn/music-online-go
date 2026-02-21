@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"errors"
+
 	"github.com/gin-gonic/gin"
 	"github.com/kyangconn/music-online-web/internal/domain"
 	"github.com/kyangconn/music-online-web/internal/handler"
@@ -22,7 +24,7 @@ func StrictAdminMiddleware(db *gorm.DB) gin.HandlerFunc {
 		// 2. Query Database
 		var user domain.User
 		if err := db.Select("id", "role", "is_active").First(&user, userID).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
 				handler.Unauthorized(c, "User not found")
 			} else {
 				handler.InternalServerError(c, "Database error")

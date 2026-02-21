@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -27,7 +28,7 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		claims, err := jwt.ParseToken(parts[1])
 		if err != nil {
-			if err == jwt.ErrExpiredToken {
+			if errors.Is(err, jwt.ErrExpiredToken) {
 				handler.Unauthorized(c, "Token has expired")
 			} else {
 				handler.Unauthorized(c, "Invalid token")

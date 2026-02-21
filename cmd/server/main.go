@@ -101,7 +101,6 @@ func main() {
 			protected.DELETE("/profile", userHandler.DeleteUser)
 			protected.POST("/change-password", userHandler.ChangePassword)
 
-			// 管理员路由 (使用 StrictAdminMiddleware 强制查库验证)
 			admin := protected.Group("/admin")
 			admin.Use(middleware.StrictAdminMiddleware(database.DB))
 			{
@@ -109,6 +108,7 @@ func main() {
 				admin.PUT("/users/:id/status", adminHandler.UpdateUserStatus)
 				admin.PUT("/users/:id/role", adminHandler.UpdateUserRole)
 				admin.DELETE("/musics/:id", adminHandler.DeleteMusic)
+				admin.GET("/system-info", adminHandler.SystemInfo)
 			}
 		}
 
