@@ -35,9 +35,9 @@ onMounted(fetchDetail)
           <el-col :xs="24" :sm="10" :md="8" :lg="6">
             <div class="cover">
               <el-image
-                :src="music?.cover_url || 'https://via.placeholder.com/400x400?text=Album'"
+                :src="music?.img || 'https://via.placeholder.com/400x400?text=Album'"
                 fit="cover"
-                :preview-src-list="[music?.cover_url]"
+                :preview-src-list="music?.img ? [music.img] : []"
               />
             </div>
           </el-col>
@@ -45,9 +45,9 @@ onMounted(fetchDetail)
             <el-descriptions title="Music Info" :column="1" border>
               <el-descriptions-item label="Title">{{ music?.title }}</el-descriptions-item>
               <el-descriptions-item label="Artist">{{ music?.artist }}</el-descriptions-item>
-              <el-descriptions-item label="Album">{{ music?.album || '—' }}</el-descriptions-item>
-              <el-descriptions-item label="Duration">{{ music?.duration || '—' }}</el-descriptions-item>
-              <el-descriptions-item label="Uploader">{{ music?.uploader?.username || '—' }}</el-descriptions-item>
+              <el-descriptions-item label="Album">—</el-descriptions-item>
+              <el-descriptions-item label="Duration">—</el-descriptions-item>
+              <el-descriptions-item label="Likes">{{ music?.like_count ?? 0 }}</el-descriptions-item>
             </el-descriptions>
             <div class="actions">
               <el-button type="primary">Play</el-button>

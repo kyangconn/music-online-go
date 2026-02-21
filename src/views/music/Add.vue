@@ -2,10 +2,12 @@
 import { ref, reactive } from 'vue'
 import request from '@/utils/request'
 import { ElMessage } from 'element-plus'
+import type { AxiosProgressEvent } from 'axios'
 
 const loading = ref(false)
 const coverFile = ref<File | null>(null)
 const audioFile = ref<File | null>(null)
+const uploadPercent = ref(0)
 
 const form = reactive({
   title: '',
@@ -23,7 +25,12 @@ const handleAudioChange = (file: any) => {
 }
 
 const handleSubmit = async () => {
+  if (!audioFile.value) {
+    ElMessage.error('Please choose an audio file')
+    return
+  }
   loading.value = true
+  uploadPercent.value = 0
   try {
     const fd = new FormData()
     fd.append('title', form.title)
@@ -33,12 +40,20 @@ const handleSubmit = async () => {
     fd.append('description', form.description)
     if (coverFile.value) fd.append('cover', coverFile.value)
     if (audioFile.value) fd.append('file', audioFile.value)
-    await request.post('/musics', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    await request.post('/musics', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (event: AxiosProgressEvent) => {
+        if (!event.total) return
+        uploadPercent.value = Math.round((event.loaded / event.total) * 100)
+      }
+    })
     ElMessage.success('Music uploaded successfully')
   } catch (e) {
-    // handled by interceptor
   } finally {
     loading.value = false
+    setTimeout(() => {
+      uploadPercent.value = 0
+    }, 800)
   }
 }
 </script>
@@ -71,6 +86,10 @@ const handleSubmit = async () => {
             >
               <el-button>Choose Audio</el-button>
             </el-upload>
+            <div class="file-names">
+              <p v-if="coverFile">Cover: {{ coverFile.name }}</p>
+              <p v-if="audioFile">Audio: {{ audioFile.name }}</p>
+            </div>
           </div>
         </el-col>
         <el-col :xs="24" :sm="14" :md="16" :lg="18">
@@ -94,6 +113,9 @@ const handleSubmit = async () => {
               <el-button type="primary" :loading="loading" @click="handleSubmit">Submit</el-button>
               <el-button @click="$router.back()">Cancel</el-button>
             </el-form-item>
+            <el-form-item v-if="uploadPercent > 0">
+              <el-progress :percentage="uploadPercent" :stroke-width="14" />
+            </el-form-item>
           </el-form>
         </el-col>
       </el-row>
@@ -113,5 +135,10 @@ const handleSubmit = async () => {
 }
 .upload-block {
   width: 100%;
+}
+.file-names {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--text-light);
 }
 </style>

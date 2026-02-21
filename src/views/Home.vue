@@ -3,7 +3,7 @@ import { ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import request from '@/utils/request'
 import { ElMessage } from 'element-plus'
-import { VideoPlay } from '@element-plus/icons-vue'
+import { VideoPlay, StarFilled } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const musicList = ref<any[]>([])
@@ -92,6 +92,10 @@ const handlePageChange = (page: number) => {
           <div class="music-info">
             <h3 class="music-title" :title="music.title">{{ music.title }}</h3>
             <p class="music-artist">{{ music.artist }}</p>
+            <div class="music-meta">
+              <el-icon class="like-icon"><StarFilled /></el-icon>
+              <span class="like-count">{{ music.like_count ?? 0 }}</span>
+            </div>
           </div>
         </el-card>
       </div>
@@ -186,6 +190,18 @@ const handlePageChange = (page: number) => {
   padding: 12px;
 }
 
+.music-meta {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--text-light);
+}
+
+.like-icon {
+  color: #fbbf24;
+}
 .music-title {
   margin: 0 0 5px;
   font-size: 1rem;

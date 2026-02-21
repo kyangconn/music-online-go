@@ -66,6 +66,7 @@ const toggleTheme = () => {
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item @click="router.push('/profile')">Profile</el-dropdown-item>
+                  <el-dropdown-item @click="router.push('/music/add')">Upload Music</el-dropdown-item>
                   <el-dropdown-item v-if="userStore.isAdmin" @click="router.push('/admin')">Admin</el-dropdown-item>
                   <el-dropdown-item divided @click="handleLogout">Logout</el-dropdown-item>
                 </el-dropdown-menu>
@@ -88,7 +89,16 @@ const toggleTheme = () => {
 
     <el-footer>
       <div class="footer-content container">
-        <p>&copy; 2026 Music Online. All rights reserved.</p>
+        <span class="footer-left">
+          © 2026 Music Online
+        </span>
+        <span class="footer-right">
+          <a href="#" target="_blank" rel="noopener">License</a>
+          <span class="dot">·</span>
+          <a href="#" target="_blank" rel="noopener">Repository</a>
+          <span class="dot">·</span>
+          <a href="#" target="_blank" rel="noopener">Maintainers</a>
+        </span>
       </div>
     </el-footer>
   </el-container>
@@ -132,12 +142,6 @@ const toggleTheme = () => {
   cursor: pointer;
 }
 
-.footer-content {
-  text-align: center;
-  color: #999;
-  padding: 20px 0;
-}
-
 .search-bar :deep(.el-input__wrapper) {
   background-color: rgba(255, 255, 255, 0.1);
   box-shadow: none;
@@ -170,6 +174,35 @@ const toggleTheme = () => {
   }
   .search-bar {
     display: none;
+  }
+}
+
+.footer-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #999;
+  padding: 20px 0;
+  font-size: 0.9rem;
+}
+
+.footer-right a {
+  color: #999;
+  text-decoration: none;
+}
+
+.footer-right a:hover {
+  text-decoration: underline;
+}
+
+.dot {
+  margin: 0 6px;
+}
+
+@media (max-width: 480px) {
+  .footer-content {
+    flex-direction: column;
+    gap: 6px;
   }
 }
 </style>
