@@ -3,6 +3,7 @@ import { ref, reactive } from 'vue'
 import request from '@/utils/request'
 import { ElMessage } from 'element-plus'
 import type { AxiosProgressEvent } from 'axios'
+import { parseBlob } from 'music-metadata-browser'
 
 const loading = ref(false)
 const coverFile = ref<File | null>(null)
@@ -13,15 +14,56 @@ const form = reactive({
   title: '',
   artist: '',
   album: '',
+  year: '',
+  track: '',
+  genre: '',
   duration: '',
   description: ''
+})
+
+const touched = reactive({
+  title: false,
+  artist: false,
+  album: false,
+  year: false,
+  track: false,
+  genre: false
 })
 
 const handleCoverChange = (file: any) => {
   coverFile.value = file?.raw || null
 }
-const handleAudioChange = (file: any) => {
+const handleAudioChange = async (file: any) => {
   audioFile.value = file?.raw || null
+
+  if (!audioFile.value) return
+
+  try {
+    const metadata = await parseBlob(audioFile.value)
+    const common = metadata.common
+
+    if (!touched.title && common.title) {
+      form.title = common.title
+    }
+    if (!touched.artist && common.artist) {
+      form.artist = common.artist
+    }
+    if (!touched.album && common.album) {
+      form.album = common.album
+    }
+    if (!touched.year && typeof common.year === 'number') {
+      form.year = String(common.year)
+    }
+    if (!touched.track && common.track && typeof common.track.no === 'number') {
+      form.track = String(common.track.no)
+    }
+    if (!touched.genre && common.genre && common.genre.length > 0) {
+      form.genre = common.genre.join('; ')
+    }
+  } catch (e) {
+    console.error(e)
+    ElMessage.warning('Failed to read audio tags')
+  }
 }
 
 const handleSubmit = async () => {
@@ -36,6 +78,9 @@ const handleSubmit = async () => {
     fd.append('title', form.title)
     fd.append('artist', form.artist)
     fd.append('album', form.album)
+    fd.append('year', form.year)
+    fd.append('track', form.track)
+    fd.append('genre', form.genre)
     fd.append('duration', form.duration)
     fd.append('description', form.description)
     if (coverFile.value) fd.append('cover', coverFile.value)
@@ -95,13 +140,22 @@ const handleSubmit = async () => {
         <el-col :xs="24" :sm="14" :md="16" :lg="18">
           <el-form label-position="top" :model="form">
             <el-form-item label="Title">
-              <el-input v-model="form.title" />
+              <el-input v-model="form.title" @input="touched.title = true" />
             </el-form-item>
             <el-form-item label="Artist">
-              <el-input v-model="form.artist" />
+              <el-input v-model="form.artist" @input="touched.artist = true" />
             </el-form-item>
             <el-form-item label="Album">
-              <el-input v-model="form.album" />
+              <el-input v-model="form.album" @input="touched.album = true" />
+            </el-form-item>
+            <el-form-item label="Year">
+              <el-input v-model="form.year" placeholder="e.g. 2024" @input="touched.year = true" />
+            </el-form-item>
+            <el-form-item label="Track Number">
+              <el-input v-model="form.track" placeholder="e.g. 1" @input="touched.track = true" />
+            </el-form-item>
+            <el-form-item label="Genre">
+              <el-input v-model="form.genre" placeholder="e.g. Rock; Alternative" @input="touched.genre = true" />
             </el-form-item>
             <el-form-item label="Duration">
               <el-input v-model="form.duration" placeholder="e.g. 03:45" />
