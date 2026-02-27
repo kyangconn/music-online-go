@@ -35,7 +35,6 @@ onMounted(fetchUserMusics)
   <div class="profile-container">
     <el-card class="profile-card" shadow="never">
       <div class="user-header">
-        <el-avatar :size="64" :src="userStore.user?.avatar_url" />
         <div class="user-info">
           <h2 class="username">{{ userStore.user?.username }}</h2>
           <p class="sub">{{ userStore.user?.email }}</p>

@@ -4,11 +4,14 @@ import request from '@/utils/request'
 import { ElMessage } from 'element-plus'
 import type { AxiosProgressEvent } from 'axios'
 import { parseBlob } from 'music-metadata-browser'
+import type { UploadInstance, UploadFile } from 'element-plus'
 
 const loading = ref(false)
 const coverFile = ref<File | null>(null)
 const audioFile = ref<File | null>(null)
 const uploadPercent = ref(0)
+const coverUploadRef = ref<UploadInstance>()
+const audioUploadRef = ref<UploadInstance>()
 
 const form = reactive({
   title: '',
@@ -32,6 +35,13 @@ const touched = reactive({
 
 const handleCoverChange = (file: any) => {
   coverFile.value = file?.raw || null
+}
+const handleCoverExceed = (files: UploadFile[]) => {
+  coverUploadRef.value?.clearFiles()
+  const raw = files?.[0]?.raw as File | undefined
+  if (raw) {
+    coverFile.value = raw
+  }
 }
 const handleAudioChange = async (file: any) => {
   audioFile.value = file?.raw || null
@@ -65,6 +75,31 @@ const handleAudioChange = async (file: any) => {
     ElMessage.warning('Failed to read audio tags')
   }
 }
+const handleAudioExceed = async (files: UploadFile[]) => {
+  audioUploadRef.value?.clearFiles()
+  const raw = files?.[0]?.raw as File | undefined
+  if (!raw) return
+  audioFile.value = raw
+  try {
+    const metadata = await parseBlob(raw)
+    const common = metadata.common
+    if (!touched.title && common.title) form.title = common.title
+    if (!touched.artist && common.artist) form.artist = common.artist
+    if (!touched.album && common.album) form.album = common.album
+    if (!touched.year && typeof common.year === 'number') form.year = String(common.year)
+    if (!touched.track && common.track && typeof common.track.no === 'number') form.track = String(common.track.no)
+    if (!touched.genre && common.genre && common.genre.length > 0) form.genre = common.genre.join('; ')
+  } catch (e) {
+    ElMessage.warning('Failed to read audio tags')
+  }
+}
+
+const resetUploads = () => {
+  coverUploadRef.value?.clearFiles()
+  audioUploadRef.value?.clearFiles()
+  coverFile.value = null
+  audioFile.value = null
+}
 
 const handleSubmit = async () => {
   if (!audioFile.value) {
@@ -93,6 +128,7 @@ const handleSubmit = async () => {
       }
     })
     ElMessage.success('Music uploaded successfully')
+    resetUploads()
   } catch (e) {
   } finally {
     loading.value = false
@@ -112,10 +148,12 @@ const handleSubmit = async () => {
             <h3>Cover Image</h3>
             <el-upload
               class="upload-block"
+              ref="coverUploadRef"
               :show-file-list="false"
               :limit="1"
               :auto-upload="false"
               :on-change="handleCoverChange"
+              :on-exceed="handleCoverExceed"
               accept="image/*"
             >
               <el-button>Choose Cover</el-button>
@@ -123,10 +161,12 @@ const handleSubmit = async () => {
             <h3 style="margin-top:16px">Audio File</h3>
             <el-upload
               class="upload-block"
+              ref="audioUploadRef"
               :show-file-list="false"
               :limit="1"
               :auto-upload="false"
               :on-change="handleAudioChange"
+              :on-exceed="handleAudioExceed"
               accept="audio/*"
             >
               <el-button>Choose Audio</el-button>

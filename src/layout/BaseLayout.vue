@@ -59,9 +59,8 @@ const toggleTheme = () => {
           <el-button circle @click="toggleTheme" :icon="isDark ? Sunny : Moon" />
           <template v-if="userStore.isLoggedIn">
             <el-dropdown>
-              <span class="el-dropdown-link text-white">
-                <el-avatar :size="32" :src="userStore.user?.avatar_url || 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'" />
-                <span class="username">{{ userStore.user?.username }}</span>
+              <span class="el-dropdown-link text-white username-only">
+                <span class="username">{{ userStore.user?.username || 'User' }}</span>
               </span>
               <template #dropdown>
                 <el-dropdown-menu>
@@ -120,7 +119,7 @@ const toggleTheme = () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 180px;
+  max-width: 250px;
 }
 
 .search-bar {
@@ -136,9 +135,8 @@ const toggleTheme = () => {
 }
 
 .username {
-  margin-left: 8px;
   color: #fff;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
 }
 
