@@ -25,11 +25,15 @@ const routes = [
         name: 'Register',
         component: Register
       },
-      // 暂时添加 placeholder 组件，防止路由报错
       {
         path: '/profile',
         name: 'Profile',
         component: () => import('@/views/user/Profile.vue').catch(() => import('@/views/Home.vue')) // 临时回退
+      },
+      {
+        path: '/settings',
+        name: 'Settings',
+        component: () => import('@/views/user/Settings.vue').catch(() => import('@/views/Home.vue'))
       },
       {
         path: '/music/:id',

@@ -67,14 +67,8 @@ const handleRegister = async (formEl: FormInstance | undefined) => {
           <p>Join our music community today</p>
         </div>
       </template>
-      
-      <el-form
-        ref="formRef"
-        :model="registerForm"
-        :rules="rules"
-        label-position="top"
-        size="large"
-      >
+
+      <el-form ref="formRef" :model="registerForm" :rules="rules" label-position="top" size="large">
         <el-form-item label="Username" prop="username">
           <el-input v-model="registerForm.username" placeholder="Choose a username" />
         </el-form-item>
@@ -86,15 +80,16 @@ const handleRegister = async (formEl: FormInstance | undefined) => {
         <el-form-item label="Email" prop="email">
           <el-input v-model="registerForm.email" placeholder="Your email address" />
         </el-form-item>
-        
+
         <el-form-item label="Password" prop="password">
           <el-input v-model="registerForm.password" type="password" placeholder="Create a password" show-password />
         </el-form-item>
 
         <el-form-item label="Confirm Password" prop="confirmPassword">
-          <el-input v-model="registerForm.confirmPassword" type="password" placeholder="Confirm your password" show-password />
+          <el-input v-model="registerForm.confirmPassword" type="password" placeholder="Confirm your password"
+            show-password />
         </el-form-item>
-        
+
         <el-form-item>
           <el-button type="primary" :loading="loading" class="w-100" @click="handleRegister(formRef)">
             Register

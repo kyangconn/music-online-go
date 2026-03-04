@@ -4,15 +4,21 @@
   --accent-color: #3498db;
   --bg-light: #f1f3f5;
   --bg-white: #ffffff;
+  --bg-card: #ffffff;
+  --border-color: #eaeaea;
+  --hover-bg: #f8f9fa;
+  --active-bg: #edf2f7;
   --text-dark: #2c3e50;
   --text-light: #7f8c8d;
+  --text-primary: #2c3e50;
+  --text-secondary: #6c757d;
 }
 
 body {
   margin: 0;
   font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
   background-color: var(--bg-light);
-  color: var(--text-dark);
+  color: var(--text-primary);
 }
 
 .el-header {
@@ -38,11 +44,17 @@ html.dark {
   --accent-color: #3b82f6; /* blue-500 */
   --bg-light: #0d1117; /* github dark */
   --bg-white: #111827;
+  --bg-card: #161b22;
+  --border-color: #30363d;
+  --hover-bg: #21262d;
+  --active-bg: #30363d;
   --text-dark: #e5e7eb; /* text in dark */
   --text-light: #9ca3af;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
 }
 
 html.dark body {
   background-color: var(--bg-light);
-  color: var(--text-dark);
+  color: var(--text-primary);
 }

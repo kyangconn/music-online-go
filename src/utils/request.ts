@@ -12,10 +12,10 @@ const service = axios.create({
 service.interceptors.request.use(
   config => {
     // 在这里可以统一添加 token，例如：
-    // const token = localStorage.getItem('token')
-    // if (token) {
-    //   config.headers['Authorization'] = 'Bearer ' + token
-    // }
+    const token = localStorage.getItem('token')
+    if (token) {
+      config.headers['Authorization'] = 'Bearer ' + token
+    }
     return config
   },
   error => {
