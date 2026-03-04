@@ -19,7 +19,35 @@
   "nav": {
     "home": "Home",
     "discover": "Discover Music",
+    "discover_desc": "Discover the latest music from our community",
+    "recommended": "Recommended Music",
     "my_music": "My Music"
+  },
+  "base": {
+    "license": "Repository License",
+    "maintainer": "Maintainers",
+    "version": "Version",
+    "repository": "Repository Address"
+  },
+  "add": {
+    "title": "Add Music",
+    "single_import": "Single File Import",
+    "batch_import": "Batch Import",
+    "batch_import_desc": "Select a folder containing music files",
+    "cover": "Cover Image",
+    "import_cover": "Import Cover Image",
+    "audio": "Audio File",
+    "import": "Import",
+    "music_title": "Music Title",
+    "music_artist": "Music Artist",
+    "music_album": "Music Album",
+    "music_track": "Music Track (Position in Album)",
+    "music_genre": "Music Genre",
+    "music_year": "Music Year",
+    "music_duration": "Music Duration",
+    "music_description": "Music Description",
+    "file_name": "File Name",
+    "size": "File Size"
   },
   "settings": {
     "title": "User Settings",
@@ -52,7 +80,21 @@
     "save_success": "Saved successfully",
     "save_failed": "Failed to save",
     "export_data": "Export Data",
-    "delete_account": "Delete Account"
+    "delete_account": "Delete Account",
+    "local_access_title": "Local File Access",
+    "local_access": "Local Directory Access",
+    "local_access_desc": "Grant this website permission to read your local music directory for importing files.",
+    "local_access_request": "Request Access",
+    "local_access_status": "Access Granted",
+    "local_access_status_desc": "You have granted permission to read files from a local directory.",
+    "local_access_revoke": "Revoke Access",
+    "local_access_not_granted": "No Access Granted",
+    "local_access_not_granted_desc": "You have not granted permission to access local files.",
+    "local_access_not_supported": "Your browser does not support local file system access.",
+    "local_access_granted": "Permission granted successfully.",
+    "local_access_denied": "Permission denied.",
+    "local_access_error": "Failed to request access.",
+    "local_access_revoked": "Access revoked."
   },
   "admin": {
     "dashboard": "Admin Dashboard",

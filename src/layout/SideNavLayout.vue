@@ -55,7 +55,7 @@ const handleTabClick = (tabId: string) => {
 // 监听 tabs 变化，确保始终有激活的标签
 watch(() => props.tabs, (newTabs) => {
   if (newTabs && newTabs.length > 0 && (!props.modelValue || !newTabs.find(t => t.id === props.modelValue))) {
-    emit('update:modelValue', newTabs[0].id)
+    emit('update:modelValue', newTabs[0]!.id)
   }
 }, { immediate: true })
 </script>

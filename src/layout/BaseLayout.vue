@@ -80,11 +80,11 @@ const handleLogout = () => {
           © 2026 Music Online
         </span>
         <span class="footer-right">
-          <a href="#" target="_blank" rel="noopener">License</a>
+          <a href="#" target="_blank" rel="noopener">{{ $t('base.license') }}</a>
           <span class="dot">·</span>
-          <a href="#" target="_blank" rel="noopener">Repository</a>
+          <a href="#" target="_blank" rel="noopener">{{ $t('base.repository') }}</a>
           <span class="dot">·</span>
-          <a href="#" target="_blank" rel="noopener">Maintainers</a>
+          <a href="#" target="_blank" rel="noopener">{{ $t('base.maintainer') }}</a>
         </span>
       </div>
     </el-footer>

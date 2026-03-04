@@ -47,13 +47,13 @@ const handlePageChange = (page: number) => {
 <template>
   <div class="home-container">
     <div class="banner">
-      <h1>Discover New Music</h1>
-      <p>Listen to the latest tracks from our community</p>
+      <h1>{{ $t('nav.discover') }}</h1>
+      <p>{{ $t('nav.discover_desc') }}</p>
     </div>
 
     <div class="music-section">
       <h2 v-if="searchQuery">Search Results for "{{ searchQuery }}"</h2>
-      <h2 v-else>Recommended</h2>
+      <h2 v-else>{{ $t('nav.recommended') }}</h2>
       
       <div v-if="loading" class="loading-container">
         <el-skeleton :rows="3" animated />

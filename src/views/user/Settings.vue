@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/store/user'
 import { useThemeStore } from '@/store/theme'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import SideNavLayout, { type TabItem } from '@/layout/SideNavLayout.vue'
 
 const router = useRouter()
@@ -21,9 +21,9 @@ const layoutMode = ref<'sidebar' | 'tabs'>('sidebar')
 
 // 标签页数据
 const tabs = computed<TabItem[]>(() => [
-  { id: 'general', label: t('settings.general')},
-  { id: 'profile', label: t('settings.profile')},
-  { id: 'privacy', label: t('settings.privacy')},
+  { id: 'general', label: t('settings.general') },
+  { id: 'profile', label: t('settings.profile') },
+  { id: 'privacy', label: t('settings.privacy') },
   { id: 'notifications', label: t('settings.notifications'), badge: 3 },
   { id: 'advanced', label: t('settings.advanced') }
 ])
@@ -73,10 +73,11 @@ const handleUpdateForm = async (formEl: FormInstance | undefined) => {
         // 过滤掉空密码（如果不打算修改密码）
         const submitData = { ...data }
         if (!submitData.password) {
-          delete submitData.password
+          const { password, ...rest } = submitData
+          userStore.updateUser(rest)
+        } else {
+          userStore.updateUser(submitData)
         }
-        
-        userStore.updateUser(submitData)
         ElMessage.success(t('settings.save_success'))
         updateForm.current_password = ''
         updateForm.password = ''
@@ -92,6 +93,71 @@ const handleUpdateForm = async (formEl: FormInstance | undefined) => {
   }
 }
 
+// 本地文件访问设置
+const directoryHandle = ref<any>(null)
+const hasPermission = ref(false)
+const requesting = ref(false)
+
+const requestDirectoryAccess = async () => {
+  if (!('showDirectoryPicker' in window)) {
+    ElMessage.warning(t('settings.local_access_not_supported'))
+    return
+  }
+  requesting.value = true
+  try {
+    await ElMessageBox.confirm(
+      t('settings.local_access_confirm_message'),
+      t('settings.local_access_confirm_title'),
+      {
+        confirmButtonText: t('settings.confirm'),
+        cancelButtonText: t('settings.cancel'),
+        type: 'warning',
+      }
+    )
+    // 请求目录访问权限
+    const handle = await (window as any).showDirectoryPicker({
+      mode: 'read'
+    })
+    // 验证权限
+    const permission = await handle.queryPermission({ mode: 'read' })
+    if (permission === 'granted') {
+      directoryHandle.value = handle
+      hasPermission.value = true
+      ElMessage.success(t('settings.local_access_granted'))
+    } else {
+      ElMessage.warning(t('settings.local_access_denied'))
+    }
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      // 用户取消选择
+    } else {
+      ElMessage.error(error?.message || t('settings.local_access_error'))
+    }
+  } finally {
+    requesting.value = false
+  }
+}
+
+const revokeDirectoryAccess = async () => {
+  if (directoryHandle.value) {
+    try {
+      await directoryHandle.value.requestPermission({ mode: 'read' })
+      // 实际上无法撤销，但可以请求撤销提示
+      directoryHandle.value = null
+      hasPermission.value = false
+      ElMessage.info(t('settings.local_access_revoked'))
+    } catch (error) {
+      console.error(error)
+    }
+  }
+}
+
+// 检查现有权限
+// @ts-ignore
+const checkExistingPermission = async () => {
+  // 可以尝试从存储中恢复句柄（未来实现）
+  // 暂时不实现
+}
 </script>
 
 
@@ -178,6 +244,44 @@ const handleUpdateForm = async (formEl: FormInstance | undefined) => {
             </el-button>
           </div>
         </el-form>
+      </div>
+    </template>
+
+    <!-- 本地文件访问设置 -->
+    <template #advanced>
+      <div class="settings-section">
+        <h3 class="section-title">{{ $t('settings.local_access_title') }}</h3>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <h4>{{ $t('settings.local_access') }}</h4>
+            <p>{{ $t('settings.local_access_desc') }}</p>
+          </div>
+          <div class="setting-control">
+            <el-button type="primary" :loading="requesting" @click="requestDirectoryAccess" :disabled="hasPermission">
+              {{ $t('settings.local_access_request') }}
+            </el-button>
+          </div>
+        </div>
+
+        <div class="setting-item" v-if="hasPermission">
+          <div class="setting-info">
+            <h4>{{ $t('settings.local_access_status') }}</h4>
+            <p>{{ $t('settings.local_access_status_desc') }}</p>
+          </div>
+          <div class="setting-control">
+            <el-button type="danger" plain @click="revokeDirectoryAccess">
+              {{ $t('settings.local_access_revoke') }}
+            </el-button>
+          </div>
+        </div>
+
+        <div class="setting-item" v-else>
+          <div class="setting-info">
+            <h4>{{ $t('settings.local_access_not_granted') }}</h4>
+            <p>{{ $t('settings.local_access_not_granted_desc') }}</p>
+          </div>
+        </div>
       </div>
     </template>
 

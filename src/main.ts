@@ -8,6 +8,7 @@ import App from './App.vue'
 import router from './router'
 import i18n from './i18n'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
+import { Buffer } from 'buffer'
 
 const app = createApp(App)
 
@@ -20,3 +21,5 @@ app.use(router)
 app.use(i18n)
 app.use(ElementPlus)
 app.mount('#app')
+
+window.Buffer = Buffer
