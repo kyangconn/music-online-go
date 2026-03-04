@@ -23,6 +23,7 @@ type Music struct {
 	Artist      string    `json:"artist" gorm:"size:255;not null;index"`
 	Intro       string    `json:"intro" gorm:"type:text"`
 	Img         string    `json:"img" gorm:"size:500"`
+	Path        string    `json:"path" gorm:"size:500"`
 	Type        MusicType `json:"type" gorm:"size:20;default:'single'"`
 	IssuingDate time.Time `json:"issuing_date"`
 
@@ -60,6 +61,7 @@ type CreateMusicRequest struct {
 	Artist      string    `json:"artist" binding:"required"`
 	Intro       string    `json:"intro"`
 	Img         string    `json:"img"`
+	Path        string    `json:"path"`
 	Type        MusicType `json:"type" binding:"oneof=single album"`
 	IssuingDate time.Time `json:"issuing_date"`
 	AlbumID     *uint     `json:"album_id"`
@@ -70,6 +72,7 @@ type UpdateMusicRequest struct {
 	Artist      *string    `json:"artist"`
 	Intro       *string    `json:"intro"`
 	Img         *string    `json:"img"`
+	Path        *string    `json:"path"`
 	Type        *MusicType `json:"type" binding:"omitempty,oneof=single album"`
 	IssuingDate *time.Time `json:"issuing_date"`
 	AlbumID     *uint      `json:"album_id"`
@@ -83,6 +86,7 @@ type MusicResponse struct {
 	Artist      string    `json:"artist"`
 	Intro       string    `json:"intro"`
 	Img         string    `json:"img"`
+	Path        string    `json:"path"`
 	Type        MusicType `json:"type"`
 	IssuingDate time.Time `json:"issuing_date"`
 	UserID      uint      `json:"user_id"`
