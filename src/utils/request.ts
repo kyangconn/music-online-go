@@ -36,7 +36,37 @@ service.interceptors.response.use(
     return res
   },
   error => {
-    console.log('err' + error) // for debug
+    // 统一错误处理
+    console.error('API请求错误:', error)
+    
+    // 可以根据不同的错误类型进行不同的处理
+    if (error.response) {
+      // 服务器返回了错误状态码
+      console.error('错误状态码:', error.response.status)
+      console.error('错误数据:', error.response.data)
+      
+      // 处理特定的HTTP状态码
+      if (error.response.status === 401) {
+        // 未授权，可能需要跳转到登录页面
+        console.warn('用户未授权，可能需要重新登录')
+      } else if (error.response.status === 403) {
+        // 禁止访问
+        console.warn('访问被拒绝，权限不足')
+      } else if (error.response.status === 404) {
+        // 资源未找到
+        console.warn('请求的资源不存在')
+      } else if (error.response.status >= 500) {
+        // 服务器错误
+        console.error('服务器内部错误')
+      }
+    } else if (error.request) {
+      // 请求已发出但没有收到响应
+      console.error('网络错误，无法连接到服务器')
+    } else {
+      // 请求配置错误
+      console.error('请求配置错误:', error.message)
+    }
+    
     return Promise.reject(error)
   }
 )
