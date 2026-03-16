@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/kyangconn/music-online-web/internal/config"
+	"github.com/kyangconn/music-online-go/internal/config"
 )
 
 var (

@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kyangconn/music-online-web/internal/config"
-	"github.com/kyangconn/music-online-web/internal/pkg/database"
-	"github.com/kyangconn/music-online-web/internal/service"
+	"github.com/kyangconn/music-online-go/internal/config"
+	"github.com/kyangconn/music-online-go/internal/pkg/database"
+	"github.com/kyangconn/music-online-go/internal/service"
 )
 
 type AdminHandler struct {

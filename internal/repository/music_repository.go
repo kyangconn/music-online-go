@@ -3,7 +3,7 @@ package repository
 import (
 	"errors"
 
-	"github.com/kyangconn/music-online-web/internal/domain"
+	"github.com/kyangconn/music-online-go/internal/domain"
 	"gorm.io/gorm"
 )
 

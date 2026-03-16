@@ -9,8 +9,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/kyangconn/music-online-web/internal/config"
-	"github.com/kyangconn/music-online-web/internal/domain"
+	"github.com/kyangconn/music-online-go/internal/config"
+	"github.com/kyangconn/music-online-go/internal/domain"
 )
 
 var DB *gorm.DB
@@ -49,6 +49,7 @@ func AutoMigrate() error {
 		&domain.User{},
 		&domain.Music{},
 		&domain.UserMusicLike{},
+		&domain.MusicTag{},
 	)
 }
 

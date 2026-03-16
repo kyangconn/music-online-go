@@ -1,29 +1,34 @@
+// user_repository_admin.go
+// 该文件包含用户管理相关的数据库操作，包括用户状态更新、角色更新和搜索功能
 package repository
 
-import "github.com/kyangconn/music-online-web/internal/domain"
+import "github.com/kyangconn/music-online-go/internal/domain"
 
+// updateUserField 通用用户字段更新函数
+// 减少重复代码，统一处理用户字段更新操作
+func (r *userRepository) updateUserField(id uint, field string, value interface{}) error {
+	result := r.db.Model(&domain.User{}).Where("id = ?", id).Update(field, value)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+// UpdateStatus 更新用户状态（激活/禁用）
 func (r *userRepository) UpdateStatus(id uint, isActive bool) error {
-	result := r.db.Model(&domain.User{}).Where("id = ?", id).Update("is_active", isActive)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrUserNotFound
-	}
-	return nil
+	return r.updateUserField(id, "is_active", isActive)
 }
 
+// UpdateRole 更新用户角色
 func (r *userRepository) UpdateRole(id uint, role string) error {
-	result := r.db.Model(&domain.User{}).Where("id = ?", id).Update("role", role)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrUserNotFound
-	}
-	return nil
+	return r.updateUserField(id, "role", role)
 }
 
+// Search 搜索用户
+// 支持按用户名、邮箱或全名进行模糊搜索，并支持分页
 func (r *userRepository) Search(query string, page, pageSize int) ([]*domain.User, int64, error) {
 	var users []*domain.User
 	var total int64

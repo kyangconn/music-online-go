@@ -4,8 +4,8 @@ import (
 	"errors"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kyangconn/music-online-web/internal/domain"
-	"github.com/kyangconn/music-online-web/internal/handler"
+	"github.com/kyangconn/music-online-go/internal/domain"
+	"github.com/kyangconn/music-online-go/internal/handler"
 	"gorm.io/gorm"
 )
 

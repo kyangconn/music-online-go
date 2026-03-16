@@ -1,4 +1,4 @@
-module github.com/kyangconn/music-online-web
+module github.com/kyangconn/music-online-go
 
 go 1.24.4
 

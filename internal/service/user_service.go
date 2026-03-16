@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/kyangconn/music-online-web/internal/domain"
-	"github.com/kyangconn/music-online-web/internal/pkg/jwt"
-	"github.com/kyangconn/music-online-web/internal/pkg/password"
-	"github.com/kyangconn/music-online-web/internal/repository"
+	"github.com/kyangconn/music-online-go/internal/domain"
+	"github.com/kyangconn/music-online-go/internal/pkg/jwt"
+	"github.com/kyangconn/music-online-go/internal/pkg/password"
+	"github.com/kyangconn/music-online-go/internal/repository"
 )
 
 type UserService interface {

@@ -6,15 +6,15 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kyangconn/music-online-web/internal/handler"
+	"github.com/kyangconn/music-online-go/internal/handler"
 	"golang.org/x/time/rate"
 )
 
 type IPRateLimiter struct {
-	ips    sync.Map
-	mu     sync.Mutex
-	r      rate.Limit
-	b      int
+	ips sync.Map
+	mu  sync.Mutex
+	r   rate.Limit
+	b   int
 }
 
 func NewIPRateLimiter(r rate.Limit, b int) *IPRateLimiter {
@@ -22,7 +22,7 @@ func NewIPRateLimiter(r rate.Limit, b int) *IPRateLimiter {
 		r: r,
 		b: b,
 	}
-	
+
 	// Simple cleanup routine (optional, prevents memory leak)
 	go func() {
 		for {

@@ -6,8 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/kyangconn/music-online-web/internal/domain"
-	"github.com/kyangconn/music-online-web/internal/service"
+	"github.com/kyangconn/music-online-go/internal/domain"
+	"github.com/kyangconn/music-online-go/internal/service"
 )
 
 type UserHandler struct {

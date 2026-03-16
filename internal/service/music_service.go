@@ -1,8 +1,8 @@
 package service
 
 import (
-	"github.com/kyangconn/music-online-web/internal/domain"
-	"github.com/kyangconn/music-online-web/internal/repository"
+	"github.com/kyangconn/music-online-go/internal/domain"
+	"github.com/kyangconn/music-online-go/internal/repository"
 )
 
 type MusicService interface {

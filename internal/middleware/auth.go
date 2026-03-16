@@ -6,8 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/kyangconn/music-online-web/internal/handler"
-	"github.com/kyangconn/music-online-web/internal/pkg/jwt"
+	"github.com/kyangconn/music-online-go/internal/handler"
+	"github.com/kyangconn/music-online-go/internal/pkg/jwt"
 )
 
 func AuthMiddleware() gin.HandlerFunc {

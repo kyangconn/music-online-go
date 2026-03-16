@@ -5,7 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/kyangconn/music-online-web/internal/domain"
+	"github.com/kyangconn/music-online-go/internal/domain"
 )
 
 var (
