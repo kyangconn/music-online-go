@@ -17,7 +17,7 @@ const fetchUserMusics = async () => {
     const userId = userStore.user?.id
     const res: any = await request.get(`/users/${userId}/musics`)
     musicList.value = res.data.items || []
-  } catch (e) {
+  } catch (_e) {
     ElMessage.error('Failed to load user musics')
   } finally {
     loading.value = false
@@ -32,7 +32,7 @@ onMounted(fetchUserMusics)
 </script>
 
 <template>
-  <div class="profile-container">
+  <div class="page-section profile-container">
     <el-card class="profile-card" shadow="never">
       <div class="user-header">
         <div class="user-info">
@@ -75,9 +75,6 @@ onMounted(fetchUserMusics)
 </template>
 
 <style scoped>
-.profile-container {
-  padding: 20px 0;
-}
 .profile-card {
   background: var(--bg-white);
 }

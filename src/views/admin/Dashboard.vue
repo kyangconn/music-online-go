@@ -15,7 +15,6 @@ const title = computed(() => t('admin.dashboard'))
 const activeTab = ref('dashboard')
 const layoutMode = ref<'sidebar' | 'tabs'>('sidebar')
 
-
 const tabs = computed(() => [
   { id: 'dashboard', label: t('admin.dashboard') },
   { id: 'server', label: t('admin.server') },
@@ -24,16 +23,14 @@ const tabs = computed(() => [
   { id: 'music', label: t('admin.music') }
 ])
 
-const handleTabChange = (tabId: string) => {
-  console.log('切换到标签:', tabId)
-}
+const handleTabChange = (_tabId: string) => {}
 
 const fetchInfo = async () => {
   loading.value = true
   try {
     const res: any = await request.get('/users/admin/system-info')
     info.value = res.data
-  } catch (e) {
+  } catch (_e) {
     ElMessage.error('Failed to load system info')
   } finally {
     loading.value = false
@@ -53,113 +50,149 @@ onMounted(fetchInfo)
     <div v-if="loading" class="loading-container">
       <el-skeleton :rows="10" animated />
     </div>
-    <div v-else-if="info" class="admin-content">
+    <div v-else-if="info" class="page-content">
       <div v-show="activeTab === 'dashboard'">
-        <div class="grid">
-          <el-card class="card" shadow="hover">
+        <div class="card-grid">
+          <el-card class="card card-hover" shadow="hover">
             <template #header>
               <div class="card-header">
                 <span>{{ $t('admin.server') }}</span>
               </div>
             </template>
-            <p>Host: {{ info.host }}</p>
-            <p>Mode: {{ info.server_mode }}</p>
+            <p>{{ $t('admin.host') }}: {{ info.host }}</p>
+            <p>{{ $t('admin.mode') }}: {{ info.server_mode }}</p>
+            <p>{{ $t('admin.port') }}: {{ info.server_port }}</p>
+            <p>{{ $t('admin.uptime') }}: {{ info.uptime }}</p>
           </el-card>
 
-          <el-card class="card" shadow="hover">
+          <el-card class="card card-hover" shadow="hover">
             <template #header>
               <div class="card-header">
                 <span>{{ $t('admin.runtime') }}</span>
               </div>
             </template>
-            <p>Go: {{ info.go_version }}</p>
-            <p>Mem: {{ (info.memory_alloc / 1024 / 1024).toFixed(1) }} MB</p>
+            <p>{{ $t('admin.go_version') }}: {{ info.go_version }}</p>
+            <p>{{ $t('admin.num_cpu') }}: {{ info.num_cpu }}</p>
+            <p>{{ $t('admin.goroutines') }}: {{ info.goroutines }}</p>
+            <p>{{ $t('admin.memory_alloc') }}: {{ info.memory_alloc }}</p>
           </el-card>
 
-          <el-card class="card" shadow="hover">
+          <el-card class="card card-hover" shadow="hover">
             <template #header>
               <div class="card-header">
                 <span>{{ $t('admin.database') }}</span>
               </div>
             </template>
-            <p>Open: {{ info.db_open_conns }}</p>
-            <p>In Use: {{ info.db_in_use }}</p>
+            <p>{{ $t('admin.db_open') }}: {{ info.db_open_conns }}</p>
+            <p>{{ $t('admin.db_in_use') }}: {{ info.db_in_use }}</p>
+            <p>{{ $t('admin.db_idle') }}: {{ info.db_idle }}</p>
+            <p>{{ $t('admin.db_wait_count') }}: {{ info.db_wait_count }}</p>
           </el-card>
 
-          <el-card class="card" shadow="hover">
+          <el-card class="card card-hover" shadow="hover">
             <template #header>
               <div class="card-header">
                 <span>{{ $t('admin.music') }}</span>
               </div>
             </template>
-            <p>{{ $t('admin.total') }}: {{ info.total_music_count }}</p>
+            <p>{{ $t('admin.total') }}: {{ info.total_music }}</p>
+            <p>{{ $t('admin.total_tags') }}: {{ info.total_music_tags }}</p>
+          </el-card>
+
+          <el-card class="card card-hover" shadow="hover">
+            <template #header>
+              <div class="card-header">
+                <span>{{ $t('admin.users') }}</span>
+              </div>
+            </template>
+            <p>{{ $t('admin.total_users') }}: {{ info.total_users }}</p>
           </el-card>
         </div>
       </div>
 
       <div v-show="activeTab === 'server'">
-        <el-card class="detail-card">
+        <el-card class="detail-panel">
           <template #header>
             <h3>{{ $t('admin.server') }}</h3>
           </template>
-          <div class="detail-list">
-            <div class="detail-item"><span class="label">Host:</span><span>{{ info.host }}</span></div>
-            <div class="detail-item"><span class="label">Port:</span><span>{{ info.server_port }}</span></div>
-            <div class="detail-item"><span class="label">Mode:</span><span>{{ info.server_mode }}</span></div>
-            <div class="detail-item"><span class="label">Time:</span><span>{{ info.app_time }}</span></div>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.host') }}:</span><span>{{ info.host }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.port') }}:</span><span>{{ info.server_port }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.mode') }}:</span><span>{{ info.server_mode }}</span></div>
+            <div class="kv-row"><span class="kv-label">App Time:</span><span>{{ info.app_time }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.uptime') }}:</span><span>{{ info.uptime }}</span></div>
           </div>
         </el-card>
       </div>
 
       <div v-show="activeTab === 'runtime'">
-        <el-card class="detail-card">
+        <el-card class="detail-panel">
           <template #header>
-            <h3>{{ $t('admin.runtime') }}</h3>
+            <h3>{{ $t('admin.go_version') }}</h3>
           </template>
-          <div class="detail-list">
-            <div class="detail-item"><span class="label">Go Version:</span><span>{{ info.go_version }}</span></div>
-            <div class="detail-item"><span class="label">Goroutines:</span><span>{{ info.goroutines }}</span></div>
-            <div class="detail-item"><span class="label">Memory Allocated:</span><span>{{ (info.memory_alloc / 1024 /
-              1024).toFixed(2) }} MB</span></div>
-            <div class="detail-item"><span class="label">Memory System:</span><span>{{ (info.memory_sys / 1024 /
-              1024).toFixed(2)
-                }} MB</span></div>
-            <div class="detail-item"><span class="label">Memory Lookups:</span><span>{{ info.memory_lookups }}</span>
-            </div>
-            <div class="detail-item"><span class="label">GC Counts:</span><span>{{ info.memory_gc_count }}</span></div>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.go_version') }}:</span><span>{{ info.go_version }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.num_cpu') }}:</span><span>{{ info.num_cpu }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.goroutines') }}:</span><span>{{ info.goroutines }}</span></div>
+          </div>
+        </el-card>
+
+        <el-card class="detail-panel" style="margin-top: 16px">
+          <template #header>
+            <h3>Memory</h3>
+          </template>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.memory_alloc') }}:</span><span>{{ info.memory_alloc }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.memory_total_alloc') }}:</span><span>{{ info.memory_total_alloc }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.memory_sys') }}:</span><span>{{ info.memory_sys }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.heap_alloc') }}:</span><span>{{ info.heap_alloc }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.heap_sys') }}:</span><span>{{ info.heap_sys }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.heap_idle') }}:</span><span>{{ info.heap_idle }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.heap_inuse') }}:</span><span>{{ info.heap_inuse }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.heap_released') }}:</span><span>{{ info.heap_released }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.heap_objects') }}:</span><span>{{ info.heap_objects }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.stack_inuse') }}:</span><span>{{ info.stack_inuse }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.stack_sys') }}:</span><span>{{ info.stack_sys }}</span></div>
+          </div>
+        </el-card>
+
+        <el-card class="detail-panel" style="margin-top: 16px">
+          <template #header>
+            <h3>GC</h3>
+          </template>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.num_gc') }}:</span><span>{{ info.num_gc }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.pause_total') }}:</span><span>{{ info.pause_total }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.last_gc_time') }}:</span><span>{{ info.last_gc_time }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.gc_cpu_fraction') }}:</span><span>{{ info.gc_cpu_fraction }}</span></div>
           </div>
         </el-card>
       </div>
 
       <div v-show="activeTab === 'database'">
-        <el-card class="detail-card">
+        <el-card class="detail-panel">
           <template #header>
             <h3>{{ $t('admin.database') }}</h3>
           </template>
-          <div class="detail-list">
-            <div class="detail-item"><span class="label">Max Open Connections:</span><span>{{ info.db_max_open_conns
-            }}</span>
-            </div>
-            <div class="detail-item"><span class="label">Open Connections:</span><span>{{ info.db_open_conns }}</span>
-            </div>
-            <div class="detail-item"><span class="label">In Use:</span><span>{{ info.db_in_use }}</span></div>
-            <div class="detail-item"><span class="label">Idle:</span><span>{{ info.db_idle }}</span></div>
-            <div class="detail-item"><span class="label">Wait Count:</span><span>{{ info.db_wait_count }}</span></div>
-            <div class="detail-item"><span class="label">Wait Duration:</span><span>{{ info.db_wait_duration }}</span>
-            </div>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.db_max_open') }}:</span><span>{{ info.db_max_open_conns }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.db_open') }}:</span><span>{{ info.db_open_conns }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.db_in_use') }}:</span><span>{{ info.db_in_use }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.db_idle') }}:</span><span>{{ info.db_idle }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.db_wait_count') }}:</span><span>{{ info.db_wait_count }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.db_wait_duration') }}:</span><span>{{ info.db_wait_duration }}</span></div>
           </div>
         </el-card>
       </div>
 
       <div v-show="activeTab === 'music'">
-        <el-card class="detail-card">
+        <el-card class="detail-panel">
           <template #header>
             <h3>{{ $t('admin.music') }}</h3>
           </template>
-          <div class="detail-list">
-            <div class="detail-item"><span class="label">{{ $t('admin.total') }}:</span><span>{{ info.total_music_count
-            }}</span>
-            </div>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.total') }}:</span><span>{{ info.total_music }}</span></div>
+            <div class="kv-row"><span class="kv-label">{{ $t('admin.total_tags') }}:</span><span>{{ info.total_music_tags }}</span></div>
           </div>
         </el-card>
       </div>
@@ -168,28 +201,8 @@ onMounted(fetchInfo)
 </template>
 
 <style scoped>
-.admin-content {
-  padding: 16px;
-}
-
 .loading-container {
   padding: 24px;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 20px;
-}
-
-.card {
-  border-radius: 12px;
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
 .card-header {
@@ -197,31 +210,9 @@ onMounted(fetchInfo)
   font-size: 16px;
 }
 
-.detail-card {
-  max-width: 800px;
-  margin: 0 auto;
-  border-radius: 12px;
-}
-
-.detail-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.detail-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.detail-item:last-child {
-  border-bottom: none;
-}
-
-.label {
-  font-weight: 500;
+.card p {
+  margin: 6px 0;
+  font-size: 0.9rem;
   color: var(--text-secondary);
 }
 </style>

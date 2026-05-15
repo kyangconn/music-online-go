@@ -63,7 +63,7 @@ const handlePageChange = (page: number) => {
         <el-empty description="No music found" />
       </div>
 
-      <div v-else class="music-grid">
+      <div v-else class="music-grid-tight">
         <el-card 
           v-for="music in musicList" 
           :key="music.id" 
@@ -133,13 +133,6 @@ const handlePageChange = (page: number) => {
   margin: 0;
   opacity: 0.8;
   font-size: 1.2rem;
-}
-
-.music-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 20px;
-  margin-bottom: 2rem;
 }
 
 .music-card {

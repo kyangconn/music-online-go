@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/store/user'
 import { useThemeStore } from '@/store/theme'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import SideNavLayout, { type TabItem } from '@/layout/SideNavLayout.vue'
 
 const router = useRouter()
@@ -33,63 +33,100 @@ const title = computed(() => t('settings.title'))
 const loading = ref(false)
 const formRef = ref<FormInstance>()
 
-// 标签切换处理
-const handleTabChange = (tabId: string) => {
-  console.log('切换到标签:', tabId)
-}
+const handleTabChange = (_tabId: string) => {}
 
 const updateForm = reactive({
-  name: userStore.user?.username || '',
   full_name: userStore.user?.full_name || '',
   email: userStore.user?.email || '',
+  nickname: userStore.user?.nickname || '',
+  bio: userStore.user?.bio || '',
   current_password: '',
-  password: '',
-  confirmPassword: ''
+  new_password: '',
+  confirm_password: '',
 })
 
-const validatePass2 = (_rule: any, value: any, callback: any) => {
-  if (value !== '' && value !== updateForm.password) {
-    callback(new Error(t('settings.password_confirm_error')))
+const isChangingPassword = computed(() => updateForm.new_password.length > 0)
+
+const validateConfirmPassword = (_rule: any, value: string, callback: any) => {
+  if (isChangingPassword.value) {
+    if (!value) {
+      callback(new Error(t('settings.password_confirm_error')))
+    } else if (value !== updateForm.new_password) {
+      callback(new Error(t('settings.password_confirm_error')))
+    } else {
+      callback()
+    }
   } else {
     callback()
   }
 }
 
 const rules = reactive<FormRules>({
-  name: [{ required: true, message: 'Please input username', trigger: 'blur' }],
-  email: [{ required: true, message: 'Please input email', trigger: 'blur' }, { type: 'email', message: 'Please input correct email address', trigger: ['blur', 'change'] }],
-  current_password: [{ required: true, message: t('settings.password_required'), trigger: 'blur' }],
-  confirmPassword: [{ validator: validatePass2, trigger: 'blur' }]
+  full_name: [{ required: true, message: 'Please input full name', trigger: 'blur' }],
+  email: [
+    { required: true, message: 'Please input email', trigger: 'blur' },
+    { type: 'email', message: 'Please input correct email address', trigger: ['blur', 'change'] },
+  ],
+  current_password: [
+    {
+      validator: (_rule: any, value: string, callback: any) => {
+        if (isChangingPassword.value && !value) {
+          callback(new Error(t('settings.password_required')))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
+  new_password: [
+    {
+      validator: (_rule: any, value: string, callback: any) => {
+        if (isChangingPassword.value && value.length < 6) {
+          callback(new Error('Password must be at least 6 characters'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
+  confirm_password: [{ validator: validateConfirmPassword, trigger: 'blur' }],
 })
 
 const handleUpdateForm = async (formEl: FormInstance | undefined) => {
   if (!formEl) return
   try {
     const valid = await formEl.validate()
-    if (valid) {
-      loading.value = true
-      try {
-        const { confirmPassword, ...data } = updateForm
-        // 过滤掉空密码（如果不打算修改密码）
-        const submitData = { ...data }
-        if (!submitData.password) {
-          const { password, ...rest } = submitData
-          userStore.updateUser(rest)
-        } else {
-          userStore.updateUser(submitData)
-        }
-        ElMessage.success(t('settings.save_success'))
-        updateForm.current_password = ''
-        updateForm.password = ''
-        updateForm.confirmPassword = ''
-      } catch (error: any) {
-        ElMessage.error(error?.response?.data?.error || error.message || t('settings.save_failed'))
-      } finally {
-        loading.value = false
-      }
+    if (!valid) return
+    loading.value = true
+
+    const profileData: Record<string, string> = {}
+    if (updateForm.full_name !== (userStore.user?.full_name || ''))
+      profileData.full_name = updateForm.full_name
+    if (updateForm.email !== (userStore.user?.email || ''))
+      profileData.email = updateForm.email
+    if (updateForm.nickname !== (userStore.user?.nickname || ''))
+      profileData.nickname = updateForm.nickname
+    if (updateForm.bio !== (userStore.user?.bio || ''))
+      profileData.bio = updateForm.bio
+
+    if (Object.keys(profileData).length > 0) {
+      await userStore.updateUser(profileData)
     }
-  } catch (e) {
-    // validation failed
+
+    if (isChangingPassword.value) {
+      await userStore.changePassword(updateForm.current_password, updateForm.new_password)
+    }
+
+    ElMessage.success(t('settings.save_success'))
+    updateForm.current_password = ''
+    updateForm.new_password = ''
+    updateForm.confirm_password = ''
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.error || error.message || t('settings.save_failed'))
+  } finally {
+    loading.value = false
   }
 }
 
@@ -99,72 +136,31 @@ const hasPermission = ref(false)
 const requesting = ref(false)
 
 const requestDirectoryAccess = async () => {
-  if (!('showDirectoryPicker' in window)) {
-    ElMessage.warning(t('settings.local_access_not_supported'))
-    return
-  }
   requesting.value = true
   try {
-    await ElMessageBox.confirm(
-      t('settings.local_access_confirm_message'),
-      t('settings.local_access_confirm_title'),
-      {
-        confirmButtonText: t('settings.confirm'),
-        cancelButtonText: t('settings.cancel'),
-        type: 'warning',
-      }
-    )
-    // 请求目录访问权限
-    const handle = await (window as any).showDirectoryPicker({
-      mode: 'read'
-    })
-    // 验证权限
-    const permission = await handle.queryPermission({ mode: 'read' })
-    if (permission === 'granted') {
-      directoryHandle.value = handle
-      hasPermission.value = true
-      ElMessage.success(t('settings.local_access_granted'))
-    } else {
-      ElMessage.warning(t('settings.local_access_denied'))
-    }
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      // 用户取消选择
-    } else {
-      ElMessage.error(error?.message || t('settings.local_access_error'))
-    }
+    const handle = await (window as any).showDirectoryPicker({ mode: 'read' })
+    directoryHandle.value = handle
+    hasPermission.value = true
+    ElMessage.success(t('settings.local_access_granted'))
+  } catch (error: unknown) {
+    const err = error as DOMException
+    if (err.name === 'AbortError') return
+    ElMessage.error(t('settings.local_access_error'))
   } finally {
     requesting.value = false
   }
 }
 
-const revokeDirectoryAccess = async () => {
-  if (directoryHandle.value) {
-    try {
-      await directoryHandle.value.requestPermission({ mode: 'read' })
-      // 实际上无法撤销，但可以请求撤销提示
-      directoryHandle.value = null
-      hasPermission.value = false
-      ElMessage.info(t('settings.local_access_revoked'))
-    } catch (error) {
-      console.error(error)
-    }
-  }
-}
-
-// 检查现有权限
-// @ts-ignore
-const checkExistingPermission = async () => {
-  // 可以尝试从存储中恢复句柄（未来实现）
-  // 暂时不实现
+const revokeAccess = () => {
+  directoryHandle.value = null
+  hasPermission.value = false
+  ElMessage.info(t('settings.local_access_revoked'))
 }
 </script>
-
 
 <template>
   <SideNavLayout v-model="activeTab" :title="title" :tabs="tabs" :layout-mode="layoutMode" show-back-button
     @tab-change="handleTabChange" @back="goBack">
-    <!-- 通用设置 -->
     <template #general>
       <div class="settings-section">
         <h3 class="section-title">{{ $t('settings.general') }}</h3>
@@ -194,14 +190,13 @@ const checkExistingPermission = async () => {
       </div>
     </template>
 
-    <!-- 个人信息 -->
     <template #profile>
       <div class="profile-section">
         <el-form ref="formRef" :model="updateForm" :rules="rules" label-position="top" class="profile-form-el">
           <el-row :gutter="20">
             <el-col :span="12">
-              <el-form-item :label="$t('settings.name')" prop="name">
-                <el-input v-model="updateForm.name" />
+              <el-form-item :label="$t('settings.name')" prop="nickname">
+                <el-input v-model="updateForm.nickname" :placeholder="userStore.user?.username" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
@@ -219,19 +214,19 @@ const checkExistingPermission = async () => {
 
           <el-row :gutter="20">
             <el-col :span="12">
-              <el-form-item :label="$t('settings.password_new')" prop="password">
-                <el-input v-model="updateForm.password" type="password" show-password />
+              <el-form-item :label="$t('settings.password_new')" prop="new_password">
+                <el-input v-model="updateForm.new_password" type="password" show-password placeholder="Leave blank to keep current" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item :label="$t('settings.password_confirm')" prop="confirmPassword">
-                <el-input v-model="updateForm.confirmPassword" type="password" show-password />
+              <el-form-item :label="$t('settings.password_confirm')" prop="confirm_password">
+                <el-input v-model="updateForm.confirm_password" type="password" show-password :disabled="!isChangingPassword" />
               </el-form-item>
             </el-col>
           </el-row>
 
-          <div class="security-verify">
-            <el-form-item :label="$t('settings.password_current')" prop="current_password" required>
+          <div v-if="isChangingPassword" class="security-verify">
+            <el-form-item :label="$t('settings.password_current')" prop="current_password">
               <el-input v-model="updateForm.current_password" type="password" show-password
                 :placeholder="$t('settings.password_required')" />
             </el-form-item>
@@ -247,7 +242,6 @@ const checkExistingPermission = async () => {
       </div>
     </template>
 
-    <!-- 本地文件访问设置 -->
     <template #advanced>
       <div class="settings-section">
         <h3 class="section-title">{{ $t('settings.local_access_title') }}</h3>
@@ -258,38 +252,21 @@ const checkExistingPermission = async () => {
             <p>{{ $t('settings.local_access_desc') }}</p>
           </div>
           <div class="setting-control">
-            <el-button type="primary" :loading="requesting" @click="requestDirectoryAccess" :disabled="hasPermission">
+            <el-button v-if="!hasPermission" type="primary" :loading="requesting" @click="requestDirectoryAccess">
               {{ $t('settings.local_access_request') }}
             </el-button>
-          </div>
-        </div>
-
-        <div class="setting-item" v-if="hasPermission">
-          <div class="setting-info">
-            <h4>{{ $t('settings.local_access_status') }}</h4>
-            <p>{{ $t('settings.local_access_status_desc') }}</p>
-          </div>
-          <div class="setting-control">
-            <el-button type="danger" plain @click="revokeDirectoryAccess">
+            <el-button v-else type="danger" plain @click="revokeAccess">
               {{ $t('settings.local_access_revoke') }}
             </el-button>
           </div>
         </div>
 
-        <div class="setting-item" v-else>
+        <div v-if="hasPermission" class="setting-item">
           <div class="setting-info">
-            <h4>{{ $t('settings.local_access_not_granted') }}</h4>
-            <p>{{ $t('settings.local_access_not_granted_desc') }}</p>
+            <h4>{{ $t('settings.local_access_status') }}</h4>
+            <p>{{ $t('settings.local_access_status_desc') }}</p>
           </div>
         </div>
-      </div>
-    </template>
-
-    <!-- 内容操作插槽（示例） -->
-    <template #content-actions>
-      <div v-if="activeTab === 'profile'" class="actions-group">
-        <el-button plain>{{ $t('settings.export_data') }}</el-button>
-        <el-button type="danger" plain>{{ $t('settings.delete_account') }}</el-button>
       </div>
     </template>
   </SideNavLayout>

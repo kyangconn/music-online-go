@@ -32,7 +32,7 @@ const handleLogin = async (formEl: FormInstance | undefined) => {
         userStore.setUser(res.data.user)
         ElMessage.success('Login successful')
         router.push('/')
-      } catch (error: any) {
+      } catch (_e) {
         // Error is handled by interceptor, but we can add specific handling here if needed
       } finally {
         loading.value = false
@@ -43,8 +43,8 @@ const handleLogin = async (formEl: FormInstance | undefined) => {
 </script>
 
 <template>
-  <div class="auth-container">
-    <el-card class="auth-card">
+  <div class="auth-layout">
+    <el-card class="auth-box">
       <template #header>
         <div class="card-header">
           <h2>Welcome Back</h2>
@@ -74,69 +74,20 @@ const handleLogin = async (formEl: FormInstance | undefined) => {
         </el-form-item>
         
         <el-form-item>
-          <el-button type="primary" :loading="loading" class="w-100" @click="handleLogin(formRef)">
+          <el-button type="primary" :loading="loading" class="w-full" @click="handleLogin(formRef)">
             Login
           </el-button>
         </el-form-item>
         <el-form-item>
-          <el-button class="w-100" @click="router.push('/')">
+          <el-button class="w-full" @click="router.push('/')">
             Back to Home
           </el-button>
         </el-form-item>
       </el-form>
 
-      <div class="auth-footer">
+      <div class="auth-footer-link">
         <p>Don't have an account? <router-link to="/register">Register now</router-link></p>
       </div>
     </el-card>
   </div>
 </template>
-
-<style scoped>
-.auth-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: calc(100vh - 120px);
-  background-color: var(--bg-light);
-}
-
-.auth-card {
-  width: 100%;
-  max-width: 400px;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.card-header h2 {
-  margin: 0 0 8px;
-  color: var(--text-dark);
-  text-align: center;
-}
-
-.card-header p {
-  margin: 0;
-  color: var(--text-light);
-  text-align: center;
-  font-size: 0.9rem;
-}
-
-.w-100 {
-  width: 100%;
-}
-
-.auth-footer {
-  text-align: center;
-  margin-top: 1rem;
-  font-size: 0.9rem;
-}
-
-.auth-footer a {
-  color: var(--accent-color);
-  text-decoration: none;
-}
-
-.auth-footer a:hover {
-  text-decoration: underline;
-}
-</style>

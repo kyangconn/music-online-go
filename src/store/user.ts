@@ -53,12 +53,24 @@ export const useUserStore = defineStore('user', () => {
    */
   async function updateUser(data: any) {
     try {
-      const response = await request.put('/users/me', data)
+      const response = await request.put('/users/profile', data)
       setUser(response.data)
       return response.data
     } catch (error) {
       console.error('更新用户信息失败:', error)
-      throw error // 重新抛出错误，让调用者处理
+      throw error
+    }
+  }
+
+  async function changePassword(oldPassword: string, newPassword: string) {
+    try {
+      await request.post('/users/change-password', {
+        old_password: oldPassword,
+        new_password: newPassword,
+      })
+    } catch (error) {
+      console.error('修改密码失败:', error)
+      throw error
     }
   }
 
@@ -78,5 +90,5 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  return { token, user, isLoggedIn, isAdmin, setToken, setUser, updateUser, logout }
+  return { token, user, isLoggedIn, isAdmin, setToken, setUser, updateUser, changePassword, logout }
 })

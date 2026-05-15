@@ -34,7 +34,10 @@ const rules = reactive<FormRules>({
     { type: 'email', message: 'Please input correct email address', trigger: 'blur' }
   ],
   password: [{ required: true, message: 'Please input password', trigger: 'blur' }, { min: 6, message: 'Length should be at least 6', trigger: 'blur' }],
-  confirmPassword: [{ validator: validatePass2, trigger: 'blur' }],
+  confirmPassword: [
+    { required: true, message: 'Please confirm your password', trigger: 'blur' },
+    { validator: validatePass2, trigger: 'blur' },
+  ],
   full_name: [{ required: true, message: 'Please input full name', trigger: 'blur' }]
 })
 
@@ -44,11 +47,11 @@ const handleRegister = async (formEl: FormInstance | undefined) => {
     if (valid) {
       loading.value = true
       try {
-        const { confirmPassword, ...data } = registerForm
+        const { confirmPassword: _confirmPw, ...data } = registerForm
         await request.post('/users/register', data)
         ElMessage.success('Registration successful! Please login.')
         router.push('/login')
-      } catch (error: any) {
+      } catch (_e) {
         // Error handled by interceptor
       } finally {
         loading.value = false
@@ -59,8 +62,8 @@ const handleRegister = async (formEl: FormInstance | undefined) => {
 </script>
 
 <template>
-  <div class="auth-container">
-    <el-card class="auth-card">
+  <div class="auth-layout">
+    <el-card class="auth-box">
       <template #header>
         <div class="card-header">
           <h2>Create Account</h2>
@@ -91,70 +94,20 @@ const handleRegister = async (formEl: FormInstance | undefined) => {
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" :loading="loading" class="w-100" @click="handleRegister(formRef)">
+          <el-button type="primary" :loading="loading" class="w-full" @click="handleRegister(formRef)">
             Register
           </el-button>
         </el-form-item>
         <el-form-item>
-          <el-button class="w-100" @click="router.push('/')">
+          <el-button class="w-full" @click="router.push('/')">
             Back to Home
           </el-button>
         </el-form-item>
       </el-form>
 
-      <div class="auth-footer">
+      <div class="auth-footer-link">
         <p>Already have an account? <router-link to="/login">Login here</router-link></p>
       </div>
     </el-card>
   </div>
 </template>
-
-<style scoped>
-.auth-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: calc(100vh - 120px);
-  background-color: var(--bg-light);
-  padding: 2rem 0;
-}
-
-.auth-card {
-  width: 100%;
-  max-width: 450px;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.card-header h2 {
-  margin: 0 0 8px;
-  color: var(--text-dark);
-  text-align: center;
-}
-
-.card-header p {
-  margin: 0;
-  color: var(--text-light);
-  text-align: center;
-  font-size: 0.9rem;
-}
-
-.w-100 {
-  width: 100%;
-}
-
-.auth-footer {
-  text-align: center;
-  margin-top: 1rem;
-  font-size: 0.9rem;
-}
-
-.auth-footer a {
-  color: var(--accent-color);
-  text-decoration: none;
-}
-
-.auth-footer a:hover {
-  text-decoration: underline;
-}
-</style>
