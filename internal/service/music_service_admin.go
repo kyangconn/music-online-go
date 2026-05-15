@@ -6,7 +6,7 @@ func (s *musicService) AdminDelete(id uint) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// 管理员可以直接删除，不需要检查所有权
 	return s.repo.Delete(id)
 }

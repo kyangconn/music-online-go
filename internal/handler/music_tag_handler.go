@@ -20,7 +20,7 @@ type MusicTagHandler struct {
 // MatchTagResponse 标签匹配响应
 // 仅 handler 层使用，封装匹配结果
 type MatchTagResponse struct {
-	IsMatched bool                      `json:"is_matched"`
+	IsMatched bool                     `json:"is_matched"`
 	Tag       *domain.MusicTagResponse `json:"tag,omitempty"`
 }
 

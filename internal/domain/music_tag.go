@@ -13,26 +13,26 @@ type MusicTag struct {
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// Core fields (at least artist + title required)
-	Artist    string    `json:"artist" gorm:"size:255;index:idx_artist_title;index:idx_artist"`
-	Title     string    `json:"title" gorm:"size:255;index:idx_artist_title;index:idx_title"`
-	Album     string    `json:"album" gorm:"size:255;index:idx_album"`
-	AlbumArtist string   `json:"album_artist" gorm:"size:255;index:idx_album_artist"`
-	TrackNumber int     `json:"track_number" gorm:"index:idx_track_number"`
-	DiscNumber  int     `json:"disc_number" gorm:"index:idx_disc_number"`
-	
+	Artist      string `json:"artist" gorm:"size:255;index:idx_artist_title;index:idx_artist"`
+	Title       string `json:"title" gorm:"size:255;index:idx_artist_title;index:idx_title"`
+	Album       string `json:"album" gorm:"size:255;index:idx_album"`
+	AlbumArtist string `json:"album_artist" gorm:"size:255;index:idx_album_artist"`
+	TrackNumber int    `json:"track_number" gorm:"index:idx_track_number"`
+	DiscNumber  int    `json:"disc_number" gorm:"index:idx_disc_number"`
+
 	// Additional metadata
-	Genre     string    `json:"genre" gorm:"size:100;index:idx_genre"`
-	Year      int       `json:"year" gorm:"index:idx_year"`
-	Duration  int       `json:"duration" gorm:"index:idx_duration"` // in seconds
-	Comment   string    `json:"comment" gorm:"type:text"`
-	
+	Genre    string `json:"genre" gorm:"size:100;index:idx_genre"`
+	Year     int    `json:"year" gorm:"index:idx_year"`
+	Duration int    `json:"duration" gorm:"index:idx_duration"` // in seconds
+	Comment  string `json:"comment" gorm:"type:text"`
+
 	// External IDs (for MusicBrainz compatibility)
-	MusicBrainzID  string `json:"musicbrainz_id" gorm:"size:36;index:idx_musicbrainz_id"`
+	MusicBrainzID       string `json:"musicbrainz_id" gorm:"size:36;index:idx_musicbrainz_id"`
 	MusicBrainzArtistID string `json:"musicbrainz_artist_id" gorm:"size:36;index:idx_musicbrainz_artist_id"`
-	
+
 	// Statistics
 	UseCount int `json:"use_count" gorm:"default:0"` // How many music records use this tag
-	
+
 	// Index for fuzzy search
 	SearchVector string `json:"search_vector" gorm:"type:tsvector"`
 }
@@ -44,32 +44,32 @@ func (MusicTag) TableName() string {
 // DTOs
 
 type CreateMusicTagRequest struct {
-	Artist          string `json:"artist" binding:"required"`
-	Title           string `json:"title" binding:"required"`
-	Album           string `json:"album"`
-	AlbumArtist     string `json:"album_artist"`
-	TrackNumber     *int   `json:"track_number"`
-	DiscNumber      *int   `json:"disc_number"`
-	Genre           string `json:"genre"`
-	Year            *int   `json:"year"`
-	Duration        *int   `json:"duration"`
-	Comment         string `json:"comment"`
-	MusicBrainzID   string `json:"musicbrainz_id"`
+	Artist              string `json:"artist" binding:"required"`
+	Title               string `json:"title" binding:"required"`
+	Album               string `json:"album"`
+	AlbumArtist         string `json:"album_artist"`
+	TrackNumber         *int   `json:"track_number"`
+	DiscNumber          *int   `json:"disc_number"`
+	Genre               string `json:"genre"`
+	Year                *int   `json:"year"`
+	Duration            *int   `json:"duration"`
+	Comment             string `json:"comment"`
+	MusicBrainzID       string `json:"musicbrainz_id"`
 	MusicBrainzArtistID string `json:"musicbrainz_artist_id"`
 }
 
 type UpdateMusicTagRequest struct {
-	Artist          *string `json:"artist"`
-	Title           *string `json:"title"`
-	Album           *string `json:"album"`
-	AlbumArtist     *string `json:"album_artist"`
-	TrackNumber     *int    `json:"track_number"`
-	DiscNumber      *int    `json:"disc_number"`
-	Genre           *string `json:"genre"`
-	Year            *int    `json:"year"`
-	Duration        *int    `json:"duration"`
-	Comment         *string `json:"comment"`
-	MusicBrainzID   *string `json:"musicbrainz_id"`
+	Artist              *string `json:"artist"`
+	Title               *string `json:"title"`
+	Album               *string `json:"album"`
+	AlbumArtist         *string `json:"album_artist"`
+	TrackNumber         *int    `json:"track_number"`
+	DiscNumber          *int    `json:"disc_number"`
+	Genre               *string `json:"genre"`
+	Year                *int    `json:"year"`
+	Duration            *int    `json:"duration"`
+	Comment             *string `json:"comment"`
+	MusicBrainzID       *string `json:"musicbrainz_id"`
 	MusicBrainzArtistID *string `json:"musicbrainz_artist_id"`
 }
 
