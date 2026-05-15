@@ -23,3 +23,7 @@ func (s *userService) SearchUsers(query string, page, pageSize int) ([]*domain.U
 
 	return userResponses, total, nil
 }
+
+func (s *userService) CountAll() (int64, error) {
+	return s.userRepo.CountAll()
+}

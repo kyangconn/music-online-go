@@ -35,6 +35,8 @@ type MusicTagRepository interface {
 	IncrementUseCount(id uint) error
 	// FuzzySearch 对音乐标签进行模糊匹配
 	FuzzySearch(tag *domain.MusicTag) (*domain.MusicTag, float64, error)
+	// CountAll 统计所有音乐标签数量
+	CountAll() (int64, error)
 }
 
 // NewMusicTagRepository 创建音乐标签仓库实例
@@ -45,6 +47,13 @@ func NewMusicTagRepository(db *gorm.DB) *musicTagRepository {
 // Create 创建新的音乐标签
 func (r *musicTagRepository) Create(tag *domain.MusicTag) error {
 	return r.db.Create(tag).Error
+}
+
+// CountAll 统计所有音乐标签数量
+func (r *musicTagRepository) CountAll() (int64, error) {
+	var count int64
+	err := r.db.Model(&domain.MusicTag{}).Count(&count).Error
+	return count, err
 }
 
 // GetByID 根据ID获取音乐标签

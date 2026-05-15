@@ -1,6 +1,10 @@
 package handler
 
 import (
+	"mime"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -286,4 +290,47 @@ func (h *MusicHandler) getUserID(c *gin.Context) *uint {
 		}
 	}
 	return nil
+}
+
+func (h *MusicHandler) Stream(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		BadRequest(c, "Invalid music ID")
+		return
+	}
+
+	music, err := h.musicService.GetByID(uint(id), nil)
+	if err != nil {
+		NotFound(c, "Music not found")
+		return
+	}
+
+	if music.Path == "" {
+		NotFound(c, "No audio file available")
+		return
+	}
+
+	file, err := os.Open(music.Path)
+	if err != nil {
+		NotFound(c, "Audio file not found on disk")
+		return
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		InternalServerError(c, "Failed to read file info")
+		return
+	}
+
+	ext := filepath.Ext(music.Path)
+	contentType := mime.TypeByExtension(ext)
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	c.Header("Content-Type", contentType)
+	c.Header("Accept-Ranges", "bytes")
+
+	http.ServeContent(c.Writer, c.Request, stat.Name(), stat.ModTime(), file)
 }

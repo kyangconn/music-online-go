@@ -85,6 +85,15 @@ func (s *MusicTagService) GetByID(id uint) (*domain.MusicTagResponse, error) {
 	return tag.ToResponse(), nil
 }
 
+// GetByMusicBrainzID 根据MusicBrainz ID获取音乐标签
+func (s *MusicTagService) GetByMusicBrainzID(mbid string) (*domain.MusicTagResponse, error) {
+	tag, err := s.Repo.GetByMusicBrainzID(mbid)
+	if err != nil {
+		return nil, err
+	}
+	return tag.ToResponse(), nil
+}
+
 // Update 更新现有的音乐标签
 // 按ID查询音乐标签，更新标签字段，重新生成搜索向量，最后保存更新后的标签
 func (s *MusicTagService) Update(id uint, req *domain.UpdateMusicTagRequest) (*domain.MusicTag, error) {
@@ -217,6 +226,11 @@ func (s *MusicTagService) FindOrCreate(tag *domain.MusicTag) (*domain.MusicTag, 
 // IncrementUseCount 增加标签的使用计数
 func (s *MusicTagService) IncrementUseCount(id uint) error {
 	return s.Repo.IncrementUseCount(id)
+}
+
+// CountAll 统计所有音乐标签数量
+func (s *MusicTagService) CountAll() (int64, error) {
+	return s.Repo.CountAll()
 }
 
 // MatchTags 尝试匹配传入的标签数据与现有标签

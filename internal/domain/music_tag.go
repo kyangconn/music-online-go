@@ -118,20 +118,20 @@ func (mt *MusicTag) ToResponse() *MusicTagResponse {
 
 // SearchParams for tag search
 type TagSearchParams struct {
-	Artist        string `form:"artist"`
-	Title         string `form:"title"`
-	Album         string `form:"album"`
-	AlbumArtist   string `form:"album_artist"`
-	Genre         string `form:"genre"`
-	Year          *int   `form:"year"`
-	MinYear       *int   `form:"min_year"`
-	MaxYear       *int   `form:"max_year"`
-	Duration      *int   `form:"duration"`
-	MinDuration   *int   `form:"min_duration"`
-	MaxDuration   *int   `form:"max_duration"`
-	MusicBrainzID string `form:"musicbrainz_id"`
-	Limit         int    `form:"limit"`
-	Offset        int    `form:"offset"`
+	Artist        string `form:"artist" json:"artist"`
+	Title         string `form:"title" json:"title"`
+	Album         string `form:"album" json:"album"`
+	AlbumArtist   string `form:"album_artist" json:"album_artist"`
+	Genre         string `form:"genre" json:"genre"`
+	Year          *int   `form:"year" json:"year"`
+	MinYear       *int   `form:"min_year" json:"min_year"`
+	MaxYear       *int   `form:"max_year" json:"max_year"`
+	Duration      *int   `form:"duration" json:"duration"`
+	MinDuration   *int   `form:"min_duration" json:"min_duration"`
+	MaxDuration   *int   `form:"max_duration" json:"max_duration"`
+	MusicBrainzID string `form:"musicbrainz_id" json:"musicbrainz_id"`
+	Limit         int    `form:"limit" json:"limit"`
+	Offset        int    `form:"offset" json:"offset"`
 }
 
 func (s *TagSearchParams) GetLimit() int {

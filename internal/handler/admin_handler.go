@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"runtime"
@@ -13,32 +14,61 @@ import (
 	"github.com/kyangconn/music-online-go/internal/service"
 )
 
+// startTime 记录进程启动时间
+var startTime = time.Now()
+
 type AdminHandler struct {
-	userService  service.UserService
-	musicService service.MusicService
+	userService     service.UserService
+	musicService    service.MusicService
+	musicTagService *service.MusicTagService
 }
 
-func NewAdminHandler(userService service.UserService, musicService service.MusicService) *AdminHandler {
+func NewAdminHandler(userService service.UserService, musicService service.MusicService, musicTagService *service.MusicTagService) *AdminHandler {
 	return &AdminHandler{
-		userService:  userService,
-		musicService: musicService,
+		userService:     userService,
+		musicService:    musicService,
+		musicTagService: musicTagService,
 	}
 }
 
 type SystemInfoResponse struct {
-	Host            string `json:"host"`
-	ServerMode      string `json:"server_mode"`
-	ServerPort      string `json:"server_port"`
-	AppTime         string `json:"app_time"`
-	GoVersion       string `json:"go_version"`
-	MemoryAlloc     uint64 `json:"memory_alloc"`
-	MemorySys       uint64 `json:"memory_sys"`
-	Goroutines      int    `json:"goroutines"`
-	DBMaxOpenConns  int    `json:"db_max_open_conns"`
-	DBOpenConns     int    `json:"db_open_conns"`
-	DBInUse         int    `json:"db_in_use"`
-	DBIdle          int    `json:"db_idle"`
-	TotalMusicCount int64  `json:"total_music_count"`
+	Host       string `json:"host"`
+	ServerMode string `json:"server_mode"`
+	ServerPort string `json:"server_port"`
+	AppTime    string `json:"app_time"`
+	Uptime     string `json:"uptime"`
+
+	GoVersion  string `json:"go_version"`
+	NumCPU     int    `json:"num_cpu"`
+	Goroutines int    `json:"goroutines"`
+
+	MemoryAlloc      string `json:"memory_alloc"`
+	MemoryTotalAlloc string `json:"memory_total_alloc"`
+	MemorySys        string `json:"memory_sys"`
+	HeapAlloc        string `json:"heap_alloc"`
+	HeapSys          string `json:"heap_sys"`
+	HeapIdle         string `json:"heap_idle"`
+	HeapInuse        string `json:"heap_inuse"`
+	HeapReleased     string `json:"heap_released"`
+	HeapObjects      uint64 `json:"heap_objects"`
+	StackInuse       string `json:"stack_inuse"`
+	StackSys         string `json:"stack_sys"`
+
+	NumGC      uint32 `json:"num_gc"`
+	PauseTotal string `json:"pause_total"`
+	LastGCTime string `json:"last_gc_time"`
+	GCCPUFrac  string `json:"gc_cpu_fraction"`
+
+	DBMaxOpenConns int    `json:"db_max_open_conns"`
+	DBOpenConns    int    `json:"db_open_conns"`
+	DBInUse        int    `json:"db_in_use"`
+	DBIdle         int    `json:"db_idle"`
+	DBWaitCount    int64  `json:"db_wait_count"`
+	DBWaitDuration string `json:"db_wait_duration"`
+
+	TotalUsers     int64 `json:"total_users"`
+	TotalMusic     int64 `json:"total_music"`
+	TotalMusicTags int64 `json:"total_music_tags"`
 }
 
 func (h *AdminHandler) SystemInfo(c *gin.Context) {
@@ -57,29 +87,82 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 		host = os.Getenv("HOSTNAME")
 	}
 
-	_, total, err := h.musicService.Search("", 1, 1, nil)
-	if err != nil {
-		InternalServerError(c, "Failed to count musics")
-		return
+	uptime := time.Since(startTime).Round(time.Second).String()
+
+	gcCPUFrac := 0.0
+	if mem.PauseTotalNs > 0 {
+		gcCPUFrac = float64(mem.PauseTotalNs) / float64(time.Since(startTime).Nanoseconds()) * 100
 	}
 
 	info := SystemInfoResponse{
-		Host:            host,
-		ServerMode:      config.AppConfig.Server.Mode,
-		ServerPort:      config.AppConfig.Server.Port,
-		AppTime:         time.Now().Format(time.RFC3339),
-		GoVersion:       runtime.Version(),
-		MemoryAlloc:     mem.Alloc,
-		MemorySys:       mem.Sys,
-		Goroutines:      runtime.NumGoroutine(),
-		DBMaxOpenConns:  dbStats.MaxOpenConnections,
-		DBOpenConns:     dbStats.OpenConnections,
-		DBInUse:         dbStats.InUse,
-		DBIdle:          dbStats.Idle,
-		TotalMusicCount: total,
+		Host:       host,
+		ServerMode: config.AppConfig.Server.Mode,
+		ServerPort: config.AppConfig.Server.Port,
+		AppTime:    time.Now().Format(time.RFC3339),
+		Uptime:     uptime,
+
+		GoVersion:  runtime.Version(),
+		NumCPU:     runtime.NumCPU(),
+		Goroutines: runtime.NumGoroutine(),
+
+		MemoryAlloc:      formatBytes(mem.Alloc),
+		MemoryTotalAlloc: formatBytes(mem.TotalAlloc),
+		MemorySys:        formatBytes(mem.Sys),
+		HeapAlloc:        formatBytes(mem.HeapAlloc),
+		HeapSys:          formatBytes(mem.HeapSys),
+		HeapIdle:         formatBytes(mem.HeapIdle),
+		HeapInuse:        formatBytes(mem.HeapInuse),
+		HeapReleased:     formatBytes(mem.HeapReleased),
+		HeapObjects:      mem.HeapObjects,
+		StackInuse:       formatBytes(mem.StackInuse),
+		StackSys:         formatBytes(mem.StackSys),
+
+		NumGC:      mem.NumGC,
+		PauseTotal: fmtDuration(time.Duration(mem.PauseTotalNs)),
+		LastGCTime: time.Unix(0, int64(mem.LastGC)).Format(time.RFC3339),
+		GCCPUFrac:  fmt.Sprintf("%.4f%%", gcCPUFrac),
+
+		DBMaxOpenConns: dbStats.MaxOpenConnections,
+		DBOpenConns:    dbStats.OpenConnections,
+		DBInUse:        dbStats.InUse,
+		DBIdle:         dbStats.Idle,
+		DBWaitCount:    dbStats.WaitCount,
+		DBWaitDuration: fmtDuration(dbStats.WaitDuration),
+	}
+
+	if total, err := h.userService.CountAll(); err == nil {
+		info.TotalUsers = total
+	}
+
+	if _, total, err := h.musicService.Search("", 1, 1, nil); err == nil {
+		info.TotalMusic = total
+	}
+
+	if total, err := h.musicTagService.CountAll(); err == nil {
+		info.TotalMusicTags = total
 	}
 
 	Success(c, info)
+}
+
+func formatBytes(bytes uint64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := uint64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+func fmtDuration(d time.Duration) string {
+	if d < time.Microsecond {
+		return fmt.Sprintf("%d ns", d.Nanoseconds())
+	}
+	return d.Round(time.Microsecond).String()
 }
 
 // ListUsers GoDoc

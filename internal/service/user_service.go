@@ -24,6 +24,7 @@ type UserService interface {
 	UpdateUserStatus(id uint, isActive bool) error
 	UpdateUserRole(id uint, role string) error
 	SearchUsers(query string, page, pageSize int) ([]*domain.UserResponse, int64, error)
+	CountAll() (int64, error)
 }
 
 type userService struct {

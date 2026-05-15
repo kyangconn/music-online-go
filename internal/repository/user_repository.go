@@ -29,6 +29,8 @@ type UserRepository interface {
 	UpdateStatus(id uint, isActive bool) error
 	UpdateRole(id uint, role string) error
 	Search(query string, page, pageSize int) ([]*domain.User, int64, error)
+	// 统计
+	CountAll() (int64, error)
 }
 
 type userRepository struct {
@@ -146,4 +148,11 @@ func (r *userRepository) List(page, pageSize int) ([]*domain.User, int64, error)
 	}
 
 	return users, total, nil
+}
+
+// CountAll 统计所有用户数量
+func (r *userRepository) CountAll() (int64, error) {
+	var count int64
+	err := r.db.Model(&domain.User{}).Count(&count).Error
+	return count, err
 }
