@@ -1,0 +1,46 @@
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import SideNavLayout, { type TabItem } from '@/layout/SideNavLayout.vue'
+import GeneralSettings from '@/components/settings/GeneralSettings.vue'
+import ProfileSettings from '@/components/settings/ProfileSettings.vue'
+import SecuritySettings from '@/components/settings/SecuritySettings.vue'
+import AdvancedSettings from '@/components/settings/AdvancedSettings.vue'
+
+const router = useRouter()
+const { t } = useI18n()
+
+const goBack = () => router.back()
+const layoutMode = ref<'sidebar' | 'tabs'>('sidebar')
+
+const tabs = computed<TabItem[]>(() => [
+  { id: 'general', label: t('settings.general') },
+  { id: 'profile', label: t('settings.profile') },
+  { id: 'security', label: t('settings.security') },
+  { id: 'advanced', label: t('settings.advanced') }
+])
+
+const activeTab = ref('general')
+const title = computed(() => t('settings.title'))
+</script>
+
+<template>
+  <SideNavLayout v-model="activeTab" :title="title" :tabs="tabs" :layout-mode="layoutMode" show-back-button @back="goBack">
+    <template #general>
+      <GeneralSettings />
+    </template>
+
+    <template #profile>
+      <ProfileSettings @cancel="goBack" />
+    </template>
+
+    <template #security>
+      <SecuritySettings />
+    </template>
+
+    <template #advanced>
+      <AdvancedSettings />
+    </template>
+  </SideNavLayout>
+</template>

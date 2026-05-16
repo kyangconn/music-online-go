@@ -1,59 +1,107 @@
 # Music Online
 
-## 简介
-一个全栈在线音乐平台的重构项目，目标是为个人音乐爱好者提供一个可自托管、可维护的在线听歌与管理平台。
+全栈音乐管理平台，Go 后端 + Vue 3 前端，编译为单一静态二进制文件。
 
-- **后端**: Go (Gin + GORM + PostgreSQL)
-- **前端**: Vue 3 + Element Plus + Vite
-- **部署**: 前端静态资源打包后嵌入 Go 二进制，单文件分发
+## 技术栈
 
-## 快速开始
+**后端**
+- Go 1.26 + Gin 框架
+- GORM（支持 SQLite / PostgreSQL）
+- JWT 认证 + OTP 双因素
+- Prometheus 指标监控
+- 零信任限流中间件
+- RSA 加密敏感字段
 
-### 1. 开发模式
-**后端:**
-
-```bash
-# 复制示例配置并根据本地环境修改
-cp config-example.yaml config.yaml
-
-# 启动后端服务
-go run cmd/server/main.go
-```
-
-**前端:**
-
-```bash
-cd web
-npm install
-npm run dev
-```
-访问 `http://localhost:5173`。
-
-### 2. 生产构建
-
-```bash
-# 1. 构建前端（会输出到 cmd/server/dist 下）
-cd web
-npm run build
-
-# 2. 构建后端 (自动嵌入前端产物)
-cd ../
-go build -o music-server ./cmd/server
-```
-运行生成的 `music-server`，访问 `http://localhost:8080`。
+**前端**（详见 [web/](./web/)）
+- Vue 3 + TypeScript
+- Element Plus 组件库
+- Pinia 状态管理 + Vue Router
+- 国际化（中 / 英）
+- Vite 构建
 
 ## 项目结构
 
-- `cmd/server`：HTTP 入口、静态资源嵌入、路由注册
-- `internal/config`：配置加载
-- `internal/domain`：核心领域模型（用户、音乐等）
-- `internal/repository`：数据库访问层（PostgreSQL + GORM）
-- `internal/service`：业务逻辑（点赞、搜索等）
-- `internal/handler`：HTTP Handler（Gin）
-- `web`：前端单页应用（Vue 3 + Element Plus）
+```
+.
+├── cmd/server/          # 程序入口，embed 前端产物
+├── internal/
+│   ├── config/          # 配置加载（viper）
+│   ├── domain/          # 领域模型
+│   ├── handler/         # HTTP 处理器
+│   ├── middleware/       # 中间件（auth/ratelimit/logger）
+│   ├── pkg/             # 基础包（database/jwt/password）
+│   ├── repository/      # 数据访问层
+│   ├── router/          # 路由注册
+│   └── service/         # 业务逻辑层
+├── web/                 # Vue 3 前端（独立子项目）
+├── Dockerfile           # 多阶段构建
+├── Makefile             # 构建 & 开发快捷命令
+├── go.mod
+└── config-example.yaml  # 配置文件模板
+```
 
-## 子模块 / 前端仓库
+## 快速开始
 
-本仓库的 `web` 目录可以作为子模块挂到独立的前端仓库。
+```bash
+# 1. 复制并编辑配置文件
+cp config-example.yaml config.yaml
 
-更多英文说明见 [Readme-EN.md](./Readme-EN.md)。
+# 2. 构建（前端 + 后端）
+make build
+
+# 3. 运行
+./music-server
+```
+
+访问 `http://localhost:8080`。
+
+## 开发
+
+```bash
+# 同时启动前后端开发服务器
+make dev-be    # 后端 :8080
+make dev-fe    # 前端 :5173（自动代理 API 到后端）
+```
+
+前端 dev server 已配置 `/api` 代理，开发时无需额外配置。
+
+## 构建
+
+```bash
+make build      # 前端构建 + 后端编译
+make build-fe   # 仅前端
+make build-be   # 仅后端（需已有前端产物）
+```
+
+前端构建产物输出到 `cmd/server/dist/`，Go 通过 `embed` 内嵌到最终二进制中，部署只需一个文件。
+
+## 测试 & Lint
+
+```bash
+make test       # Go 测试 + 前端 ESLint
+make lint       # 前端 ESLint
+make lint-be    # Go vet
+```
+
+## Docker
+
+```bash
+make docker
+```
+
+多阶段构建：前端 node → 编译 → Go 编译 → Alpine 运行镜像。
+
+## 配置
+
+参考 [config-example.yaml](./config-example.yaml)，支持环境变量覆盖。
+
+| 配置项 | 说明 | 默认值 |
+|---|---|---|
+| `server.port` | 监听端口 | `8080` |
+| `server.mode` | 运行模式 | `debug` |
+| `database.type` | 数据库类型 | `sqlite` |
+| `jwt.secret` | JWT 签名密钥 | - |
+
+## License
+
+MIT

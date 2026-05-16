@@ -33,7 +33,7 @@ go.work.sum
 .trae/
 
 # config yaml
-*.yaml
+conf*.yaml
 !config-example.yaml
 
 # Frontend build artifacts (do not commit these)

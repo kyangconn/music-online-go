@@ -1,13 +1,14 @@
 # Build frontend
-FROM node:18-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
+RUN corepack enable
 WORKDIR /web
-COPY web/package*.json ./
-RUN npm install
+COPY web/package.json web/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 COPY web/ .
-RUN npm run build
+RUN pnpm build
 
 # Build backend
-FROM golang:1.24-alpine AS backend-builder
+FROM golang:1.26-alpine AS backend-builder
 WORKDIR /app
 
 # Install build dependencies
