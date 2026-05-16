@@ -50,3 +50,13 @@ func (r *userRepository) Search(query string, page, pageSize int) ([]*domain.Use
 
 	return users, total, nil
 }
+
+// SetTOTPSecret 设置用户的TOTP密钥
+func (r *userRepository) SetTOTPSecret(id uint, secret string) error {
+	return r.updateUserField(id, "totp_secret", secret)
+}
+
+// SetTOTPEnabled 设置用户的TOTP启用状态
+func (r *userRepository) SetTOTPEnabled(id uint, enabled bool) error {
+	return r.updateUserField(id, "totp_enabled", enabled)
+}

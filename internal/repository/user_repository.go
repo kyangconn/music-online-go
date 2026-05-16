@@ -31,6 +31,9 @@ type UserRepository interface {
 	Search(query string, page, pageSize int) ([]*domain.User, int64, error)
 	// 统计
 	CountAll() (int64, error)
+	// TOTP
+	SetTOTPSecret(id uint, secret string) error
+	SetTOTPEnabled(id uint, enabled bool) error
 }
 
 type userRepository struct {

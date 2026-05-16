@@ -89,6 +89,10 @@ func registerUserRoutes(api *gin.RouterGroup, userHandler *handler.UserHandler, 
 		protected.DELETE("/profile", userHandler.DeleteUser)
 		protected.POST("/change-password", userHandler.ChangePassword)
 
+		protected.POST("/totp/setup", userHandler.SetupTOTP)
+		protected.POST("/totp/enable", userHandler.EnableTOTP)
+		protected.POST("/totp/disable", userHandler.DisableTOTP)
+
 		admin := protected.Group("/admin")
 		admin.Use(middleware.StrictAdminMiddleware(db))
 		{
@@ -119,6 +123,7 @@ func registerMusicRoutes(api *gin.RouterGroup, musicHandler *handler.MusicHandle
 	musicProtected.Use(middleware.AuthMiddleware())
 	{
 		musicProtected.POST("", musicHandler.Create)
+		musicProtected.POST("/:id/upload", musicHandler.UploadFile)
 		musicProtected.PUT("/:id", musicHandler.Update)
 		musicProtected.DELETE("/:id", musicHandler.Delete)
 		musicProtected.POST("/:id/like", musicHandler.Like)

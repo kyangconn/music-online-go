@@ -28,6 +28,7 @@ var webDist embed.FS
 
 func main() {
 	initConfigAndDatabase()
+	defer database.Close()
 	handlers := initDependencies()
 	r := router.New(handlers, database.DB)
 	configureStaticAssets(r)
@@ -41,7 +42,6 @@ func initConfigAndDatabase() {
 	if err := database.Connect(); err != nil {
 		log.Fatalf("Failed to connect database: %v", err)
 	}
-	defer database.Close()
 	if err := database.AutoMigrate(); err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}

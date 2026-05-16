@@ -231,6 +231,98 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 	Success(c, gin.H{"message": "Password changed successfully"})
 }
 
+// SetupTOTP godoc
+// @Summary 设置TOTP
+// @Tags users
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} domain.TOTPSetupResponse
+// @Router /api/v1/users/totp/setup [post]
+func (h *UserHandler) SetupTOTP(c *gin.Context) {
+	userID := c.GetUint("userID")
+
+	resp, err := h.userService.SetupTOTP(userID)
+	if err != nil {
+		if err.Error() == "totp is already enabled" {
+			Error(c, http.StatusConflict, "TOTP is already enabled")
+			return
+		}
+		InternalServerError(c, "Failed to setup TOTP")
+		return
+	}
+
+	Created(c, resp)
+}
+
+// EnableTOTP godoc
+// @Summary 启用TOTP
+// @Tags users
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body domain.TOTPVerifyRequest true "验证码"
+// @Success 200 {object} Response
+// @Router /api/v1/users/totp/enable [post]
+func (h *UserHandler) EnableTOTP(c *gin.Context) {
+	userID := c.GetUint("userID")
+
+	var req domain.TOTPVerifyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, "Invalid request parameters")
+		return
+	}
+
+	if err := h.userService.EnableTOTP(userID, req.Code); err != nil {
+		switch err.Error() {
+		case "totp is already enabled":
+			Error(c, http.StatusConflict, "TOTP is already enabled")
+		case "totp not set up yet, call setup first":
+			BadRequest(c, "TOTP not set up yet")
+		case "invalid totp code":
+			Unauthorized(c, "Invalid TOTP code")
+		default:
+			InternalServerError(c, "Failed to enable TOTP")
+		}
+		return
+	}
+
+	Success(c, gin.H{"message": "TOTP enabled successfully"})
+}
+
+// DisableTOTP godoc
+// @Summary 禁用TOTP
+// @Tags users
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body domain.TOTPDisableRequest true "验证码"
+// @Success 200 {object} Response
+// @Router /api/v1/users/totp/disable [post]
+func (h *UserHandler) DisableTOTP(c *gin.Context) {
+	userID := c.GetUint("userID")
+
+	var req domain.TOTPDisableRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, "Invalid request parameters")
+		return
+	}
+
+	if err := h.userService.DisableTOTP(userID, req.Code); err != nil {
+		switch err.Error() {
+		case "totp is not enabled":
+			BadRequest(c, "TOTP is not enabled")
+		case "invalid totp code":
+			Unauthorized(c, "Invalid TOTP code")
+		default:
+			InternalServerError(c, "Failed to disable TOTP")
+		}
+		return
+	}
+
+	Success(c, gin.H{"message": "TOTP disabled successfully"})
+}
+
 // ListUsers godoc
 // @Summary 用户列表
 // @Description 获取用户列表（分页）

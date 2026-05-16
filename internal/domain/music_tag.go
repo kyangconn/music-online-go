@@ -34,7 +34,7 @@ type MusicTag struct {
 	UseCount int `json:"use_count" gorm:"default:0"` // How many music records use this tag
 
 	// Index for fuzzy search
-	SearchVector string `json:"search_vector" gorm:"type:tsvector"`
+	SearchVector string `json:"search_vector" gorm:"type:text"`
 }
 
 func (MusicTag) TableName() string {

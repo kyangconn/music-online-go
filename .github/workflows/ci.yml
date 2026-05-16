@@ -3,12 +3,57 @@ name: CI & Release
 on:
   push:
     branches: [ main ]
-    tags: 
+    tags:
       - 'v*'
   pull_request:
 
 jobs:
-  build-and-release:
+  check:
+    if: "!startsWith(github.ref, 'refs/tags/')"
+    runs-on: ubuntu-latest
+
+    env:
+      GO_VERSION: "1.22"
+      NODE_VERSION: "20"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install & Build Frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Go Mod Download
+        run: go mod download
+
+      - name: Go Test
+        env:
+          DATABASE_TYPE: sqlite
+          DATABASE_PATH: ":memory:"
+        run: go test ./...
+
+      - name: Go Build Check
+        run: go build -v ./cmd/server
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -45,16 +90,16 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
       - name: Install & Build Frontend
         working-directory: web
         run: |
           npm ci
-          npm run build 
+          npm run build
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
 
       - name: Go Mod Download
         run: go mod download
@@ -66,20 +111,17 @@ jobs:
         run: |
           export CGO_ENABLED=0
           GOOS=linux GOARCH=amd64 go build -v -o music-server-linux-amd64 ./cmd/server
-	  GOOS=linux GOARCH=arm64 go build -v -o music-server-linux-arm64.exe ./cmd/server
-          
-          # Windows
+          GOOS=linux GOARCH=arm64 go build -v -o music-server-linux-arm64 ./cmd/server
           GOOS=windows GOARCH=amd64 go build -v -o music-server-windows-amd64.exe ./cmd/server
-	  GOOS=windows GOARCH=arm64 go build -v -o music-server-windows-arm64.exe ./cmd/server
+          GOOS=windows GOARCH=arm64 go build -v -o music-server-windows-arm64.exe ./cmd/server
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             music-server-linux-amd64
+            music-server-linux-arm64
             music-server-windows-amd64.exe
-	    music-server-linux-arm64
             music-server-windows-arm64.exe
           generate_release_notes: true
           draft: false

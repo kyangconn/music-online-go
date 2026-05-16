@@ -1,6 +1,14 @@
 package service
 
 import (
+	"fmt"
+	"io"
+	"mime/multipart"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/kyangconn/music-online-go/internal/config"
 	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/kyangconn/music-online-go/internal/repository"
 )
@@ -15,6 +23,7 @@ type MusicService interface {
 	Like(userID, musicID uint) error
 	Unlike(userID, musicID uint) error
 	ListLikedByUserID(userID uint, page, pageSize int, currentUserID *uint) ([]*domain.MusicResponse, int64, error)
+	UploadFiles(id uint, audioHeader, coverHeader *multipart.FileHeader) (*domain.MusicResponse, error)
 	// Admin
 	AdminDelete(id uint) error
 }
@@ -183,4 +192,69 @@ func (s *musicService) enrichMusicResponse(resp *domain.MusicResponse, currentUs
 		resp.IsLiked = false
 	}
 	return nil
+}
+
+// UploadFiles 上传音频和封面文件到已有音乐记录
+func (s *musicService) UploadFiles(id uint, audioHeader, coverHeader *multipart.FileHeader) (*domain.MusicResponse, error) {
+	music, err := s.repo.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	uploadDir := config.AppConfig.Server.UploadDir
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create upload directory: %w", err)
+	}
+
+	if audioHeader != nil {
+		ext := filepath.Ext(audioHeader.Filename)
+		filename := fmt.Sprintf("audio_%d_%d%s", id, time.Now().UnixMilli(), ext)
+		dest := filepath.Join(uploadDir, filename)
+
+		src, err := audioHeader.Open()
+		if err != nil {
+			return nil, fmt.Errorf("failed to open audio file: %w", err)
+		}
+		defer src.Close()
+
+		dst, err := os.Create(dest)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create audio file: %w", err)
+		}
+		defer dst.Close()
+
+		if _, err := io.Copy(dst, src); err != nil {
+			return nil, fmt.Errorf("failed to save audio file: %w", err)
+		}
+		music.Path = dest
+	}
+
+	if coverHeader != nil {
+		ext := filepath.Ext(coverHeader.Filename)
+		filename := fmt.Sprintf("cover_%d_%d%s", id, time.Now().UnixMilli(), ext)
+		dest := filepath.Join(uploadDir, filename)
+
+		src, err := coverHeader.Open()
+		if err != nil {
+			return nil, fmt.Errorf("failed to open cover file: %w", err)
+		}
+		defer src.Close()
+
+		dst, err := os.Create(dest)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create cover file: %w", err)
+		}
+		defer dst.Close()
+
+		if _, err := io.Copy(dst, src); err != nil {
+			return nil, fmt.Errorf("failed to save cover file: %w", err)
+		}
+		music.Img = dest
+	}
+
+	if err := s.repo.Update(music); err != nil {
+		return nil, err
+	}
+
+	return music.ToResponse(), nil
 }

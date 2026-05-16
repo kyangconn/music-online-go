@@ -18,15 +18,18 @@ type ServerConfig struct {
 	Mode         string
 	ReadTimeout  int
 	WriteTimeout int
+	UploadDir    string
 }
 
 type DatabaseConfig struct {
+	Type     string // postgres / sqlite
 	Host     string
 	Port     string
 	User     string
 	Password string
 	Name     string
 	SSLMode  string
+	Path     string // sqlite 文件路径
 }
 
 type JWTConfig struct {
@@ -53,6 +56,8 @@ func LoadConfig() error {
 	viper.SetDefault("server.mode", "debug")
 	viper.SetDefault("server.read_timeout", 30)
 	viper.SetDefault("server.write_timeout", 30)
+	viper.SetDefault("server.upload_dir", "uploads")
+	viper.SetDefault("database.type", "postgres")
 	viper.SetDefault("database.sslmode", "disable")
 	viper.SetDefault("jwt.expire_hour", 24)
 
@@ -73,14 +78,17 @@ func LoadConfig() error {
 			Mode:         viper.GetString("server.mode"),
 			ReadTimeout:  viper.GetInt("server.read_timeout"),
 			WriteTimeout: viper.GetInt("server.write_timeout"),
+			UploadDir:    viper.GetString("server.upload_dir"),
 		},
 		Database: DatabaseConfig{
+			Type:     viper.GetString("database.type"),
 			Host:     viper.GetString("database.host"),
 			Port:     viper.GetString("database.port"),
 			User:     viper.GetString("database.user"),
 			Password: viper.GetString("database.password"),
 			Name:     viper.GetString("database.name"),
 			SSLMode:  viper.GetString("database.sslmode"),
+			Path:     viper.GetString("database.path"),
 		},
 		JWT: JWTConfig{
 			Secret:     viper.GetString("jwt.secret"),

@@ -30,6 +30,10 @@ type User struct {
 
 	// 角色权限（简单实现，复杂场景可以用RBAC）
 	Role string `json:"role" gorm:"size:50;default:'user'"`
+
+	// TOTP 二次验证
+	TOTPSecret  string `json:"-" gorm:"size:100"`
+	TOTPEnabled bool   `json:"-" gorm:"default:false"`
 }
 
 // 注册请求DTO
@@ -58,19 +62,20 @@ type UpdateUserRequest struct {
 
 // 用户响应DTO（过滤敏感信息）
 type UserResponse struct {
-	ID         uint      `json:"id"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
-	Username   string    `json:"username"`
-	Email      string    `json:"email"`
-	FullName   string    `json:"full_name"`
-	Nickname   string    `json:"nickname"`
-	AvatarURL  string    `json:"avatar_url"`
-	Phone      string    `json:"phone"`
-	Bio        string    `json:"bio"`
-	IsActive   bool      `json:"is_active"`
-	IsVerified bool      `json:"is_verified"`
-	Role       string    `json:"role"`
+	ID          uint      `json:"id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Username    string    `json:"username"`
+	Email       string    `json:"email"`
+	FullName    string    `json:"full_name"`
+	Nickname    string    `json:"nickname"`
+	AvatarURL   string    `json:"avatar_url"`
+	Phone       string    `json:"phone"`
+	Bio         string    `json:"bio"`
+	IsActive    bool      `json:"is_active"`
+	IsVerified  bool      `json:"is_verified"`
+	Role        string    `json:"role"`
+	TOTPEnabled bool      `json:"totp_enabled"`
 }
 
 // 登录响应DTO
@@ -85,18 +90,32 @@ func (u *User) ToResponse() *UserResponse {
 		return nil
 	}
 	return &UserResponse{
-		ID:         u.ID,
-		CreatedAt:  u.CreatedAt,
-		UpdatedAt:  u.UpdatedAt,
-		Username:   u.Username,
-		Email:      u.Email,
-		FullName:   u.FullName,
-		Nickname:   u.Nickname,
-		AvatarURL:  u.AvatarURL,
-		Phone:      u.Phone,
-		Bio:        u.Bio,
-		IsActive:   u.IsActive,
-		IsVerified: u.IsVerified,
-		Role:       u.Role,
+		ID:          u.ID,
+		CreatedAt:   u.CreatedAt,
+		UpdatedAt:   u.UpdatedAt,
+		Username:    u.Username,
+		Email:       u.Email,
+		FullName:    u.FullName,
+		Nickname:    u.Nickname,
+		AvatarURL:   u.AvatarURL,
+		Phone:       u.Phone,
+		Bio:         u.Bio,
+		IsActive:    u.IsActive,
+		IsVerified:  u.IsVerified,
+		Role:        u.Role,
+		TOTPEnabled: u.TOTPEnabled,
 	}
+}
+
+type TOTPSetupResponse struct {
+	Secret    string `json:"secret"`
+	QRCodeURL string `json:"qr_code_url"`
+}
+
+type TOTPVerifyRequest struct {
+	Code string `json:"code" binding:"required,len=6"`
+}
+
+type TOTPDisableRequest struct {
+	Code string `json:"code" binding:"required,len=6"`
 }

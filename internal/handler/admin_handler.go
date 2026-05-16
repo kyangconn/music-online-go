@@ -17,6 +17,9 @@ import (
 // startTime 记录进程启动时间
 var startTime = time.Now()
 
+// AppVersion 应用版本号
+const AppVersion = "0.1.0"
+
 type AdminHandler struct {
 	userService     service.UserService
 	musicService    service.MusicService
@@ -35,6 +38,7 @@ type SystemInfoResponse struct {
 	Host       string `json:"host"`
 	ServerMode string `json:"server_mode"`
 	ServerPort string `json:"server_port"`
+	AppVersion string `json:"app_version"`
 	AppTime    string `json:"app_time"`
 	Uptime     string `json:"uptime"`
 
@@ -65,6 +69,8 @@ type SystemInfoResponse struct {
 	DBIdle         int    `json:"db_idle"`
 	DBWaitCount    int64  `json:"db_wait_count"`
 	DBWaitDuration string `json:"db_wait_duration"`
+	DBType         string `json:"db_type"`
+	DBName         string `json:"db_name"`
 
 	TotalUsers     int64 `json:"total_users"`
 	TotalMusic     int64 `json:"total_music"`
@@ -98,6 +104,7 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 		Host:       host,
 		ServerMode: config.AppConfig.Server.Mode,
 		ServerPort: config.AppConfig.Server.Port,
+		AppVersion: AppVersion,
 		AppTime:    time.Now().Format(time.RFC3339),
 		Uptime:     uptime,
 
@@ -128,6 +135,8 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 		DBIdle:         dbStats.Idle,
 		DBWaitCount:    dbStats.WaitCount,
 		DBWaitDuration: fmtDuration(dbStats.WaitDuration),
+		DBType:         config.AppConfig.Database.Type,
+		DBName:         config.AppConfig.Database.Name,
 	}
 
 	if total, err := h.userService.CountAll(); err == nil {

@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -18,14 +19,14 @@ var DB *gorm.DB
 func Connect() error {
 	cfg := config.AppConfig.Database
 
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
-		cfg.Host, cfg.User, cfg.Password, cfg.Name, cfg.Port, cfg.SSLMode)
+	dialector, err := getDialector(cfg)
+	if err != nil {
+		return err
+	}
 
-	var err error
-	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+	DB, err = gorm.Open(dialector, &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})
-
 	if err != nil {
 		return fmt.Errorf("failed to connect database: %w", err)
 	}
@@ -35,13 +36,29 @@ func Connect() error {
 		return err
 	}
 
-	// 设置连接池
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	log.Println("Database connected successfully")
 	return nil
+}
+
+func getDialector(cfg config.DatabaseConfig) (gorm.Dialector, error) {
+	switch cfg.Type {
+	case "sqlite":
+		path := cfg.Path
+		if path == "" {
+			path = "music.db"
+		}
+		return sqlite.Open(path), nil
+	case "postgres", "":
+		dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
+			cfg.Host, cfg.User, cfg.Password, cfg.Name, cfg.Port, cfg.SSLMode)
+		return postgres.Open(dsn), nil
+	default:
+		return nil, fmt.Errorf("unsupported database type: %s", cfg.Type)
+	}
 }
 
 func AutoMigrate() error {

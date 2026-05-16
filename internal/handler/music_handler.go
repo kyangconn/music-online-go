@@ -46,6 +46,41 @@ func (h *MusicHandler) Create(c *gin.Context) {
 	Created(c, music)
 }
 
+// UploadFile godoc
+// @Summary 上传音频/封面文件
+// @Tags musics
+// @Accept multipart/form-data
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "音乐ID"
+// @Param file formData file false "音频文件"
+// @Param cover formData file false "封面图片"
+// @Success 200 {object} Response "上传成功"
+// @Router /api/v1/musics/{id}/upload [post]
+func (h *MusicHandler) UploadFile(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		BadRequest(c, "Invalid music ID")
+		return
+	}
+
+	audioFile, _ := c.FormFile("file")
+	coverFile, _ := c.FormFile("cover")
+
+	if audioFile == nil && coverFile == nil {
+		BadRequest(c, "At least one of 'file' or 'cover' is required")
+		return
+	}
+
+	music, err := h.musicService.UploadFiles(uint(id), audioFile, coverFile)
+	if err != nil {
+		InternalServerError(c, "Failed to upload files")
+		return
+	}
+
+	Success(c, music)
+}
+
 // GetByID godoc
 // @Summary 获取音乐详情
 // @Tags musics

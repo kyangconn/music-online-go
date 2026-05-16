@@ -25,6 +25,10 @@ type UserService interface {
 	UpdateUserRole(id uint, role string) error
 	SearchUsers(query string, page, pageSize int) ([]*domain.UserResponse, int64, error)
 	CountAll() (int64, error)
+	// TOTP
+	SetupTOTP(userID uint) (*domain.TOTPSetupResponse, error)
+	EnableTOTP(userID uint, code string) error
+	DisableTOTP(userID uint, code string) error
 }
 
 type userService struct {
