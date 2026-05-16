@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    env:
+      GO_VERSION: "1.26"
+      NODE_VERSION: "24"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install & Build Frontend
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Go Mod Download
+        run: go mod download
+
+      - name: Go Test
+        env:
+          DATABASE_TYPE: sqlite
+          DATABASE_PATH: ":memory:"
+        run: go test ./...
+
+      - name: Cross-Platform Build
+        run: |
+          export CGO_ENABLED=0
+          GOOS=linux GOARCH=amd64 go build -v -o music-server-linux-amd64 ./cmd/server
+          GOOS=linux GOARCH=arm64 go build -v -o music-server-linux-arm64 ./cmd/server
+          GOOS=windows GOARCH=amd64 go build -v -o music-server-windows-amd64.exe ./cmd/server
+          GOOS=windows GOARCH=arm64 go build -v -o music-server-windows-arm64.exe ./cmd/server
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            music-server-linux-amd64
+            music-server-linux-arm64
+            music-server-windows-amd64.exe
+            music-server-windows-arm64.exe
+          generate_release_notes: true
+          draft: false
+          prerelease: false
