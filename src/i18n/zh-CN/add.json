@@ -1,0 +1,21 @@
+{
+  "title": "添加音乐",
+  "single_import": "单文件导入",
+  "batch_import": "批量导入",
+  "batch_import_desc": "选择包含音乐文件的文件夹",
+  "cover": "封面图片",
+  "import_cover": "导入封面图片",
+  "audio": "音频文件",
+  "import": "导入",
+  "music_title": "音乐标题",
+  "music_artist": "音乐作者",
+  "music_album": "音乐专辑",
+  "music_track": "音乐曲目",
+  "music_track_help": "音乐在专辑中的位置",
+  "music_genre": "音乐流派",
+  "music_year": "音乐年份",
+  "music_duration": "音乐时长",
+  "music_description": "音乐描述",
+  "file_name": "文件名",
+  "size": "文件大小"
+}

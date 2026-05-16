@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
+import { ArrowLeft } from '@element-plus/icons-vue'
 
 export interface TabItem {
   id: string
@@ -68,7 +69,7 @@ watch(() => props.tabs, (newTabs) => {
         <div class="header-left">
           <slot name="header-left">
             <button v-if="showBackButton" class="back-btn" @click="emit('back')">
-              <span class="back-icon">←</span>
+              <el-icon class="back-icon"><ArrowLeft /></el-icon>
               <span class="back-text">{{ $t('common.back') }}</span>
             </button>
             <h1>{{ title }}</h1>

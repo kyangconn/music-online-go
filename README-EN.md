@@ -38,8 +38,8 @@ Frontend SPA for the Music Online project, built with Vue 3, TypeScript and Elem
 ## Development
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 The app runs at `http://localhost:5173`.
@@ -47,7 +47,7 @@ The app runs at `http://localhost:5173`.
 ## Build
 
 ```bash
-npm run build
+pnpm build
 ```
 
 The production bundle is emitted to `../cmd/server/dist` and served by the Go backend binary.

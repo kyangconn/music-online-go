@@ -119,3 +119,11 @@
   margin: 0 auto;
   border-radius: 12px;
 }
+
+/* ---- 统一内容卡片（Add / Detail / Profile 等页面） ---- */
+.content-card {
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  background: var(--bg-white);
+}

@@ -74,6 +74,23 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  async function setupTOTP() {
+    const res: any = await request.post('/users/totp/setup')
+    return res.data as { secret: string; qr_code_url: string }
+  }
+
+  async function enableTOTP(code: string) {
+    await request.post('/users/totp/enable', { code })
+    if (user.value) user.value.totp_enabled = true
+    setUser(user.value)
+  }
+
+  async function disableTOTP(code: string) {
+    await request.post('/users/totp/disable', { code })
+    if (user.value) user.value.totp_enabled = false
+    setUser(user.value)
+  }
+
   /**
    * 用户登出
    * 清除用户认证状态和本地存储的用户信息
@@ -90,5 +107,5 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  return { token, user, isLoggedIn, isAdmin, setToken, setUser, updateUser, changePassword, logout }
+  return { token, user, isLoggedIn, isAdmin, setToken, setUser, updateUser, changePassword, setupTOTP, enableTOTP, disableTOTP, logout }
 })

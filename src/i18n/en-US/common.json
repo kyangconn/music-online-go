@@ -1,0 +1,17 @@
+{
+  "title": "Music Online",
+  "search": "Search music...",
+  "login": "Login",
+  "register": "Register",
+  "logout": "Logout",
+  "profile": "Profile",
+  "settings": "Settings",
+  "admin": "Admin",
+  "upload": "Upload Music",
+  "home": "Home",
+  "back": "Back",
+  "save": "Save",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "edit": "Edit"
+}

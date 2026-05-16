@@ -118,5 +118,5 @@ export const useThemeStore = defineStore('theme', () => {
     console.error('监听系统主题变化失败:', error)
   }
 
-  return { isDark, autoSync, setAutoSync, toggleDarkMode }
+  return { isDark, autoSync, setAutoSync, setDarkMode, toggleDarkMode, applySystemTheme }
 })

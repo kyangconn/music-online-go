@@ -33,7 +33,7 @@ onMounted(fetchUserMusics)
 
 <template>
   <div class="page-section profile-container">
-    <el-card class="profile-card" shadow="never">
+    <el-card class="content-card" shadow="never">
       <div class="user-header">
         <div class="user-info">
           <h2 class="username">{{ userStore.user?.username }}</h2>
@@ -75,9 +75,6 @@ onMounted(fetchUserMusics)
 </template>
 
 <style scoped>
-.profile-card {
-  background: var(--bg-white);
-}
 .user-header {
   display: flex;
   align-items: center;

@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { useThemeStore } from '@/store/theme'
-import { Search, Moon, Sunny } from '@element-plus/icons-vue'
+import { Search, Moon, Sunny, Headset } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -20,7 +20,7 @@ const hideSearch = computed(() => route.name === 'Login' || route.name === 'Regi
 
 const handleLogout = () => {
   userStore.logout()
-  router.push('/login')
+  router.push('/')
 }
 </script>
 
@@ -29,7 +29,8 @@ const handleLogout = () => {
     <el-header>
       <div class="header-content container">
         <div class="logo" @click="router.push('/')">
-          🎵 Music Online
+          <el-icon :size="22"><Headset /></el-icon>
+          Music Online
         </div>
         
         <div class="search-bar" v-if="!hideSearch">

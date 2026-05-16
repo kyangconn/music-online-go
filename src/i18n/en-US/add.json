@@ -1,0 +1,21 @@
+{
+  "title": "Add Music",
+  "single_import": "Single File Import",
+  "batch_import": "Batch Import",
+  "batch_import_desc": "Select a folder containing music files",
+  "cover": "Cover Image",
+  "import_cover": "Import Cover Image",
+  "audio": "Audio File",
+  "import": "Import",
+  "music_title": "Music Title",
+  "music_artist": "Music Artist",
+  "music_album": "Music Album",
+  "music_track": "Music Track",
+  "music_track_help": "Position in Album",
+  "music_genre": "Music Genre",
+  "music_year": "Music Year",
+  "music_duration": "Music Duration",
+  "music_description": "Music Description",
+  "file_name": "File Name",
+  "size": "File Size"
+}

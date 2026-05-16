@@ -131,7 +131,7 @@ onMounted(fetchDetail)
 
 <template>
   <div class="page-section detail-container">
-    <el-card class="detail-card" shadow="never">
+    <el-card class="content-card" shadow="never">
       <div v-if="loading" class="loading">
         <el-skeleton :rows="6" animated />
       </div>
@@ -211,10 +211,6 @@ onMounted(fetchDetail)
 </template>
 
 <style scoped>
-.detail-card {
-  background: var(--bg-white);
-}
-
 .loading {
   padding: 20px 0;
 }
