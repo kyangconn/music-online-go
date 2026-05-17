@@ -9,6 +9,8 @@
   "total_users": "总用户数",
   "total_tags": "总标签数",
   "app_version": "应用版本",
+  "app_commit": "构建提交",
+  "app_built": "构建时间",
   "host": "主机名",
   "port": "端口",
   "mode": "运行模式",

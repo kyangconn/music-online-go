@@ -104,6 +104,8 @@ onMounted(fetchInfo)
           <div class="kv-row"><span class="kv-label">App Time</span><span>{{ info.app_time }}</span></div>
           <div class="kv-row"><span class="kv-label">{{ $t('admin.uptime') }}</span><span>{{ info.uptime }}</span></div>
           <div class="kv-row"><span class="kv-label">{{ $t('admin.app_version') }}</span><span>{{ info.app_version }}</span></div>
+          <div class="kv-row"><span class="kv-label">{{ $t('admin.app_commit') }}</span><span>{{ info.app_commit }}</span></div>
+          <div class="kv-row"><span class="kv-label">{{ $t('admin.app_built') }}</span><span>{{ info.app_built }}</span></div>
         </div>
       </div>
     </template>

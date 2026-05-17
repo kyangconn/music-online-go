@@ -12,13 +12,11 @@ import (
 	"github.com/kyangconn/music-online-go/internal/config"
 	"github.com/kyangconn/music-online-go/internal/pkg/database"
 	"github.com/kyangconn/music-online-go/internal/service"
+	"github.com/kyangconn/music-online-go/internal/version"
 )
 
 // startTime 记录进程启动时间
 var startTime = time.Now()
-
-// AppVersion 应用版本号
-const AppVersion = "0.1.0"
 
 type AdminHandler struct {
 	userService     service.UserService
@@ -39,6 +37,8 @@ type SystemInfoResponse struct {
 	ServerMode string `json:"server_mode"`
 	ServerPort string `json:"server_port"`
 	AppVersion string `json:"app_version"`
+	AppCommit  string `json:"app_commit"`
+	AppBuilt   string `json:"app_built"`
 	AppTime    string `json:"app_time"`
 	Uptime     string `json:"uptime"`
 
@@ -104,7 +104,9 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 		Host:       host,
 		ServerMode: config.AppConfig.Server.Mode,
 		ServerPort: config.AppConfig.Server.Port,
-		AppVersion: AppVersion,
+		AppVersion: version.Version,
+		AppCommit:  version.Commit,
+		AppBuilt:   version.BuildTime,
 		AppTime:    time.Now().Format(time.RFC3339),
 		Uptime:     uptime,
 

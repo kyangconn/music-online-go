@@ -9,6 +9,8 @@
   "total_users": "Total Users",
   "total_tags": "Total Tags",
   "app_version": "App Version",
+  "app_commit": "Commit",
+  "app_built": "Built",
   "host": "Host",
   "port": "Port",
   "mode": "Mode",

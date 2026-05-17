@@ -1,6 +1,6 @@
 server:
   port: "3060"
-  mode: "debug"
+  mode: "release"
   read_timeout: 30
   write_timeout: 30
 

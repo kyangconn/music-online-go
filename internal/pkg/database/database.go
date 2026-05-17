@@ -2,7 +2,6 @@ package database
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/kyangconn/music-online-go/internal/config"
 	"github.com/kyangconn/music-online-go/internal/domain"
+	pklog "github.com/kyangconn/music-online-go/internal/pkg/log"
 )
 
 var DB *gorm.DB
@@ -24,8 +24,13 @@ func Connect() error {
 		return err
 	}
 
+	logLevel := logger.Info
+	if config.AppConfig.Server.Mode == "release" {
+		logLevel = logger.Warn
+	}
+
 	DB, err = gorm.Open(dialector, &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logger.Default.LogMode(logLevel),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to connect database: %w", err)
@@ -40,7 +45,7 @@ func Connect() error {
 	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
-	log.Println("Database connected successfully")
+	pklog.Infof("Database connected successfully")
 	return nil
 }
 

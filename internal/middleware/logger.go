@@ -4,35 +4,27 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/rs/zerolog/log"
+	"github.com/kyangconn/music-online-go/internal/pkg/log"
 )
 
 func LoggerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
-
-		// 处理请求
 		c.Next()
 
-		// 记录日志
 		duration := time.Since(start)
+		status := c.Writer.Status()
 
-		logger := log.Info()
-		if c.Writer.Status() >= 400 {
-			logger = log.Error()
+		if status >= 500 {
+			log.Errorf("%s %s %d %s %v", c.Request.Method, c.Request.URL.Path, status, c.ClientIP(), duration)
+		} else if status >= 400 {
+			log.Warnf("%s %s %d %s %v", c.Request.Method, c.Request.URL.Path, status, c.ClientIP(), duration)
+		} else {
+			log.Infof("%s %s %d %s %v", c.Request.Method, c.Request.URL.Path, status, c.ClientIP(), duration)
 		}
-
-		logger.
-			Str("method", c.Request.Method).
-			Str("path", c.Request.URL.Path).
-			Int("status", c.Writer.Status()).
-			Str("ip", c.ClientIP()).
-			Dur("duration", duration).
-			Msg("HTTP request")
 	}
 }
 
-// CORSMiddleware 跨域中间件
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
