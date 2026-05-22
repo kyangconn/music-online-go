@@ -5,6 +5,9 @@ import (
 	"io"
 	golog "log"
 	"os"
+	"strconv"
+
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var (
@@ -13,16 +16,36 @@ var (
 )
 
 // Init 初始化日志输出。logFile 为空时仅输出到 stdout。
+// 日志文件自动轮转：默认单文件 50MB，保留 3 个备份，保留 28 天。
+// 可通过环境变量覆盖：
+//
+//	MO_LOG_MAX_SIZE=100    单文件最大 MB
+//	MO_LOG_MAX_BACKUPS=5   备份数量
+//	MO_LOG_MAX_AGE=14      保留天数
 func Init(logFile string) {
 	if logFile == "" {
 		return
 	}
-	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[WARN] cannot open log file %s: %v\n", logFile, err)
-		return
+
+	lj := &lumberjack.Logger{
+		Filename:   logFile,
+		MaxSize:    envInt("MO_LOG_MAX_SIZE", 50),
+		MaxBackups: envInt("MO_LOG_MAX_BACKUPS", 3),
+		MaxAge:     envInt("MO_LOG_MAX_AGE", 28),
+		Compress:   true,
+		LocalTime:  true,
 	}
-	logger = golog.New(io.MultiWriter(os.Stdout, f), "", golog.LstdFlags)
+
+	logger = golog.New(io.MultiWriter(os.Stdout, lj), "", golog.LstdFlags)
+}
+
+func envInt(key string, fallback int) int {
+	if s := os.Getenv(key); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			return n
+		}
+	}
+	return fallback
 }
 
 // Disable 关闭所有日志输出（静默模式）。
