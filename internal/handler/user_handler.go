@@ -1,3 +1,5 @@
+// Package handler user_handler.go - 用户处理器
+// 处理用户相关的 HTTP 请求：注册、登录、资料管理、TOTP 设置
 package handler
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/kyangconn/music-online-go/internal/service"
 )
 
+// UserHandler handles HTTP requests related to user operations.
 type UserHandler struct {
 	userService service.UserService
 }
@@ -354,7 +357,6 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 	})
 }
 
-// DTOs
 type ChangePasswordRequest struct {
 	OldPassword string `json:"old_password" binding:"required,min=6"`
 	NewPassword string `json:"new_password" binding:"required,min=6"`

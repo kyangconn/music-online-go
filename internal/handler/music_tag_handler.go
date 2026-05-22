@@ -1,4 +1,4 @@
-// music_tag_handler.go - 音乐标签处理器
+// Package handler music_tag_handler.go - 音乐标签处理器
 // 该文件包含音乐标签相关的HTTP处理器，提供RESTful API接口
 package handler
 

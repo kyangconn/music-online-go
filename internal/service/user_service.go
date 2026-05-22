@@ -1,3 +1,5 @@
+// Package service user_service.go - 用户服务层
+// 包含用户注册、登录、信息更新、密码修改及 TOTP 等业务逻辑
 package service
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/kyangconn/music-online-go/internal/repository"
 )
 
+// UserService defines user business logic operations.
 type UserService interface {
 	Register(req *domain.RegisterRequest) (*domain.UserResponse, error)
 	Login(req *domain.LoginRequest) (*domain.LoginResponse, error)

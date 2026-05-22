@@ -1,3 +1,5 @@
+// Package jwt jwt.go - JWT 令牌管理
+// 提供 JWT 令牌的生成和解析功能
 package jwt
 
 import (
@@ -46,8 +48,7 @@ func ParseToken(tokenString string) (*Claims, error) {
 	})
 
 	if err != nil {
-		var ve *jwt.ValidationError
-		if errors.As(err, &ve) {
+		if ve, ok := errors.AsType[*jwt.ValidationError](err); ok {
 			if ve.Errors&jwt.ValidationErrorExpired != 0 {
 				return nil, ErrExpiredToken
 			}
@@ -60,19 +61,4 @@ func ParseToken(tokenString string) (*Claims, error) {
 	}
 
 	return nil, ErrInvalidToken
-}
-
-// RefreshToken 刷新令牌（可选功能）
-func RefreshToken(tokenString string) (string, error) {
-	claims, err := ParseToken(tokenString)
-	if err != nil {
-		return "", err
-	}
-
-	// 如果令牌即将过期（剩余时间小于一半），则刷新
-	if time.Until(claims.ExpiresAt.Time) < time.Duration(config.AppConfig.JWT.ExpireHour/2)*time.Hour {
-		return GenerateToken(claims.UserID, claims.Username, claims.Role)
-	}
-
-	return tokenString, nil
 }

@@ -1,6 +1,9 @@
+// Package config config.go - 配置管理
+// 加载 YAML 配置文件，支持环境变量和命令行参数覆盖
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,7 +76,7 @@ func LoadConfig() error {
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); !ok {
 			pklog.Fatalf("Error reading config file: %v", err)
 			return err
 		}

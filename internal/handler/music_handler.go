@@ -1,3 +1,5 @@
+// Package handler music_handler.go - 音乐处理器
+// 处理音乐相关的 HTTP 请求：创建、查询、更新、删除、流式播放、上传文件
 package handler
 
 import (
@@ -9,9 +11,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/kyangconn/music-online-go/internal/domain"
+	pklog "github.com/kyangconn/music-online-go/internal/pkg/log"
 	"github.com/kyangconn/music-online-go/internal/service"
 )
 
+// MusicHandler handles HTTP requests related to music operations.
 type MusicHandler struct {
 	musicService service.MusicService
 }
@@ -350,7 +354,12 @@ func (h *MusicHandler) Stream(c *gin.Context) {
 		NotFound(c, "Audio file not found on disk")
 		return
 	}
-	defer file.Close()
+	defer func() {
+		fileErr := file.Close()
+		if fileErr != nil {
+			pklog.Errorf("Failed to close stream file %s: %v", music.Path, fileErr)
+		}
+	}()
 
 	stat, err := file.Stat()
 	if err != nil {

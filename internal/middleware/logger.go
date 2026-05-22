@@ -1,3 +1,5 @@
+// Package middleware logger.go - 日志中间件
+// 记录每个 HTTP 请求的方法、路径、状态码、IP 和耗时
 package middleware
 
 import (

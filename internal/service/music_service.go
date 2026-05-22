@@ -1,3 +1,5 @@
+// Package service music_service.go - 音乐服务层
+// 包含音乐的创建、查询、更新、删除、收藏及文件上传等业务逻辑
 package service
 
 import (
@@ -10,9 +12,11 @@ import (
 
 	"github.com/kyangconn/music-online-go/internal/config"
 	"github.com/kyangconn/music-online-go/internal/domain"
+	pklog "github.com/kyangconn/music-online-go/internal/pkg/log"
 	"github.com/kyangconn/music-online-go/internal/repository"
 )
 
+// MusicService defines music business logic operations.
 type MusicService interface {
 	Create(userID uint, req *domain.CreateMusicRequest) (*domain.MusicResponse, error)
 	GetByID(id uint, currentUserID *uint) (*domain.MusicResponse, error)
@@ -215,13 +219,23 @@ func (s *musicService) UploadFiles(id uint, audioHeader, coverHeader *multipart.
 		if err != nil {
 			return nil, fmt.Errorf("failed to open audio file: %w", err)
 		}
-		defer src.Close()
+		defer func() {
+			err := src.Close()
+			if err != nil {
+				pklog.Errorf("Failed to close audio source: %v", err)
+			}
+		}()
 
 		dst, err := os.Create(dest)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create audio file: %w", err)
 		}
-		defer dst.Close()
+		defer func() {
+			err := dst.Close()
+			if err != nil {
+				pklog.Errorf("Failed to close audio destination: %v", err)
+			}
+		}()
 
 		if _, err := io.Copy(dst, src); err != nil {
 			return nil, fmt.Errorf("failed to save audio file: %w", err)
@@ -238,13 +252,21 @@ func (s *musicService) UploadFiles(id uint, audioHeader, coverHeader *multipart.
 		if err != nil {
 			return nil, fmt.Errorf("failed to open cover file: %w", err)
 		}
-		defer src.Close()
+		defer func(src multipart.File) {
+			err := src.Close()
+			if err != nil {
+			}
+		}(src)
 
 		dst, err := os.Create(dest)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create cover file: %w", err)
 		}
-		defer dst.Close()
+		defer func(dst *os.File) {
+			err := dst.Close()
+			if err != nil {
+			}
+		}(dst)
 
 		if _, err := io.Copy(dst, src); err != nil {
 			return nil, fmt.Errorf("failed to save cover file: %w", err)

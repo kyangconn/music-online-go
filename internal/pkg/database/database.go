@@ -1,3 +1,5 @@
+// Package database database.go - 数据库连接
+// 提供数据库连接、自动迁移、关闭等基础操作，支持 PostgreSQL 和 SQLite
 package database
 
 import (

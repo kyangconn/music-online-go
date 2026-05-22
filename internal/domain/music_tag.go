@@ -1,3 +1,5 @@
+// Package domain music_tag.go - 音乐标签领域模型
+// 定义 MusicTag 实体、搜索参数及相关请求/响应 DTO
 package domain
 
 import (
@@ -37,7 +39,7 @@ type MusicTag struct {
 	SearchVector string `json:"search_vector" gorm:"type:text"`
 }
 
-func (MusicTag) TableName() string {
+func (*MusicTag) TableName() string {
 	return "music_tags"
 }
 
@@ -116,7 +118,7 @@ func (mt *MusicTag) ToResponse() *MusicTagResponse {
 	}
 }
 
-// SearchParams for tag search
+// TagSearchParams SearchParams for tag search
 type TagSearchParams struct {
 	Artist        string `form:"artist" json:"artist"`
 	Title         string `form:"title" json:"title"`

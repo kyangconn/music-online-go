@@ -1,4 +1,4 @@
-// user_repository_admin.go
+// Package repository user_repository_admin.go
 // 该文件包含用户管理相关的数据库操作，包括用户状态更新、角色更新和搜索功能
 package repository
 

@@ -1,3 +1,5 @@
+// Package middleware auth.go - 认证中间件
+// JWT 令牌验证，将用户信息注入请求上下文
 package middleware
 
 import (

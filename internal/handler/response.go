@@ -1,3 +1,5 @@
+// Package handler response.go - 统一响应格式
+// 提供 Success、Created、BadRequest 等标准 HTTP 响应函数
 package handler
 
 import (

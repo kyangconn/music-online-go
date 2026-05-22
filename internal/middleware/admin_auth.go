@@ -1,3 +1,5 @@
+// Package middleware admin_auth.go - 管理员权限中间件
+// 验证当前用户是否为管理员，从数据库实时检查角色状态
 package middleware
 
 import (

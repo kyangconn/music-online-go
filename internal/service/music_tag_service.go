@@ -1,4 +1,4 @@
-// music_tag_service.go - 音乐标签服务层
+// Package service music_tag_service.go - 音乐标签服务层
 // 该文件包含音乐标签的业务逻辑，负责处理标签的创建、更新、搜索和匹配等操作
 package service
 
@@ -296,13 +296,4 @@ func normalizeString(s string) string {
 	s = strings.ReplaceAll(s, "*", "")
 	s = strings.ReplaceAll(s, "#", "")
 	return s
-}
-
-// getOrNil 安全地获取指针值，如果指针为nil则返回零值
-func getOrNil[T comparable](v *T) T {
-	var zero T
-	if v == nil {
-		return zero
-	}
-	return *v
 }

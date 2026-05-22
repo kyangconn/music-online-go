@@ -1,6 +1,9 @@
+// Package handler_test testutil_test.go - 测试工具
+// 负责初始化测试环境（数据库、路由、处理器），供集成测试使用
 package handler_test
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -121,6 +124,9 @@ func TestMain(m *testing.M) {
 	}
 
 	code := m.Run()
-	database.Close()
+	if err := database.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to close test database: %v\n", err)
+		os.Exit(1)
+	}
 	os.Exit(code)
 }

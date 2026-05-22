@@ -1,3 +1,5 @@
+// Package handler admin_handler.go - 管理后台处理器
+// 提供系统信息、用户管理、音乐管理等管理员接口
 package handler
 
 import (
@@ -18,6 +20,7 @@ import (
 // startTime 记录进程启动时间
 var startTime = time.Now()
 
+// AdminHandler handles admin-related HTTP requests.
 type AdminHandler struct {
 	userService     service.UserService
 	musicService    service.MusicService

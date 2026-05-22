@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"embed"
+	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -44,7 +45,11 @@ func main() {
 	if err := database.AutoMigrate(); err != nil {
 		pklog.Fatalf("Failed to migrate database: %v", err)
 	}
-	defer database.Close()
+	defer func() {
+		if err := database.Close(); err != nil {
+			pklog.Errorf("Failed to close database: %v", err)
+		}
+	}()
 
 	handlers := initDependencies()
 	r := router.New(handlers, database.DB)
@@ -57,11 +62,16 @@ func parseFlags() {
 	logFile := flag.String("log-file", "", "Path to log file (overrides config/env)")
 	flag.Parse()
 
-	if *configFile != "" {
-		os.Setenv("MO_CONFIG_FILE", *configFile)
+	setEnvIfNotEmpty("MO_CONFIG_FILE", *configFile)
+	setEnvIfNotEmpty("MO_LOG_FILE", *logFile)
+}
+
+func setEnvIfNotEmpty(key, val string) {
+	if val == "" {
+		return
 	}
-	if *logFile != "" {
-		os.Setenv("MO_LOG_FILE", *logFile)
+	if err := os.Setenv(key, val); err != nil {
+		pklog.Fatalf("Failed to set %s: %v", key, err)
 	}
 }
 
@@ -121,7 +131,12 @@ func readEmbedFile(fsys fs.FS, name string) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	defer f.Close()
+	defer func() {
+		err := f.Close()
+		if err != nil {
+			pklog.Errorf("Failed to close embedded file %s: %v", name, err)
+		}
+	}()
 
 	stat, err := f.Stat()
 	if err != nil {
@@ -183,7 +198,7 @@ func startServer(r *gin.Engine) {
 
 	go func() {
 		pklog.Infof("Server starting on http://localhost:%s", port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			if strings.Contains(err.Error(), "address already in use") {
 				pklog.Fatalf("Port %s is already in use. Close the other program or use a different port.", port)
 			}

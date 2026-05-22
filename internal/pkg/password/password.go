@@ -1,3 +1,5 @@
+// Package password password.go - 密码管理
+// 提供 bcrypt 密码哈希和验证功能
 package password
 
 import (

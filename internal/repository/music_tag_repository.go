@@ -1,3 +1,5 @@
+// Package repository music_tag_repository.go - 音乐标签仓库层
+// 音乐标签的增删改查、模糊匹配、相似度计算
 package repository
 
 import (
@@ -40,7 +42,7 @@ type MusicTagRepository interface {
 }
 
 // NewMusicTagRepository 创建音乐标签仓库实例
-func NewMusicTagRepository(db *gorm.DB) *musicTagRepository {
+func NewMusicTagRepository(db *gorm.DB) MusicTagRepository {
 	return &musicTagRepository{db: db}
 }
 
@@ -101,7 +103,7 @@ func (r *musicTagRepository) getMultipleTags(condition string, args ...interface
 }
 
 // Update 更新音乐标签
-func (r *musicTagRepository) Update(id uint, tag *domain.MusicTag) error {
+func (r *musicTagRepository) Update(_ uint, tag *domain.MusicTag) error {
 	return r.db.Save(tag).Error
 }
 
@@ -248,8 +250,8 @@ func (r *musicTagRepository) FuzzySearch(tag *domain.MusicTag) (*domain.MusicTag
 
 // buildFuzzySearchConditions 构建模糊搜索条件
 func (r *musicTagRepository) buildFuzzySearchConditions(tag *domain.MusicTag) ([]string, []interface{}) {
-	conditions := []string{}
-	params := []interface{}{}
+	var conditions []string
+	var params []interface{}
 
 	if tag.Artist != "" {
 		conditions = append(conditions, "LOWER(artist) LIKE ?")

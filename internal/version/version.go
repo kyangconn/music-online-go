@@ -1,3 +1,5 @@
+// Package version version.go - 版本信息
+// 注入编译时的版本号、Commit 和构建时间，提供 Get() / String() 方法
 package version
 
 import (

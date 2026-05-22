@@ -1,3 +1,5 @@
+// Package middleware ratelimit.go - 频率限制中间件
+// 基于 IP 的请求频率控制，防滥用
 package middleware
 
 import (

@@ -1,3 +1,5 @@
+// Package repository music_repository.go - 音乐仓库层
+// 音乐实体的增删改查，支持分页、搜索、权限过滤
 package repository
 
 import (

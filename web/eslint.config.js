@@ -60,7 +60,7 @@ const vue = {
 export default defineConfigWithVueTs(
   // ignore first
   ignores,
-  // use recommanded configs
+  // use recommended configs
   pluginVue.configs["flat/essential"],
   vueTsConfigs.recommended,
   // custom configs

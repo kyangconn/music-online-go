@@ -1,3 +1,5 @@
+// Package service user_service_admin.go - 用户管理服务
+// 包含管理员操作：用户状态更新、角色更新、TOTP 管理等
 package service
 
 import (

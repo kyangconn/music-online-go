@@ -1,3 +1,5 @@
+// Package repository user_repository.go - 用户仓库层
+// 用户实体的增删改查、存在性检查
 package repository
 
 import (
@@ -9,12 +11,12 @@ import (
 )
 
 var (
-	ErrUserNotFound      = errors.New("user not found")
-	ErrUsernameExists    = errors.New("username already exists")
-	ErrEmailExists       = errors.New("email already exists")
-	ErrInvalidUserStatus = errors.New("invalid user status")
+	ErrUserNotFound   = errors.New("user not found")
+	ErrUsernameExists = errors.New("username already exists")
+	ErrEmailExists    = errors.New("email already exists")
 )
 
+// UserRepository defines user data access operations.
 type UserRepository interface {
 	Create(user *domain.User) error
 	FindByID(id uint) (*domain.User, error)

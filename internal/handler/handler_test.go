@@ -1,3 +1,5 @@
+// Package handler_test handler_test.go - 处理器集成测试
+// 包含注册、登录、获取用户资料等端到端测试用例
 package handler_test
 
 import (

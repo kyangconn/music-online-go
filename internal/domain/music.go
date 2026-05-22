@@ -1,3 +1,5 @@
+// Package domain music.go - 音乐领域模型
+// 定义 Music、UserMusicLike 实体及相关请求/响应 DTO
 package domain
 
 import (
@@ -10,7 +12,6 @@ type MusicType string
 
 const (
 	MusicTypeSingle MusicType = "single"
-	MusicTypeAlbum  MusicType = "album"
 )
 
 type Music struct {
@@ -39,7 +40,7 @@ type Music struct {
 }
 
 // TableName overrides the table name used by User to `vinyl`
-func (Music) TableName() string {
+func (*Music) TableName() string {
 	return "vinyl"
 }
 
@@ -50,7 +51,7 @@ type UserMusicLike struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-func (UserMusicLike) TableName() string {
+func (*UserMusicLike) TableName() string {
 	return "user_music_likes"
 }
 

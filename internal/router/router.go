@@ -1,4 +1,4 @@
-// router.go - 路由配置
+// Package router router.go - 路由配置
 // 包含中间件注册、健康检查、Prometheus指标端点及所有API路由注册
 package router
 

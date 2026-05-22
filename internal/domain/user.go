@@ -1,3 +1,5 @@
+// Package domain user.go - 用户领域模型
+// 定义 User 实体及相关请求/响应 DTO，包含 TOTP 字段
 package domain
 
 import (
@@ -36,7 +38,7 @@ type User struct {
 	TOTPEnabled bool   `json:"-" gorm:"default:false"`
 }
 
-// 注册请求DTO
+// RegisterRequest 注册请求DTO
 type RegisterRequest struct {
 	Username string `json:"username" binding:"required,min=3,max=50"`
 	Email    string `json:"email" binding:"required,email"`
@@ -44,13 +46,13 @@ type RegisterRequest struct {
 	FullName string `json:"full_name" binding:"max=255"`
 }
 
-// 登录请求DTO
+// LoginRequest 登录请求DTO
 type LoginRequest struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
 }
 
-// 更新用户请求DTO
+// UpdateUserRequest 更新用户请求DTO
 type UpdateUserRequest struct {
 	FullName  *string `json:"full_name"`
 	Nickname  *string `json:"nickname"`
@@ -60,7 +62,7 @@ type UpdateUserRequest struct {
 	Email     *string `json:"email" binding:"omitempty,email"`
 }
 
-// 用户响应DTO（过滤敏感信息）
+// UserResponse 用户响应DTO（过滤敏感信息）
 type UserResponse struct {
 	ID          uint      `json:"id"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -78,13 +80,13 @@ type UserResponse struct {
 	TOTPEnabled bool      `json:"totp_enabled"`
 }
 
-// 登录响应DTO
+// LoginResponse 登录响应DTO
 type LoginResponse struct {
 	User  *UserResponse `json:"user"`
 	Token string        `json:"token"`
 }
 
-// 转换为响应DTO
+// ToResponse 转换为响应DTO
 func (u *User) ToResponse() *UserResponse {
 	if u == nil {
 		return nil

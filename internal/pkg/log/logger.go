@@ -1,3 +1,5 @@
+// Package log logger.go - 日志系统
+// 统一日志输出，支持终端+文件双写、文件轮转，通过环境变量控制
 package log
 
 import (
