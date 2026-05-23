@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { useUserStore } from '@/store/user'
-import request from '@/utils/request'
-import { ElMessage } from 'element-plus'
-import { VideoPause, VideoPlay, Star, StarFilled } from '@element-plus/icons-vue'
+import { VideoPause, VideoPlay, Star, StarFilled } from "@element-plus/icons-vue"
+import { ElMessage } from "element-plus"
+import { ref, onMounted, computed } from "vue"
+import { useRoute, useRouter } from "vue-router"
+import { useUserStore } from "@/store/user"
+import request from "@/utils/request"
 
 const route = useRoute()
 const router = useRouter()
@@ -21,8 +21,8 @@ const isLiked = ref(false)
 const likeCount = ref(0)
 
 const audioSrc = computed(() => {
-  if (!music.value) return ''
-  if (music.value.path && music.value.path.startsWith('/')) {
+  if (!music.value) return ""
+  if (music.value.path && music.value.path.startsWith("/")) {
     return music.value.path
   }
   return `/api/v1/musics/${id}/stream`
@@ -36,7 +36,7 @@ const fetchDetail = async () => {
     isLiked.value = res.data.is_liked ?? false
     likeCount.value = res.data.like_count ?? 0
   } catch (_e) {
-    ElMessage.error('Failed to load music detail')
+    ElMessage.error("Failed to load music detail")
   } finally {
     loading.value = false
   }
@@ -85,10 +85,10 @@ const seek = (seconds: number) => {
 }
 
 const formatTime = (seconds: number) => {
-  if (!seconds || !isFinite(seconds)) return '0:00'
+  if (!seconds || !isFinite(seconds)) return "0:00"
   const m = Math.floor(seconds / 60)
   const s = Math.floor(seconds % 60)
-  return `${m}:${s.toString().padStart(2, '0')}`
+  return `${m}:${s.toString().padStart(2, "0")}`
 }
 
 const progressPercent = computed(() => {
@@ -105,8 +105,8 @@ const handleProgressClick = (e: MouseEvent) => {
 
 const handleLike = async () => {
   if (!userStore.isLoggedIn) {
-    ElMessage.warning('Please login first')
-    router.push('/login')
+    ElMessage.warning("Please login first")
+    router.push("/login")
     return
   }
   try {
@@ -114,15 +114,15 @@ const handleLike = async () => {
       await request.delete(`/musics/${id}/like`)
       isLiked.value = false
       likeCount.value = Math.max(0, likeCount.value - 1)
-      ElMessage.success('Unliked')
+      ElMessage.success("Unliked")
     } else {
       await request.post(`/musics/${id}/like`)
       isLiked.value = true
       likeCount.value += 1
-      ElMessage.success('Liked')
+      ElMessage.success("Liked")
     }
   } catch (_e) {
-    ElMessage.error('Operation failed')
+    ElMessage.error("Operation failed")
   }
 }
 
@@ -151,7 +151,9 @@ onMounted(fetchDetail)
             <p class="music-artist">{{ music?.artist }}</p>
             <el-descriptions :column="1" border>
               <el-descriptions-item label="Type">{{ music?.type }}</el-descriptions-item>
-              <el-descriptions-item label="Album">{{ music?.album_id ? 'Album Track' : 'Single' }}</el-descriptions-item>
+              <el-descriptions-item label="Album">{{
+                music?.album_id ? "Album Track" : "Single"
+              }}</el-descriptions-item>
               <el-descriptions-item label="Duration">{{ formatTime(duration) }}</el-descriptions-item>
             </el-descriptions>
             <div class="likes-row">
@@ -197,7 +199,11 @@ onMounted(fetchDetail)
                 :max="1"
                 :step="0.05"
                 class="volume-slider"
-                @input="(v: number) => { if (audioRef) audioRef.volume = v }"
+                @input="
+                  (v: number) => {
+                    if (audioRef) audioRef.volume = v
+                  }
+                "
               />
             </div>
           </div>

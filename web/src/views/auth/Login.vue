@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
-import { useUserStore } from '@/store/user'
-import request from '@/utils/request'
-import { ElMessage } from 'element-plus'
-import type { FormInstance, FormRules } from 'element-plus'
+import type { FormInstance, FormRules } from "element-plus"
+import { ElMessage } from "element-plus"
+import { ref, reactive } from "vue"
+import { useRouter } from "vue-router"
+import { useUserStore } from "@/store/user"
+import request from "@/utils/request"
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -12,13 +12,13 @@ const formRef = ref<FormInstance>()
 const loading = ref(false)
 
 const loginForm = reactive({
-  username: '',
-  password: ''
+  username: "",
+  password: "",
 })
 
 const rules = reactive<FormRules>({
-  username: [{ required: true, message: 'Please input username', trigger: 'blur' }],
-  password: [{ required: true, message: 'Please input password', trigger: 'blur' }]
+  username: [{ required: true, message: "Please input username", trigger: "blur" }],
+  password: [{ required: true, message: "Please input password", trigger: "blur" }],
 })
 
 const handleLogin = async (formEl: FormInstance | undefined) => {
@@ -27,11 +27,11 @@ const handleLogin = async (formEl: FormInstance | undefined) => {
     if (valid) {
       loading.value = true
       try {
-        const res: any = await request.post('/users/login', loginForm)
+        const res: any = await request.post("/users/login", loginForm)
         userStore.setToken(res.data.token)
         userStore.setUser(res.data.user)
-        ElMessage.success('Login successful')
-        router.push('/')
+        ElMessage.success("Login successful")
+        router.push("/")
       } catch (_e) {
         // Error is handled by interceptor, but we can add specific handling here if needed
       } finally {
@@ -51,37 +51,27 @@ const handleLogin = async (formEl: FormInstance | undefined) => {
           <p>Login to access your music library</p>
         </div>
       </template>
-      
-      <el-form
-        ref="formRef"
-        :model="loginForm"
-        :rules="rules"
-        label-position="top"
-        size="large"
-      >
+
+      <el-form ref="formRef" :model="loginForm" :rules="rules" label-position="top" size="large">
         <el-form-item label="Username / Email" prop="username">
           <el-input v-model="loginForm.username" placeholder="Enter your username or email" />
         </el-form-item>
-        
+
         <el-form-item label="Password" prop="password">
-          <el-input 
-            v-model="loginForm.password" 
-            type="password" 
-            placeholder="Enter your password" 
-            show-password 
+          <el-input
+            v-model="loginForm.password"
+            type="password"
+            placeholder="Enter your password"
+            show-password
             @keyup.enter="handleLogin(formRef)"
           />
         </el-form-item>
-        
+
         <el-form-item>
-          <el-button type="primary" :loading="loading" class="w-full" @click="handleLogin(formRef)">
-            Login
-          </el-button>
+          <el-button type="primary" :loading="loading" class="w-full" @click="handleLogin(formRef)"> Login </el-button>
         </el-form-item>
         <el-form-item>
-          <el-button class="w-full" @click="router.push('/')">
-            Back to Home
-          </el-button>
+          <el-button class="w-full" @click="router.push('/')"> Back to Home </el-button>
         </el-form-item>
       </el-form>
 

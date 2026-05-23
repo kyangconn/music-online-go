@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
-import { ArrowLeft } from '@element-plus/icons-vue'
+import { ArrowLeft } from "@element-plus/icons-vue"
+import { computed, watch } from "vue"
 
 export interface TabItem {
   id: string
@@ -12,7 +12,7 @@ export interface TabItem {
 
 interface Props {
   // 布局模式：sidebar（侧边栏）或 tabs（标签页）
-  layoutMode?: 'sidebar' | 'tabs'
+  layoutMode?: "sidebar" | "tabs"
   // 标题
   title?: string
   // 标签页数据
@@ -26,39 +26,43 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  layoutMode: 'sidebar',
-  title: '设置',
-  modelValue: '',
+  layoutMode: "sidebar",
+  title: "设置",
+  modelValue: "",
   showContentHeader: true,
   showBackButton: false,
 })
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: string): void
-  (e: 'tab-change', value: string): void
-  (e: 'back'): void
+  (e: "update:modelValue", value: string): void
+  (e: "tab-change", value: string): void
+  (e: "back"): void
 }>()
 
 // 当前激活标签的标签文本
 const getActiveTabLabel = computed(() => {
-  const active = props.tabs.find(tab => tab.id === props.modelValue)
-  return active ? active.label : ''
+  const active = props.tabs.find((tab) => tab.id === props.modelValue)
+  return active ? active.label : ""
 })
 
 // 处理标签点击
 const handleTabClick = (tabId: string) => {
   if (tabId !== props.modelValue) {
-    emit('update:modelValue', tabId)
-    emit('tab-change', tabId)
+    emit("update:modelValue", tabId)
+    emit("tab-change", tabId)
   }
 }
 
 // 监听 tabs 变化，确保始终有激活的标签
-watch(() => props.tabs, (newTabs) => {
-  if (newTabs && newTabs.length > 0 && (!props.modelValue || !newTabs.find(t => t.id === props.modelValue))) {
-    emit('update:modelValue', newTabs[0]!.id)
-  }
-}, { immediate: true })
+watch(
+  () => props.tabs,
+  (newTabs) => {
+    if (newTabs && newTabs.length > 0 && (!props.modelValue || !newTabs.find((t) => t.id === props.modelValue))) {
+      emit("update:modelValue", newTabs[0]!.id)
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -70,7 +74,7 @@ watch(() => props.tabs, (newTabs) => {
           <slot name="header-left">
             <button v-if="showBackButton" class="back-btn" @click="emit('back')">
               <el-icon class="back-icon"><ArrowLeft /></el-icon>
-              <span class="back-text">{{ $t('common.back') }}</span>
+              <span class="back-text">{{ $t("common.back") }}</span>
             </button>
             <h1>{{ title }}</h1>
           </slot>
@@ -84,10 +88,16 @@ watch(() => props.tabs, (newTabs) => {
       <aside class="layout-sidebar" v-if="layoutMode === 'sidebar'">
         <nav class="sidebar-nav">
           <ul>
-            <li v-for="tab in tabs" :key="tab.id" :class="{
-              active: modelValue === tab.id,
-              disabled: tab.disabled
-            }" @click="!tab.disabled && handleTabClick(tab.id)" class="nav-item">
+            <li
+              v-for="tab in tabs"
+              :key="tab.id"
+              :class="{
+                active: modelValue === tab.id,
+                disabled: tab.disabled,
+              }"
+              @click="!tab.disabled && handleTabClick(tab.id)"
+              class="nav-item"
+            >
               <span class="nav-icon">{{ tab.icon }}</span>
               <span class="nav-label">{{ tab.label }}</span>
               <span v-if="tab.badge" class="nav-badge">{{ tab.badge }}</span>
@@ -103,11 +113,16 @@ watch(() => props.tabs, (newTabs) => {
       <!-- 标签页导航（替代侧边栏） -->
       <nav v-if="layoutMode === 'tabs'" class="layout-tabs">
         <div class="tabs-container">
-          <button v-for="tab in tabs" :key="tab.id" :class="{
-            'tab-button': true,
-            active: modelValue === tab.id,
-            disabled: tab.disabled
-          }" @click="!tab.disabled && handleTabClick(tab.id)">
+          <button
+            v-for="tab in tabs"
+            :key="tab.id"
+            :class="{
+              'tab-button': true,
+              active: modelValue === tab.id,
+              disabled: tab.disabled,
+            }"
+            @click="!tab.disabled && handleTabClick(tab.id)"
+          >
             <span class="tab-icon">{{ tab.icon }}</span>
             <span class="tab-label">{{ tab.label }}</span>
             <span v-if="tab.badge" class="tab-badge">{{ tab.badge }}</span>
@@ -143,8 +158,10 @@ watch(() => props.tabs, (newTabs) => {
 /* 基础布局样式 */
 .side-nav-layout {
   min-height: 600px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-  transition: background-color 0.3s, color 0.3s;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+  transition:
+    background-color 0.3s,
+    color 0.3s;
   background-color: var(--bg-light);
   color: var(--text-primary);
   display: flex;

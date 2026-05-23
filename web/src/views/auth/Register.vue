@@ -1,25 +1,25 @@
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
-import request from '@/utils/request'
-import { ElMessage } from 'element-plus'
-import type { FormInstance, FormRules } from 'element-plus'
+import type { FormInstance, FormRules } from "element-plus"
+import { ElMessage } from "element-plus"
+import { ref, reactive } from "vue"
+import { useRouter } from "vue-router"
+import request from "@/utils/request"
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
 
 const registerForm = reactive({
-  username: '',
-  email: '',
-  password: '',
-  confirmPassword: '',
-  full_name: ''
+  username: "",
+  email: "",
+  password: "",
+  confirmPassword: "",
+  full_name: "",
 })
 
 const validatePass2 = (_rule: any, value: any, callback: any) => {
-  if (value === '') {
-    callback(new Error('Please input the password again'))
+  if (value === "") {
+    callback(new Error("Please input the password again"))
   } else if (value !== registerForm.password) {
     callback(new Error("Two inputs don't match!"))
   } else {
@@ -28,17 +28,20 @@ const validatePass2 = (_rule: any, value: any, callback: any) => {
 }
 
 const rules = reactive<FormRules>({
-  username: [{ required: true, message: 'Please input username', trigger: 'blur' }],
+  username: [{ required: true, message: "Please input username", trigger: "blur" }],
   email: [
-    { required: true, message: 'Please input email', trigger: 'blur' },
-    { type: 'email', message: 'Please input correct email address', trigger: 'blur' }
+    { required: true, message: "Please input email", trigger: "blur" },
+    { type: "email", message: "Please input correct email address", trigger: "blur" },
   ],
-  password: [{ required: true, message: 'Please input password', trigger: 'blur' }, { min: 6, message: 'Length should be at least 6', trigger: 'blur' }],
+  password: [
+    { required: true, message: "Please input password", trigger: "blur" },
+    { min: 6, message: "Length should be at least 6", trigger: "blur" },
+  ],
   confirmPassword: [
-    { required: true, message: 'Please confirm your password', trigger: 'blur' },
-    { validator: validatePass2, trigger: 'blur' },
+    { required: true, message: "Please confirm your password", trigger: "blur" },
+    { validator: validatePass2, trigger: "blur" },
   ],
-  full_name: [{ required: true, message: 'Please input full name', trigger: 'blur' }]
+  full_name: [{ required: true, message: "Please input full name", trigger: "blur" }],
 })
 
 const handleRegister = async (formEl: FormInstance | undefined) => {
@@ -48,9 +51,9 @@ const handleRegister = async (formEl: FormInstance | undefined) => {
       loading.value = true
       try {
         const { confirmPassword: _confirmPw, ...data } = registerForm
-        await request.post('/users/register', data)
-        ElMessage.success('Registration successful! Please login.')
-        router.push('/login')
+        await request.post("/users/register", data)
+        ElMessage.success("Registration successful! Please login.")
+        router.push("/login")
       } catch (_e) {
         // Error handled by interceptor
       } finally {
@@ -89,8 +92,12 @@ const handleRegister = async (formEl: FormInstance | undefined) => {
         </el-form-item>
 
         <el-form-item label="Confirm Password" prop="confirmPassword">
-          <el-input v-model="registerForm.confirmPassword" type="password" placeholder="Confirm your password"
-            show-password />
+          <el-input
+            v-model="registerForm.confirmPassword"
+            type="password"
+            placeholder="Confirm your password"
+            show-password
+          />
         </el-form-item>
 
         <el-form-item>
@@ -99,9 +106,7 @@ const handleRegister = async (formEl: FormInstance | undefined) => {
           </el-button>
         </el-form-item>
         <el-form-item>
-          <el-button class="w-full" @click="router.push('/')">
-            Back to Home
-          </el-button>
+          <el-button class="w-full" @click="router.push('/')"> Back to Home </el-button>
         </el-form-item>
       </el-form>
 

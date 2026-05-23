@@ -127,3 +127,53 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   background: var(--bg-white);
 }
+
+/* ---- 加载骨架屏容器 ---- */
+.loading-wrap {
+  padding: 16px 0;
+}
+
+/* ---- 文档详情区块（admin 详情页） ---- */
+.doc-section h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 12px;
+  color: var(--text-primary);
+}
+
+.doc-section h3:not(:first-child) {
+  margin-top: 28px;
+}
+
+.doc-section .kv-list {
+  max-width: 600px;
+}
+
+/* ---- 设置页通用区块 ---- */
+.settings-section {
+  margin-bottom: 32px;
+}
+
+.settings-section > .section-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+
+.setting-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.setting-info h4 {
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.setting-info p {
+  font-size: 14px;
+  color: var(--text-secondary);
+}

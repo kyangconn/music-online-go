@@ -34,7 +34,10 @@ test: test-be lint-fe ## Run backend tests + frontend lint
 test-be: ## Run Go tests
 	go test -v ./...
 
-lint: lint-fe ## Run linters
+lint: ## Run both
+	go fmt ./...
+	go vet ./...
+	cd web && pnpm lint
 
 lint-fe: ## Run ESLint on frontend
 	cd web && pnpm eslint .

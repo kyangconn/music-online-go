@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import SingleMusicUpload from '@/components/upload/SingleMusicUpload.vue'
-import BatchMusicUpload from '@/components/upload/BatchMusicUpload.vue'
+import { ref } from "vue"
+import BatchMusicUpload from "@/components/upload/BatchMusicUpload.vue"
+import SingleMusicUpload from "@/components/upload/SingleMusicUpload.vue"
 
-const activeTab = ref('single')
+const activeTab = ref("single")
 </script>
 
 <template>

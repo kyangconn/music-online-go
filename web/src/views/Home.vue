@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import request from '@/utils/request'
-import { ElMessage } from 'element-plus'
-import { VideoPlay, StarFilled } from '@element-plus/icons-vue'
+import { VideoPlay, StarFilled } from "@element-plus/icons-vue"
+import { ElMessage } from "element-plus"
+import { ref, watch } from "vue"
+import { useRoute } from "vue-router"
+import request from "@/utils/request"
 
 const route = useRoute()
 const musicList = ref<any[]>([])
 const loading = ref(false)
-const searchQuery = ref('')
+const searchQuery = ref("")
 const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(12)
@@ -19,24 +19,28 @@ const fetchMusic = async () => {
     const params = {
       q: searchQuery.value,
       page: currentPage.value,
-      page_size: pageSize.value
+      page_size: pageSize.value,
     }
-    const res: any = await request.get('/musics', { params })
+    const res: any = await request.get("/musics", { params })
     musicList.value = res.data.items || []
     total.value = res.data.total
   } catch (error) {
     console.error(error)
-    ElMessage.error('Failed to load music list')
+    ElMessage.error("Failed to load music list")
   } finally {
     loading.value = false
   }
 }
 
-watch(() => route.query.q, (newQ) => {
-  searchQuery.value = newQ as string || ''
-  currentPage.value = 1
-  fetchMusic()
-}, { immediate: true })
+watch(
+  () => route.query.q,
+  (newQ) => {
+    searchQuery.value = (newQ as string) || ""
+    currentPage.value = 1
+    fetchMusic()
+  },
+  { immediate: true },
+)
 
 const handlePageChange = (page: number) => {
   currentPage.value = page
@@ -47,33 +51,33 @@ const handlePageChange = (page: number) => {
 <template>
   <div class="home-container">
     <div class="banner">
-      <h1>{{ $t('nav.discover') }}</h1>
-      <p>{{ $t('nav.discover_desc') }}</p>
+      <h1>{{ $t("nav.discover") }}</h1>
+      <p>{{ $t("nav.discover_desc") }}</p>
     </div>
 
     <div class="music-section">
       <h2 v-if="searchQuery">Search Results for "{{ searchQuery }}"</h2>
-      <h2 v-else>{{ $t('nav.recommended') }}</h2>
-      
+      <h2 v-else>{{ $t("nav.recommended") }}</h2>
+
       <div v-if="loading" class="loading-container">
         <el-skeleton :rows="3" animated />
       </div>
-      
+
       <div v-else-if="musicList.length === 0" class="empty-state">
         <el-empty description="No music found" />
       </div>
 
       <div v-else class="music-grid-tight">
-        <el-card 
-          v-for="music in musicList" 
-          :key="music.id" 
-          class="music-card" 
+        <el-card
+          v-for="music in musicList"
+          :key="music.id"
+          class="music-card"
           :body-style="{ padding: '0px' }"
           shadow="hover"
         >
           <div class="cover-image">
-            <el-image 
-              :src="music.cover_url || 'https://via.placeholder.com/300x300?text=Music'" 
+            <el-image
+              :src="music.cover_url || 'https://via.placeholder.com/300x300?text=Music'"
               fit="cover"
               loading="lazy"
             >

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { useUserStore } from '@/store/user'
-import request from '@/utils/request'
-import { ElMessage } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus } from "@element-plus/icons-vue"
+import { ElMessage } from "element-plus"
+import { ref, onMounted } from "vue"
+import { useRouter } from "vue-router"
+import { useUserStore } from "@/store/user"
+import request from "@/utils/request"
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -18,14 +18,14 @@ const fetchUserMusics = async () => {
     const res: any = await request.get(`/users/${userId}/musics`)
     musicList.value = res.data.items || []
   } catch (_e) {
-    ElMessage.error('Failed to load user musics')
+    ElMessage.error("Failed to load user musics")
   } finally {
     loading.value = false
   }
 }
 
 const goUpload = () => {
-  router.push('/music/add')
+  router.push("/music/add")
 }
 
 onMounted(fetchUserMusics)
@@ -65,13 +65,7 @@ onMounted(fetchUserMusics)
       </div>
     </el-card>
   </div>
-  <el-button
-    class="upload-fab"
-    type="primary"
-    circle
-    :icon="Plus"
-    @click="goUpload"
-  />
+  <el-button class="upload-fab" type="primary" circle size="large" :icon="Plus" @click="goUpload" />
 </template>
 
 <style scoped>
@@ -125,8 +119,19 @@ onMounted(fetchUserMusics)
 
 .upload-fab {
   position: fixed;
-  right: 24px;
-  bottom: 90px;
+  right: 32px;
+  bottom: 100px;
   z-index: 1000;
+  width: 56px;
+  height: 56px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.upload-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
 }
 </style>

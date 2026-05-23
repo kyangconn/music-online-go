@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
-import { useI18n } from 'vue-i18n'
-import request from '@/utils/request'
-import { ElMessage } from 'element-plus'
-import type { AxiosProgressEvent } from 'axios'
-import type { UploadInstance, UploadFile } from 'element-plus'
-import { Close, UploadFilled, PictureFilled, Headset, QuestionFilled } from '@element-plus/icons-vue'
-import { loadCachedMeta, saveCachedMeta, removeCachedMeta, parseAudioFile, formatFileSize } from '@/utils/upload'
+import type { AxiosProgressEvent } from "axios"
+import type { UploadInstance, UploadFile } from "element-plus"
+import { Close, UploadFilled, PictureFilled, Headset, QuestionFilled } from "@element-plus/icons-vue"
+import { ElMessage } from "element-plus"
+import { ref, reactive } from "vue"
+import { useI18n } from "vue-i18n"
+import { useRouter } from "vue-router"
+import request from "@/utils/request"
+import { loadCachedMeta, saveCachedMeta, removeCachedMeta, parseAudioFile, formatFileSize } from "@/utils/upload"
 
 const router = useRouter()
 useI18n()
@@ -20,14 +20,14 @@ const coverUploadRef = ref<UploadInstance>()
 const audioUploadRef = ref<UploadInstance>()
 
 const form = reactive({
-  title: '',
-  artist: '',
-  album: '',
-  year: '',
-  track: '',
-  genre: '',
-  duration: '',
-  description: '',
+  title: "",
+  artist: "",
+  album: "",
+  year: "",
+  track: "",
+  genre: "",
+  duration: "",
+  description: "",
 })
 
 const touched = reactive({
@@ -79,7 +79,7 @@ const handleAudioChange = async (file: any) => {
     saveCachedMeta(audioFile.value, meta)
     applyMetaToForm(meta)
   } catch (_e) {
-    ElMessage.warning('Failed to read audio tags')
+    ElMessage.warning("Failed to read audio tags")
   }
 }
 
@@ -100,7 +100,7 @@ const handleAudioExceed = async (files: UploadFile[]) => {
     saveCachedMeta(raw, meta)
     applyMetaToForm(meta)
   } catch (_e) {
-    ElMessage.warning('Failed to read audio tags')
+    ElMessage.warning("Failed to read audio tags")
   }
 }
 
@@ -111,29 +111,29 @@ const removeAudio = () => {
 
 const handleSubmit = async () => {
   if (!form.title || !form.artist) {
-    ElMessage.error('Title and artist are required')
+    ElMessage.error("Title and artist are required")
     return
   }
   loading.value = true
   uploadPercent.value = 0
   try {
-    const res: any = await request.post('/musics', {
+    const res: any = await request.post("/musics", {
       title: form.title,
       artist: form.artist,
       intro: form.description,
     })
     const musicId = res.data?.id
     if (!musicId) {
-      ElMessage.error('Failed to create music record')
+      ElMessage.error("Failed to create music record")
       return
     }
 
     if (audioFile.value || coverFile.value) {
       const fd = new FormData()
-      if (audioFile.value) fd.append('file', audioFile.value)
-      if (coverFile.value) fd.append('cover', coverFile.value)
+      if (audioFile.value) fd.append("file", audioFile.value)
+      if (coverFile.value) fd.append("cover", coverFile.value)
       await request.post(`/musics/${musicId}/upload`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: { "Content-Type": "multipart/form-data" },
         onUploadProgress: (event: AxiosProgressEvent) => {
           if (!event.total) return
           uploadPercent.value = Math.round((event.loaded / event.total) * 100)
@@ -142,16 +142,27 @@ const handleSubmit = async () => {
     }
 
     if (audioFile.value) removeCachedMeta(audioFile.value)
-    ElMessage.success('Music uploaded successfully')
+    ElMessage.success("Music uploaded successfully")
     coverFile.value = null
     audioFile.value = null
     coverUploadRef.value?.clearFiles()
     audioUploadRef.value?.clearFiles()
-    Object.assign(form, { title: '', artist: '', album: '', year: '', track: '', genre: '', duration: '', description: '' })
+    Object.assign(form, {
+      title: "",
+      artist: "",
+      album: "",
+      year: "",
+      track: "",
+      genre: "",
+      duration: "",
+      description: "",
+    })
   } catch (_e) {
   } finally {
     loading.value = false
-    setTimeout(() => { uploadPercent.value = 0 }, 800)
+    setTimeout(() => {
+      uploadPercent.value = 0
+    }, 800)
   }
 }
 </script>
@@ -163,16 +174,25 @@ const handleSubmit = async () => {
         <div class="file-card-body">
           <el-icon :size="28"><PictureFilled /></el-icon>
           <div class="file-card-info">
-            <p class="file-card-label">{{ $t('add.cover') }}</p>
-            <p class="file-card-name">{{ coverFile ? coverFile.name : 'Not selected' }}</p>
+            <p class="file-card-label">{{ $t("add.cover") }}</p>
+            <p class="file-card-name">{{ coverFile ? coverFile.name : "Not selected" }}</p>
             <p v-if="coverFile" class="file-card-size">{{ formatFileSize(coverFile.size) }}</p>
           </div>
         </div>
         <button v-if="coverFile" class="dismiss-btn" @click="removeCover" :aria-label="$t('common.delete')">
           <el-icon :size="14"><Close /></el-icon>
         </button>
-        <el-upload v-else class="card-upload-overlay" ref="coverUploadRef" :show-file-list="false" :limit="1"
-          :auto-upload="false" :on-change="handleCoverChange" :on-exceed="handleCoverExceed" accept="image/*">
+        <el-upload
+          v-else
+          class="card-upload-overlay"
+          ref="coverUploadRef"
+          :show-file-list="false"
+          :limit="1"
+          :auto-upload="false"
+          :on-change="handleCoverChange"
+          :on-exceed="handleCoverExceed"
+          accept="image/*"
+        >
           <el-icon :size="20"><UploadFilled /></el-icon>
         </el-upload>
       </div>
@@ -181,16 +201,25 @@ const handleSubmit = async () => {
         <div class="file-card-body">
           <el-icon :size="28"><Headset /></el-icon>
           <div class="file-card-info">
-            <p class="file-card-label">{{ $t('add.audio') }}</p>
-            <p class="file-card-name">{{ audioFile ? audioFile.name : 'Not selected' }}</p>
+            <p class="file-card-label">{{ $t("add.audio") }}</p>
+            <p class="file-card-name">{{ audioFile ? audioFile.name : "Not selected" }}</p>
             <p v-if="audioFile" class="file-card-size">{{ formatFileSize(audioFile.size) }}</p>
           </div>
         </div>
         <button v-if="audioFile" class="dismiss-btn" @click="removeAudio" :aria-label="$t('common.delete')">
           <el-icon :size="14"><Close /></el-icon>
         </button>
-        <el-upload v-else class="card-upload-overlay" ref="audioUploadRef" :show-file-list="false" :limit="1"
-          :auto-upload="false" :on-change="handleAudioChange" :on-exceed="handleAudioExceed" accept="audio/*">
+        <el-upload
+          v-else
+          class="card-upload-overlay"
+          ref="audioUploadRef"
+          :show-file-list="false"
+          :limit="1"
+          :auto-upload="false"
+          :on-change="handleAudioChange"
+          :on-exceed="handleAudioExceed"
+          accept="audio/*"
+        >
           <el-icon :size="20"><UploadFilled /></el-icon>
         </el-upload>
       </div>
@@ -223,7 +252,7 @@ const handleSubmit = async () => {
         <el-col :span="4">
           <el-form-item>
             <template #label>
-              {{ $t('add.music_track') }}
+              {{ $t("add.music_track") }}
               <el-tooltip :content="$t('add.music_track_help')" placement="top">
                 <el-icon class="help-icon" :size="14"><QuestionFilled /></el-icon>
               </el-tooltip>
@@ -252,9 +281,9 @@ const handleSubmit = async () => {
 
       <el-form-item>
         <el-button type="primary" :loading="loading" size="large" @click="handleSubmit">
-          {{ $t('common.upload') }}
+          {{ $t("common.upload") }}
         </el-button>
-        <el-button size="large" @click="router.back()">{{ $t('common.cancel') }}</el-button>
+        <el-button size="large" @click="router.back()">{{ $t("common.cancel") }}</el-button>
       </el-form-item>
 
       <div v-if="uploadPercent > 0" class="upload-progress">
@@ -280,7 +309,9 @@ const handleSubmit = async () => {
   padding: 16px;
   display: flex;
   align-items: center;
-  transition: border-color 0.2s, background 0.2s;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
   background: var(--bg-white);
 }
 
@@ -348,7 +379,9 @@ const handleSubmit = async () => {
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
   z-index: 2;
 }

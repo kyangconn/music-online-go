@@ -3,10 +3,10 @@
  * 定义所有页面路由、权限控制和路由守卫
  */
 
-import { createRouter, createWebHistory } from 'vue-router'
-import BaseLayout from '@/layout/BaseLayout.vue'
-import Home from '@/views/Home.vue'
-import { useUserStore } from '@/store/user'
+import { createRouter, createWebHistory } from "vue-router"
+import BaseLayout from "@/layout/BaseLayout.vue"
+import { useUserStore } from "@/store/user"
+import Home from "@/views/Home.vue"
 
 /**
  * 路由配置数组
@@ -14,53 +14,53 @@ import { useUserStore } from '@/store/user'
  */
 const routes = [
   {
-    path: '/',
+    path: "/",
     component: BaseLayout,
     children: [
       {
-        path: '',
-        name: 'Home',
-        component: Home
+        path: "",
+        name: "Home",
+        component: Home,
       },
       {
-        path: '/login',
-        name: 'Login',
-        component: () => import('@/views/auth/Login.vue').catch(() => Home)
+        path: "/login",
+        name: "Login",
+        component: () => import("@/views/auth/Login.vue").catch(() => Home),
       },
       {
-        path: '/register',
-        name: 'Register',
-        component: () => import('@/views/auth/Register.vue').catch(() => Home)
+        path: "/register",
+        name: "Register",
+        component: () => import("@/views/auth/Register.vue").catch(() => Home),
       },
       {
-        path: '/profile',
-        name: 'Profile',
-        component: () => import('@/views/user/Profile.vue').catch(() => Home)
+        path: "/profile",
+        name: "Profile",
+        component: () => import("@/views/user/Profile.vue").catch(() => Home),
       },
       {
-        path: '/settings',
-        name: 'Settings',
-        component: () => import('@/views/user/Settings.vue').catch(() => Home)
+        path: "/settings",
+        name: "Settings",
+        component: () => import("@/views/user/Settings.vue").catch(() => Home),
       },
       {
-        path: '/music/:id',
-        name: 'MusicDetail',
-        component: () => import('@/views/music/Detail.vue').catch(() => Home)
+        path: "/music/:id",
+        name: "MusicDetail",
+        component: () => import("@/views/music/Detail.vue").catch(() => Home),
       },
       {
-        path: '/music/add',
-        name: 'MusicAdd',
-        component: () => import('@/views/music/Add.vue').catch(() => Home),
-        meta: { requiresAuth: true }
+        path: "/music/add",
+        name: "MusicAdd",
+        component: () => import("@/views/music/Add.vue").catch(() => Home),
+        meta: { requiresAuth: true },
       },
       {
-        path: '/admin',
-        name: 'Admin',
-        component: () => import('@/views/admin/Dashboard.vue').catch(() => Home),
-        meta: { requiresAdmin: true }
-      }
-    ]
-  }
+        path: "/admin",
+        name: "Admin",
+        component: () => import("@/views/admin/Dashboard.vue").catch(() => Home),
+        meta: { requiresAdmin: true },
+      },
+    ],
+  },
 ]
 
 /**
@@ -69,7 +69,7 @@ const routes = [
  */
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes,
 })
 
 /**
@@ -81,15 +81,15 @@ const router = createRouter({
  */
 router.beforeEach((to, _from, next) => {
   const userStore = useUserStore()
-  
+
   // 检查是否需要认证
   if (to.meta.requiresAuth && !userStore.isLoggedIn) {
-    next('/login')
-  } 
+    next("/login")
+  }
   // 检查是否需要管理员权限
   else if (to.meta.requiresAdmin && !userStore.isAdmin) {
-    next('/')
-  } 
+    next("/")
+  }
   // 允许访问
   else {
     next()

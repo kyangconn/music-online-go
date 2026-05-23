@@ -1,26 +1,26 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { useUserStore } from '@/store/user'
-import { useThemeStore } from '@/store/theme'
-import { Search, Moon, Sunny, Headset } from '@element-plus/icons-vue'
+import { Search, Moon, Sunny, Headset } from "@element-plus/icons-vue"
+import { ref, computed } from "vue"
+import { useRouter, useRoute } from "vue-router"
+import { useThemeStore } from "@/store/theme"
+import { useUserStore } from "@/store/user"
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 const themeStore = useThemeStore()
 
-const searchQuery = ref('')
+const searchQuery = ref("")
 const handleSearch = () => {
   if (searchQuery.value) {
-    router.push({ name: 'Home', query: { q: searchQuery.value } })
+    router.push({ name: "Home", query: { q: searchQuery.value } })
   }
 }
-const hideSearch = computed(() => route.name === 'Login' || route.name === 'Register')
+const hideSearch = computed(() => route.name === "Login" || route.name === "Register")
 
 const handleLogout = () => {
   userStore.logout()
-  router.push('/')
+  router.push("/")
 }
 </script>
 
@@ -32,7 +32,7 @@ const handleLogout = () => {
           <el-icon :size="22"><Headset /></el-icon>
           Music Online
         </div>
-        
+
         <div class="search-bar" v-if="!hideSearch">
           <el-input
             v-model="searchQuery"
@@ -48,22 +48,24 @@ const handleLogout = () => {
           <template v-if="userStore.isLoggedIn">
             <el-dropdown>
               <span class="el-dropdown-link text-white username-only">
-                <span class="username">{{ userStore.user?.username || $t('common.profile') }}</span>
+                <span class="username">{{ userStore.user?.username || $t("common.profile") }}</span>
               </span>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item @click="router.push('/profile')">{{ $t('common.profile') }}</el-dropdown-item>
-                  <el-dropdown-item @click="router.push('/music/add')">{{ $t('common.upload') }}</el-dropdown-item>
-                  <el-dropdown-item @click="router.push('/settings')">{{ $t('common.settings') }}</el-dropdown-item>
-                  <el-dropdown-item v-if="userStore.isAdmin" @click="router.push('/admin')">{{ $t('common.admin') }}</el-dropdown-item>
-                  <el-dropdown-item divided @click="handleLogout">{{ $t('common.logout') }}</el-dropdown-item>
+                  <el-dropdown-item @click="router.push('/profile')">{{ $t("common.profile") }}</el-dropdown-item>
+                  <el-dropdown-item @click="router.push('/music/add')">{{ $t("common.upload") }}</el-dropdown-item>
+                  <el-dropdown-item @click="router.push('/settings')">{{ $t("common.settings") }}</el-dropdown-item>
+                  <el-dropdown-item v-if="userStore.isAdmin" @click="router.push('/admin')">{{
+                    $t("common.admin")
+                  }}</el-dropdown-item>
+                  <el-dropdown-item divided @click="handleLogout">{{ $t("common.logout") }}</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
           </template>
           <template v-else>
-            <el-button type="primary" plain @click="router.push('/login')">{{ $t('common.login') }}</el-button>
-            <el-button plain @click="router.push('/register')">{{ $t('common.register') }}</el-button>
+            <el-button type="primary" plain @click="router.push('/login')">{{ $t("common.login") }}</el-button>
+            <el-button plain @click="router.push('/register')">{{ $t("common.register") }}</el-button>
           </template>
         </div>
       </div>
@@ -77,15 +79,13 @@ const handleLogout = () => {
 
     <el-footer>
       <div class="footer-content container">
-        <span class="footer-left">
-          © 2026 Music Online
-        </span>
+        <span class="footer-left"> © 2026 Music Online </span>
         <span class="footer-right">
-          <a href="#" target="_blank" rel="noopener">{{ $t('base.license') }}</a>
+          <a href="#" target="_blank" rel="noopener">{{ $t("base.license") }}</a>
           <span class="dot">·</span>
-          <a href="#" target="_blank" rel="noopener">{{ $t('base.repository') }}</a>
+          <a href="#" target="_blank" rel="noopener">{{ $t("base.repository") }}</a>
           <span class="dot">·</span>
-          <a href="#" target="_blank" rel="noopener">{{ $t('base.maintainer') }}</a>
+          <a href="#" target="_blank" rel="noopener">{{ $t("base.maintainer") }}</a>
         </span>
       </div>
     </el-footer>

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useI18n } from 'vue-i18n'
-import request from '@/utils/request'
-import { ElMessage } from 'element-plus'
-import { FolderOpened } from '@element-plus/icons-vue'
-import { parseAudioFile, formatFileSize, formatDuration } from '@/utils/upload'
+import { FolderOpened } from "@element-plus/icons-vue"
+import { ElMessage } from "element-plus"
+import { ref, computed, onMounted } from "vue"
+import { useI18n } from "vue-i18n"
+import request from "@/utils/request"
+import { parseAudioFile, formatFileSize, formatDuration } from "@/utils/upload"
 
 const { t } = useI18n()
 
@@ -33,7 +33,7 @@ const requestDirectoryAccess = async () => {
     allScannedFiles.value = []
     currentPage.value = 1
     try {
-      const handle = await (window as any).showDirectoryPicker({ mode: 'read' })
+      const handle = await (window as any).showDirectoryPicker({ mode: "read" })
       directoryHandle.value = handle
       await scanDirectory(handle)
       if (allScannedFiles.value.length >= fileScanLimit) {
@@ -41,11 +41,11 @@ const requestDirectoryAccess = async () => {
       } else if (allScannedFiles.value.length > 0) {
         ElMessage.success(`Found ${allScannedFiles.value.length} audio file(s).`)
       } else {
-        ElMessage.info('No audio files found.')
+        ElMessage.info("No audio files found.")
       }
     } catch (error: any) {
-      if (error.name !== 'AbortError') {
-        ElMessage.error(error?.message || t('settings.local_access_error'))
+      if (error.name !== "AbortError") {
+        ElMessage.error(error?.message || t("settings.local_access_error"))
       }
     } finally {
       parsing.value = false
@@ -77,17 +77,17 @@ const handleDirectoryInputChange = async (event: Event) => {
         metadata: null,
         loading: false,
       })
-      await new Promise(resolve => setTimeout(resolve, scanDelayMs))
+      await new Promise((resolve) => setTimeout(resolve, scanDelayMs))
     }
   }
   parsing.value = false
-  input.value = ''
+  input.value = ""
 }
 
-const scanDirectory = async (dirHandle: any, path = '') => {
+const scanDirectory = async (dirHandle: any, path = "") => {
   for await (const entry of dirHandle.values()) {
     if (allScannedFiles.value.length >= fileScanLimit) return
-    if (entry.kind === 'file') {
+    if (entry.kind === "file") {
       const name = entry.name.toLowerCase()
       if (/\.(mp3|wav|flac|ogg|m4a|aac|wma|aiff|ape)$/.test(name)) {
         const file = await entry.getFile()
@@ -101,9 +101,9 @@ const scanDirectory = async (dirHandle: any, path = '') => {
           metadata: null,
           loading: false,
         })
-        await new Promise(resolve => setTimeout(resolve, scanDelayMs))
+        await new Promise((resolve) => setTimeout(resolve, scanDelayMs))
       }
-    } else if (entry.kind === 'directory') {
+    } else if (entry.kind === "directory") {
       await scanDirectory(entry, path ? `${path}/${entry.name}` : entry.name)
     }
   }
@@ -123,7 +123,7 @@ const parseFileMetadata = async (fileItem: any) => {
   try {
     fileItem.metadata = await parseAudioFile(fileItem.file)
   } catch (_e) {
-    fileItem.metadata = { title: '', artist: '', album: '', year: '', track: '', genre: '', duration: '' }
+    fileItem.metadata = { title: "", artist: "", album: "", year: "", track: "", genre: "", duration: "" }
   } finally {
     fileItem.loading = false
   }
@@ -135,7 +135,7 @@ const parseAllSelectedMetadata = async () => {
   for (const item of selectedItems) {
     if (!item.metadata) {
       await parseFileMetadata(item)
-      await new Promise(resolve => setTimeout(resolve, 50))
+      await new Promise((resolve) => setTimeout(resolve, 50))
     }
   }
   parsing.value = false
@@ -144,7 +144,7 @@ const parseAllSelectedMetadata = async () => {
 
 const uploadSelectedFiles = async () => {
   if (selectedFiles.value.size === 0) {
-    ElMessage.warning('Please select files to upload.')
+    ElMessage.warning("Please select files to upload.")
     return
   }
   batchUploading.value = true
@@ -155,10 +155,10 @@ const uploadSelectedFiles = async () => {
   for (const item of selectedItems) {
     try {
       const metadata = item.metadata || {}
-      const createRes: any = await request.post('/musics', {
-        title: metadata.title || item.name.replace(/\.[^/.]+$/, ''),
-        artist: metadata.artist || '',
-        intro: '',
+      const createRes: any = await request.post("/musics", {
+        title: metadata.title || item.name.replace(/\.[^/.]+$/, ""),
+        artist: metadata.artist || "",
+        intro: "",
       })
       const musicId = createRes.data?.id
       if (!musicId) {
@@ -166,9 +166,9 @@ const uploadSelectedFiles = async () => {
         continue
       }
       const fd = new FormData()
-      fd.append('file', item.file)
+      fd.append("file", item.file)
       await request.post(`/musics/${musicId}/upload`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: { "Content-Type": "multipart/form-data" },
       })
       completed++
       batchProgress.value = Math.round((completed / total) * 100)
@@ -199,21 +199,45 @@ onMounted(() => {
 <template>
   <div class="batch-upload">
     <div class="batch-controls">
-      <input ref="directoryInputRef" v-if="!supportsFSAccess" type="file" webkitdirectory multiple
-        @change="handleDirectoryInputChange" style="display: none" />
-      <el-button type="primary" :loading="parsing" @click="requestDirectoryAccess" :disabled="!!directoryHandle" size="large">
-        <el-icon style="margin-right:6px"><FolderOpened /></el-icon>
-        {{ $t('add.batch_import_desc') }}
+      <input
+        ref="directoryInputRef"
+        v-if="!supportsFSAccess"
+        type="file"
+        webkitdirectory
+        multiple
+        @change="handleDirectoryInputChange"
+        style="display: none"
+      />
+      <el-button
+        type="primary"
+        :loading="parsing"
+        @click="requestDirectoryAccess"
+        :disabled="!!directoryHandle"
+        size="large"
+      >
+        <el-icon style="margin-right: 6px"><FolderOpened /></el-icon>
+        {{ $t("add.batch_import_desc") }}
       </el-button>
 
       <div class="batch-actions" v-if="allScannedFiles.length > 0">
         <el-button @click="selectAll">
-          {{ selectedFiles.size === allScannedFiles.length ? 'Deselect All' : 'Select All' }}
+          {{ selectedFiles.size === allScannedFiles.length ? "Deselect All" : "Select All" }}
         </el-button>
-        <el-button type="primary" plain :loading="parsing" @click="parseAllSelectedMetadata" :disabled="selectedFiles.size === 0">
+        <el-button
+          type="primary"
+          plain
+          :loading="parsing"
+          @click="parseAllSelectedMetadata"
+          :disabled="selectedFiles.size === 0"
+        >
           Parse Metadata
         </el-button>
-        <el-button type="success" :loading="batchUploading" @click="uploadSelectedFiles" :disabled="selectedFiles.size === 0">
+        <el-button
+          type="success"
+          :loading="batchUploading"
+          @click="uploadSelectedFiles"
+          :disabled="selectedFiles.size === 0"
+        >
           Upload ({{ selectedFiles.size }})
         </el-button>
       </div>
@@ -236,14 +260,14 @@ onMounted(() => {
         </el-table-column>
         <el-table-column :label="$t('add.music_duration')" width="90">
           <template #default="{ row }">
-            {{ row.metadata?.duration ? formatDuration(Number(row.metadata.duration)) : '—' }}
+            {{ row.metadata?.duration ? formatDuration(Number(row.metadata.duration)) : "—" }}
           </template>
         </el-table-column>
         <el-table-column :label="$t('add.music_artist')" width="140" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.metadata?.artist || '—' }}</template>
+          <template #default="{ row }">{{ row.metadata?.artist || "—" }}</template>
         </el-table-column>
         <el-table-column :label="$t('add.music_title')" min-width="160" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.metadata?.title || '—' }}</template>
+          <template #default="{ row }">{{ row.metadata?.title || "—" }}</template>
         </el-table-column>
         <el-table-column width="80">
           <template #default="{ row }">
@@ -255,8 +279,14 @@ onMounted(() => {
       </el-table>
       <div class="table-footer">
         <span>Total: {{ allScannedFiles.length }} files · Selected: {{ selectedFiles.size }}</span>
-        <el-pagination v-model:current-page="currentPage" :page-size="pageSize" :total="allScannedFiles.length"
-          layout="prev, pager, next" background small />
+        <el-pagination
+          v-model:current-page="currentPage"
+          :page-size="pageSize"
+          :total="allScannedFiles.length"
+          layout="prev, pager, next"
+          background
+          small
+        />
       </div>
     </div>
     <div class="empty-state" v-else>
