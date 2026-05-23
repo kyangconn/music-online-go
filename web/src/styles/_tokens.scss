@@ -1,0 +1,11 @@
+// ============================================================
+// Design Tokens — unified entry point
+// Injected globally via vite additionalData
+// ============================================================
+
+@forward "tokens/colors";
+@forward "tokens/spacing";
+@forward "tokens/typography";
+@forward "tokens/breakpoints";
+@forward "tokens/borders";
+@forward "tokens/transitions";

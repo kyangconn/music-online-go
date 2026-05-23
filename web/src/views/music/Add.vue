@@ -21,7 +21,7 @@ const activeTab = ref("single")
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .add-page {
   padding: 20px 0;
 }

@@ -315,7 +315,7 @@ onMounted(() => {
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .batch-upload {
   padding: 4px 0;
 }

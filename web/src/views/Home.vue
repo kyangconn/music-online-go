@@ -14,7 +14,6 @@ const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(12)
 
-/** 获取音乐列表（支持搜索和分页） */
 const fetchMusic = async () => {
   loading.value = true
   try {
@@ -44,7 +43,6 @@ watch(
   { immediate: true },
 )
 
-/** 处理分页切换 */
 const handlePageChange = (page: number) => {
   currentPage.value = page
   fetchMusic()
@@ -121,65 +119,45 @@ const handlePageChange = (page: number) => {
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .banner {
   background: linear-gradient(135deg, var(--secondary-color), var(--primary-color));
   color: white;
   padding: 3rem 2rem;
-  border-radius: 8px;
+  border-radius: $radius-md;
   margin-bottom: 2rem;
   text-align: center;
-}
 
-.banner h1 {
-  margin: 0 0 1rem;
-  font-size: 2.5rem;
-}
-
-.banner p {
-  margin: 0;
-  opacity: 0.8;
-  font-size: 1.2rem;
+  h1 {
+    margin: 0 0 1rem;
+    font-size: $fs-hero;
+  }
+  p {
+    margin: 0;
+    opacity: 0.8;
+    font-size: $fs-xl;
+  }
 }
 
 .music-card {
-  transition: transform 0.3s;
+  transition: transform $transition-slow;
   border: none;
   background: var(--bg-white);
-}
 
-.music-card:hover {
-  transform: translateY(-5px);
+  &:hover {
+    transform: translateY(-5px);
+  }
 }
 
 .cover-image {
-  position: relative;
-  width: 100%;
-  padding-top: 100%; /* 1:1 Aspect Ratio */
-  background-color: #f0f0f0;
-  overflow: hidden;
-}
-
-.cover-image .el-image {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  @include aspect-ratio;
+  .el-image {
+    @include aspect-ratio-inner;
+  }
 }
 
 .play-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.3);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  opacity: 0;
-  transition: opacity 0.3s;
+  @include overlay-hover;
 }
 
 .music-card:hover .play-overlay {
@@ -187,49 +165,43 @@ const handlePageChange = (page: number) => {
 }
 
 .music-info {
-  padding: 12px;
+  padding: $spacing-md;
 }
 
-.music-meta {
-  margin-top: 6px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.85rem;
-  color: var(--text-light);
-}
-
-.like-icon {
-  color: #fbbf24;
-}
 .music-title {
   margin: 0 0 5px;
-  font-size: 1rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: $fs-md;
+  @include text-ellipsis;
   color: var(--text-dark);
 }
 
 .music-artist {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: $fs-sm;
   color: var(--text-light);
 }
 
+.music-meta {
+  margin-top: 6px;
+  @include inline-flex($spacing-xs);
+  font-size: $fs-sm;
+  color: var(--text-light);
+}
+
+.like-icon {
+  color: $color-gold;
+}
+
 .pagination-container {
-  display: flex;
-  justify-content: center;
+  @include flex-center;
   margin-top: 2rem;
 }
 
 .image-slot {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  @include flex-center;
   width: 100%;
   height: 100%;
-  background: #f5f7fa;
-  color: #909399;
+  background: $color-image-slot-bg;
+  color: $color-image-slot-text;
 }
 </style>

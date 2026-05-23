@@ -1,0 +1,50 @@
+// ============================================================
+// Design Tokens — Colors
+// ============================================================
+
+// ── Brand palette ──────────────────────────────────────────
+$color-primary: #2c3e50;
+$color-secondary: #34495e;
+$color-accent: #3498db;
+
+// ── Semantic colors ────────────────────────────────────────
+$color-success: #67c23a;
+$color-warning: #e6a23c;
+$color-danger: #f56c6c;
+$color-info: #909399;
+
+// ── Gold / highlight ───────────────────────────────────────
+$color-gold: #fbbf24;
+
+// ── Neutrals (light mode) ──────────────────────────────────
+$color-bg-light: #f1f3f5;
+$color-bg-white: #ffffff;
+$color-bg-card: #ffffff;
+$color-border: #eaeaea;
+$color-hover-bg: #f8f9fa;
+$color-active-bg: #edf2f7;
+$color-text-dark: #2c3e50;
+$color-text-light: #7f8c8d;
+$color-text-primary: #2c3e50;
+$color-text-secondary: #6c757d;
+$color-text-muted: #999;
+
+// ── Neutrals (dark mode) ───────────────────────────────────
+$color-dark-bg: #0d1117;
+$color-dark-surface: #111827;
+$color-dark-card: #161b22;
+$color-dark-border: #30363d;
+$color-dark-hover: #21262d;
+$color-dark-active: #30363d;
+$color-dark-text: #e6edf3;
+$color-dark-text-secondary: #8b949e;
+$color-dark-accent: #3b82f6;
+
+// ── One-off utility colors ─────────────────────────────────
+$color-cover-placeholder: #f0f0f0;
+$color-image-slot-bg: #f5f7fa;
+$color-image-slot-text: #909399;
+
+// ── CSS custom property map — used by global styles ────────
+// These stay as CSS custom properties for dark/light toggle
+// SCSS tokens above are for component-scoped usage

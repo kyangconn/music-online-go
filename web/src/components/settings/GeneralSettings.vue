@@ -50,7 +50,7 @@ const themeMode = computed({
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .setting-control {
   display: flex;
   align-items: center;

@@ -1,0 +1,12 @@
+// ============================================================
+// Shared SCSS — injected globally via vite additionalData
+// All Vue components and SCSS files get these for free.
+// ============================================================
+
+@forward "tokens/colors";
+@forward "tokens/spacing";
+@forward "tokens/typography";
+@forward "tokens/breakpoints";
+@forward "tokens/borders";
+@forward "tokens/transitions";
+@forward "mixins";

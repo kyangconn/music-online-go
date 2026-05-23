@@ -173,7 +173,7 @@ const handleSubmit = async (formEl: FormInstance | undefined) => {
   </el-form>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .security-verify {
   background: rgba(230, 162, 60, 0.05);
   padding: 20px;

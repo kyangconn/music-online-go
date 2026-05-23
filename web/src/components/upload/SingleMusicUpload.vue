@@ -301,11 +301,11 @@ const handleSubmit = async () => {
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .file-cards {
   display: flex;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: $spacing-lg;
+  margin-bottom: $spacing-2xl;
 }
 
 .file-card {
@@ -313,30 +313,26 @@ const handleSubmit = async () => {
   position: relative;
   min-height: 88px;
   border: 2px dashed var(--border-color);
-  border-radius: 12px;
-  padding: 16px;
-  display: flex;
-  align-items: center;
+  border-radius: $radius-xl;
+  padding: $spacing-lg;
+  @include inline-flex;
   transition:
-    border-color 0.2s,
-    background 0.2s;
+    border-color $transition-base,
+    background $transition-base;
   background: var(--bg-white);
-}
 
-.file-card.filled {
-  border-style: solid;
-  border-color: var(--accent-color);
-  background: color-mix(in srgb, var(--accent-color) 4%, var(--bg-white));
-}
-
-.file-card:hover {
-  border-color: var(--accent-color);
+  &.filled {
+    border-style: solid;
+    border-color: var(--accent-color);
+    background: color-mix(in srgb, var(--accent-color) 4%, var(--bg-white));
+  }
+  &:hover {
+    border-color: var(--accent-color);
+  }
 }
 
 .file-card-body {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  @include inline-flex($spacing-md);
   flex: 1;
   color: var(--text-secondary);
 }
@@ -351,24 +347,22 @@ const handleSubmit = async () => {
 
 .file-card-label {
   font-size: 0.8rem;
-  font-weight: 600;
+  font-weight: $fw-semibold;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-light);
-  margin: 0 0 2px;
+  margin: 0 0 $spacing-xs;
 }
 
 .file-card-name {
   margin: 0;
-  font-size: 0.9rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: $fs-base;
+  @include text-ellipsis;
 }
 
 .file-card-size {
-  margin: 2px 0 0;
-  font-size: 0.78rem;
+  margin: $spacing-xs 0 0;
+  font-size: $fs-xs;
   color: var(--text-light);
 }
 
@@ -376,54 +370,52 @@ const handleSubmit = async () => {
   position: absolute;
   top: -8px;
   right: -8px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
+  width: $spacing-2xl;
+  height: $spacing-2xl;
+  border-radius: $radius-round;
   border: 2px solid var(--bg-white);
-  background: #ef4444;
+  background: $color-danger;
   color: #fff;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  @include flex-center;
   padding: 0;
   transition:
     transform 0.15s,
     box-shadow 0.15s;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
   z-index: 2;
-}
 
-.dismiss-btn:hover {
-  transform: scale(1.15);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+  &:hover {
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba($color-danger, 0.4);
+  }
 }
 
 .card-upload-overlay {
   position: absolute;
   top: 50%;
-  right: 16px;
+  right: $spacing-lg;
   transform: translateY(-50%);
   color: var(--text-light);
   cursor: pointer;
-  transition: color 0.2s;
-}
+  transition: color $transition-base;
 
-.card-upload-overlay:hover {
-  color: var(--accent-color);
+  &:hover {
+    color: var(--accent-color);
+  }
 }
 
 .upload-progress {
-  margin-top: 8px;
+  margin-top: $spacing-sm;
 }
 
 .help-icon {
   color: var(--text-light);
-  margin-left: 4px;
+  margin-left: $spacing-xs;
   cursor: help;
 }
 
-@media (max-width: 640px) {
+@include mobile {
   .file-cards {
     flex-direction: column;
   }

@@ -1,0 +1,76 @@
+// ============================================================
+// Music Online — Global Styles
+// Replaces style.css
+// Tokens & mixins are available via vite additionalData injection
+// ============================================================
+
+// ── Font face ──────────────────────────────────────────────
+@font-face {
+  font-family: "HarmonyOS Sans";
+  src: url("/fonts/HarmonyOS-Sans-SC-Regular.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+// ── CSS custom properties (light mode) ─────────────────────
+:root {
+  --primary-color: #{$color-primary};
+  --secondary-color: #{$color-secondary};
+  --accent-color: #{$color-accent};
+  --bg-light: #{$color-bg-light};
+  --bg-white: #{$color-bg-white};
+  --bg-card: #{$color-bg-card};
+  --border-color: #{$color-border};
+  --hover-bg: #{$color-hover-bg};
+  --active-bg: #{$color-active-bg};
+  --text-dark: #{$color-text-dark};
+  --text-light: #{$color-text-light};
+  --text-primary: #{$color-text-primary};
+  --text-secondary: #{$color-text-secondary};
+}
+
+body {
+  margin: 0;
+  font-family: $font-family-base;
+  background-color: var(--bg-light);
+  color: var(--text-primary);
+}
+
+.el-header {
+  background-color: var(--primary-color) !important;
+  color: white;
+  line-height: 60px;
+}
+
+.el-main {
+  background-color: var(--bg-light);
+  min-height: calc(100vh - 120px);
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+// ── Dark mode ──────────────────────────────────────────────
+html.dark {
+  --primary-color: #{$color-dark-surface};
+  --secondary-color: #{$color-dark-bg};
+  --accent-color: #{$color-dark-accent};
+  --bg-light: #{$color-dark-bg};
+  --bg-white: #{$color-dark-surface};
+  --bg-card: #{$color-dark-card};
+  --border-color: #{$color-dark-border};
+  --hover-bg: #{$color-dark-hover};
+  --active-bg: #{$color-dark-active};
+  --text-dark: #{$color-dark-text};
+  --text-light: #{$color-dark-text-secondary};
+  --text-primary: #{$color-dark-text};
+  --text-secondary: #{$color-dark-text-secondary};
+
+  body {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+  }
+}

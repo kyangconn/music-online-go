@@ -29,7 +29,6 @@ const audioSrc = computed(() => {
   return `/api/v1/musics/${id}/stream`
 })
 
-/** 获取音乐详情 */
 const fetchDetail = async () => {
   loading.value = true
   try {
@@ -44,7 +43,6 @@ const fetchDetail = async () => {
   }
 }
 
-/** 切换播放/暂停 */
 const togglePlay = () => {
   if (!audioRef.value) return
   if (audioRef.value.paused) {
@@ -56,44 +54,26 @@ const togglePlay = () => {
   }
 }
 
-/** 音频时间更新回调 */
 const onTimeUpdate = () => {
-  if (audioRef.value) {
-    currentTime.value = audioRef.value.currentTime
-  }
+  if (audioRef.value) currentTime.value = audioRef.value.currentTime
 }
-
-/** 音频元数据加载回调 */
 const onLoadedMetadata = () => {
-  if (audioRef.value) {
-    duration.value = audioRef.value.duration
-  }
+  if (audioRef.value) duration.value = audioRef.value.duration
 }
-
-/** 播放结束回调 */
 const onEnded = () => {
   isPlaying.value = false
   currentTime.value = 0
 }
-
-/** 播放开始回调 */
 const onPlay = () => {
   isPlaying.value = true
 }
-
-/** 暂停回调 */
 const onPause = () => {
   isPlaying.value = false
 }
-
-/** 跳转到指定秒数 */
 const seek = (seconds: number) => {
-  if (audioRef.value) {
-    audioRef.value.currentTime = seconds
-  }
+  if (audioRef.value) audioRef.value.currentTime = seconds
 }
 
-/** 格式化秒数为 mm:ss */
 const formatTime = (seconds: number) => {
   if (!seconds || !isFinite(seconds)) return "0:00"
   const m = Math.floor(seconds / 60)
@@ -106,7 +86,6 @@ const progressPercent = computed(() => {
   return (currentTime.value / duration.value) * 100
 })
 
-/** 处理进度条点击跳转 */
 const handleProgressClick = (e: MouseEvent) => {
   const bar = e.currentTarget as HTMLElement
   const rect = bar.getBoundingClientRect()
@@ -114,7 +93,6 @@ const handleProgressClick = (e: MouseEvent) => {
   seek(percent * duration.value)
 }
 
-/** 切换点赞/取消点赞 */
 const handleLike = async () => {
   if (!userStore.isLoggedIn) {
     ElMessage.warning("Please login first")
@@ -228,14 +206,14 @@ onMounted(fetchDetail)
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .loading {
-  padding: 20px 0;
+  padding: $spacing-xl 0;
 }
 
 .detail-top {
   display: flex;
-  gap: 24px;
+  gap: $spacing-2xl;
   flex-wrap: wrap;
 }
 
@@ -245,7 +223,7 @@ onMounted(fetchDetail)
 
 .cover {
   width: 280px;
-  border-radius: 8px;
+  border-radius: $radius-md;
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
@@ -256,44 +234,39 @@ onMounted(fetchDetail)
 }
 
 .music-title {
-  margin: 0 0 4px;
-  font-size: 1.6rem;
+  margin: 0 0 $spacing-xs;
+  font-size: $fs-3xl;
   color: var(--text-dark);
 }
-
 .music-artist {
-  margin: 0 0 16px;
-  font-size: 1.1rem;
+  margin: 0 0 $spacing-lg;
+  font-size: $fs-lg;
   color: var(--text-light);
 }
 
 .likes-row {
-  margin-top: 12px;
-  display: flex;
-  align-items: center;
+  margin-top: $spacing-md;
+  @include inline-flex;
 }
-
 .actions {
-  margin-top: 16px;
+  margin-top: $spacing-lg;
   display: flex;
-  gap: 12px;
+  gap: $spacing-md;
 }
 
 .player-section {
-  margin-top: 24px;
-  padding-top: 20px;
+  margin-top: $spacing-2xl;
+  padding-top: $spacing-xl;
   border-top: 1px solid var(--border-color);
 }
 
 .player-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 0;
+  @include inline-flex($spacing-md);
+  padding: $spacing-sm 0;
 }
 
 .time-label {
-  font-size: 0.85rem;
+  font-size: $fs-sm;
   color: var(--text-light);
   min-width: 40px;
   text-align: center;
@@ -308,38 +281,32 @@ onMounted(fetchDetail)
 .progress-track {
   height: 4px;
   background: var(--border-color);
-  border-radius: 2px;
+  border-radius: $radius-xs;
   overflow: hidden;
   position: relative;
 }
-
 .progress-fill {
   height: 100%;
   background: var(--accent-color);
-  border-radius: 2px;
-  transition: width 0.1s linear;
+  border-radius: $radius-xs;
+  transition: width $transition-fast linear;
 }
 
 .volume-control {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  @include inline-flex(6px);
   margin-left: auto;
 }
-
 .volume-label {
-  font-size: 0.9rem;
+  font-size: $fs-base;
 }
-
 .volume-slider {
   width: 100px;
 }
-
 .no-audio-hint {
-  margin-top: 20px;
+  margin-top: $spacing-xl;
 }
 
-@media (max-width: 640px) {
+@include mobile {
   .detail-top {
     flex-direction: column;
   }

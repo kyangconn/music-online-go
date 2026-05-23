@@ -1,0 +1,41 @@
+// ============================================================
+// Design Tokens — Typography
+// ============================================================
+
+$font-family-base: (
+  "HarmonyOS Sans",
+  "Helvetica Neue",
+  Helvetica,
+  "PingFang SC",
+  "Hiragino Sans GB",
+  "Microsoft YaHei",
+  "微软雅黑",
+  Arial,
+  sans-serif
+);
+
+$font-family-mono: (
+  ui-monospace,
+  SFMono-Regular,
+  "SF Mono",
+  Menlo,
+  Consolas,
+  monospace
+);
+
+// ── Font sizes (rem-based) ─────────────────────────────────
+$fs-xs: 0.78rem;
+$fs-sm: 0.85rem;
+$fs-base: 0.9rem;
+$fs-md: 1rem;
+$fs-lg: 1.1rem;
+$fs-xl: 1.2rem;
+$fs-2xl: 1.5rem;
+$fs-3xl: 1.6rem;
+$fs-hero: 2.5rem;
+
+// ── Font weights ───────────────────────────────────────────
+$fw-normal: 400;
+$fw-medium: 500;
+$fw-semibold: 600;
+$fw-bold: 700;

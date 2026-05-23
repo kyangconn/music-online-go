@@ -92,22 +92,18 @@ const handleLogout = () => {
   </el-container>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .header-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  @include flex-between;
   height: 100%;
 }
 
 .logo {
-  font-size: 1.5rem;
-  font-weight: bold;
+  font-size: $fs-2xl;
+  font-weight: $fw-bold;
   cursor: pointer;
   color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  @include text-ellipsis;
   max-width: 250px;
 }
 
@@ -115,6 +111,18 @@ const handleLogout = () => {
   flex-grow: 1;
   max-width: 500px;
   margin: 0 2rem;
+
+  :deep(.el-input__wrapper) {
+    background-color: rgba(255, 255, 255, 0.1);
+    box-shadow: none;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+  :deep(.el-input__inner) {
+    color: #fff;
+    &::placeholder {
+      color: rgba(255, 255, 255, 0.6);
+    }
+  }
 }
 
 .user-actions {
@@ -125,28 +133,23 @@ const handleLogout = () => {
 
 .username {
   color: #fff;
-  font-weight: 600;
+  font-weight: $fw-semibold;
   cursor: pointer;
 }
 
-.search-bar :deep(.el-input__wrapper) {
-  background-color: rgba(255, 255, 255, 0.1);
-  box-shadow: none;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+@include mobile-xs {
+  .logo {
+    max-width: 100px;
+    font-size: $fs-md;
+  }
+  .search-bar {
+    display: none;
+  }
 }
-
-.search-bar :deep(.el-input__inner) {
-  color: #fff;
-}
-
-.search-bar :deep(.el-input__inner::placeholder) {
-  color: rgba(255, 255, 255, 0.6);
-}
-
-@media (max-width: 768px) {
+@include tablet {
   .logo {
     max-width: 120px;
-    font-size: 1.2rem;
+    font-size: $fs-xl;
   }
   .search-bar {
     margin: 0 1rem;
@@ -154,39 +157,26 @@ const handleLogout = () => {
   }
 }
 
-@media (max-width: 480px) {
-  .logo {
-    max-width: 100px;
-    font-size: 1rem;
-  }
-  .search-bar {
-    display: none;
-  }
-}
-
 .footer-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  color: #999;
-  padding: 20px 0;
-  font-size: 0.9rem;
+  @include flex-between;
+  color: $color-text-muted;
+  padding: $spacing-xl 0;
+  font-size: $fs-base;
 }
 
 .footer-right a {
-  color: #999;
+  color: $color-text-muted;
   text-decoration: none;
-}
-
-.footer-right a:hover {
-  text-decoration: underline;
+  &:hover {
+    text-decoration: underline;
+  }
 }
 
 .dot {
   margin: 0 6px;
 }
 
-@media (max-width: 480px) {
+@include mobile-xs {
   .footer-content {
     flex-direction: column;
     gap: 6px;

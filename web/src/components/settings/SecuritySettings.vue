@@ -136,7 +136,7 @@ const cancelSetup = () => {
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .totp-setup-panel {
   margin-top: 20px;
   padding: 24px;

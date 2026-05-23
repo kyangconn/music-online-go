@@ -88,6 +88,40 @@ When in doubt, run `make help` to see all available commands.
 - **Vue/TS**: Follow the project's ESLint config (includes `eslint-plugin-vue`, `eslint-config-prettier`, `eslint-plugin-perfectionist`).
 - Keep changes minimal and consistent with existing patterns.
 
+### 7a. SCSS Architecture
+
+This project uses **SCSS** with a global-injection pattern. All components can use tokens and mixins without imports.
+
+**File structure:**
+
+```
+web/src/styles/
+├── tokens/
+│   ├── _colors.scss         # Color palette & semantic tokens
+│   ├── _spacing.scss         # Spacing scale (xs → 4xl)
+│   ├── _typography.scss      # Font families, sizes, weights
+│   ├── _breakpoints.scss     # Responsive breakpoints (xs → xl)
+│   ├── _borders.scss         # Border radii
+│   └── _transitions.scss     # Transition durations
+├── _shared.scss              # Forwards tokens + mixins (injected globally)
+├── _mixins.scss              # Reusable mixins: respond-to, flex-center, text-ellipsis, card-hover, etc.
+├── global.scss               # Global styles (replaces old style.css)
+├── common.scss               # Utility classes (replaces old styles/common.css)
+└── element-plus.scss         # Element Plus SCSS overrides (@forward ... with)
+```
+
+**How it works:**
+- `vite.config.ts` → `additionalData` injects `@use "@/styles/shared" as *;` into every SCSS file.
+- Components use `<style scoped lang="scss">` and get all tokens (`$color-primary`, `$spacing-md`, etc.) and mixins (`@include flex-center`, `@include mobile { ... }`) for free.
+- **Never add `@use` / `@import` for tokens or mixins in component styles** — they're already injected.
+- CSS custom properties (`var(--primary-color)`, `var(--text-light)`) remain for dark/light mode theming.
+
+**Modern SCSS rules:**
+- Use `@use` / `@forward` (never `@import` — deprecated).
+- Use SCSS interpolation `#{$var}` for injecting SCSS variables into CSS custom properties.
+- Nest selectors with `&` (e.g., `&:hover`, `&.active`).
+- Use `@include mixin-name` for reusable patterns.
+
 ### 8. Important Nuances
 
 - The frontend has **i18n** (Chinese + English). When adding UI text, use the i18n system (`web/src/i18n/`).

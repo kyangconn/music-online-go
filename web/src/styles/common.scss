@@ -1,0 +1,149 @@
+// ============================================================
+// Music Online — Common utility classes
+// Replaces styles/common.css
+// Tokens & mixins available via vite additionalData injection
+// ============================================================
+
+.page-section {
+  padding: $spacing-xl 0;
+}
+.page-content {
+  padding: $spacing-lg;
+}
+
+// ── Auth ───────────────────────────────────────────────────
+.auth-layout {
+  @include flex-center;
+  min-height: calc(100vh - 120px);
+  background-color: var(--bg-light);
+  padding: 2rem 0;
+}
+
+.auth-box {
+  width: 100%;
+  max-width: 420px;
+  border-radius: $radius-md;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+
+  .el-card__header {
+    text-align: center;
+    h2 {
+      margin: 0 0 $spacing-sm;
+      color: var(--text-dark);
+    }
+    p {
+      margin: 0;
+      color: var(--text-light);
+      font-size: $fs-base;
+    }
+  }
+}
+
+.auth-footer-link {
+  text-align: center;
+  margin-top: 1rem;
+  font-size: $fs-base;
+
+  a {
+    color: var(--accent-color);
+    text-decoration: none;
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+// ── Key-Value list ─────────────────────────────────────────
+.kv-list {
+  @include flex-column;
+}
+.kv-row {
+  @include flex-between;
+  padding: $spacing-sm 0;
+  border-bottom: 1px solid var(--border-color);
+  &:last-child {
+    border-bottom: none;
+  }
+}
+.kv-label {
+  font-weight: $fw-medium;
+  color: var(--text-secondary);
+}
+
+// ── Card grids ─────────────────────────────────────────────
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: $spacing-xl;
+}
+
+.card-hover {
+  border-radius: $radius-xl;
+  background: var(--bg-white);
+  @include card-hover;
+}
+
+.music-grid-tight {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: $spacing-xl;
+  margin-bottom: 2rem;
+}
+
+// ── Utilities ──────────────────────────────────────────────
+.w-full {
+  width: 100%;
+}
+.detail-panel {
+  max-width: 800px;
+  margin: 0 auto;
+  border-radius: $radius-xl;
+}
+
+.content-card {
+  @include card-base;
+  @include card-shadow-light;
+}
+
+.loading-wrap {
+  padding: $spacing-lg 0;
+}
+
+// ── Doc section ────────────────────────────────────────────
+.doc-section {
+  h3 {
+    font-size: $fs-lg;
+    font-weight: $fw-semibold;
+    margin: 0 0 $spacing-md;
+    color: var(--text-primary);
+    &:not(:first-child) {
+      margin-top: 28px;
+    }
+  }
+  .kv-list {
+    max-width: 600px;
+  }
+}
+
+// ── Settings ───────────────────────────────────────────────
+.settings-section {
+  margin-bottom: $spacing-3xl;
+  > .section-title {
+    @include section-title;
+  }
+}
+
+.setting-item {
+  @include setting-item-layout;
+}
+
+.setting-info {
+  h4 {
+    font-size: $fs-md;
+    margin-bottom: $spacing-xs;
+  }
+  p {
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+}

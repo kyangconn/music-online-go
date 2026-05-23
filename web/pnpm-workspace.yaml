@@ -1,2 +1,3 @@
 allowBuilds:
-  esbuild: false
+  "@parcel/watcher": true
+  esbuild: true

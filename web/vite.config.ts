@@ -25,5 +25,13 @@ export default defineConfig(({ mode }) => {
         "@": path.resolve(__dirname, "./src"),
       },
     },
+    css: {
+      preprocessorOptions: {
+        scss: {
+          additionalData: '@use "@/styles/shared" as *;',
+          api: "modern",
+        },
+      },
+    },
   }
 })

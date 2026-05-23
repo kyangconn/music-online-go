@@ -72,7 +72,7 @@ defineProps<{
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .card-header {
   font-weight: 600;
   font-size: 16px;

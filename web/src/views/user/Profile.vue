@@ -12,7 +12,6 @@ const userStore = useUserStore()
 const loading = ref(true)
 const musicList = ref<Music[]>([])
 
-/** 获取当前用户上传的音乐列表 */
 const fetchUserMusics = async () => {
   loading.value = true
   try {
@@ -26,7 +25,6 @@ const fetchUserMusics = async () => {
   }
 }
 
-/** 跳转到上传页面 */
 const goUpload = () => {
   router.push("/music/add")
 }
@@ -71,12 +69,10 @@ onMounted(fetchUserMusics)
   <el-button class="upload-fab" type="primary" circle size="large" :icon="Plus" @click="goUpload" />
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .user-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
+  @include inline-flex($spacing-md);
+  margin-bottom: $spacing-lg;
 }
 .user-info .username {
   margin: 0;
@@ -87,54 +83,56 @@ onMounted(fetchUserMusics)
   color: var(--text-light);
 }
 .section-title {
-  margin: 16px 0;
+  margin: $spacing-lg 0;
 }
+
 .music-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
+  gap: $spacing-lg;
 }
 .music-card {
   display: flex;
-  gap: 12px;
+  gap: $spacing-md;
 }
 .cover {
   width: 80px;
   height: 80px;
-  border-radius: 8px;
+  border-radius: $radius-md;
   overflow: hidden;
 }
-.meta .title {
-  margin: 0 0 6px;
-}
-.artist {
-  margin: 0 0 10px;
-  color: var(--text-light);
-}
-.likes {
-  margin: 0 0 6px;
-  color: var(--text-light);
-  font-size: 0.85rem;
+.meta {
+  .title {
+    margin: 0 0 6px;
+  }
+  .artist {
+    margin: 0 0 10px;
+    color: var(--text-light);
+  }
+  .likes {
+    margin: 0 0 6px;
+    color: var(--text-light);
+    font-size: $fs-sm;
+  }
 }
 .empty {
-  margin-top: 12px;
+  margin-top: $spacing-md;
 }
 
 .upload-fab {
   position: fixed;
-  right: 32px;
+  right: $spacing-3xl;
   bottom: 100px;
   z-index: 1000;
   width: 56px;
   height: 56px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
   transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease;
-}
-
-.upload-fab:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+    transform $transition-base,
+    box-shadow $transition-base;
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+  }
 }
 </style>

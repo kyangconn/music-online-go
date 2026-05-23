@@ -1,0 +1,136 @@
+// ============================================================
+// Mixins — reusable style patterns
+// Injected globally via vite additionalData (through _shared)
+// ============================================================
+
+@use "tokens" as t;
+
+// ── Responsive breakpoints ─────────────────────────────────
+@mixin respond-to($bp) {
+  @media (max-width: $bp) {
+    @content;
+  }
+}
+@mixin mobile-xs {
+  @include respond-to(t.$bp-xs) {
+    @content;
+  }
+}
+@mixin mobile {
+  @include respond-to(t.$bp-sm) {
+    @content;
+  }
+}
+@mixin tablet {
+  @include respond-to(t.$bp-md) {
+    @content;
+  }
+}
+
+// ── Flexbox ────────────────────────────────────────────────
+@mixin flex-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+@mixin flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+@mixin flex-column($gap: t.$spacing-md) {
+  display: flex;
+  flex-direction: column;
+  gap: $gap;
+}
+@mixin inline-flex($gap: t.$spacing-sm) {
+  display: flex;
+  align-items: center;
+  gap: $gap;
+}
+
+// ── Text ───────────────────────────────────────────────────
+@mixin text-ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@mixin text-muted {
+  color: var(--text-light);
+  font-size: t.$fs-sm;
+}
+
+// ── Card ───────────────────────────────────────────────────
+@mixin card-base {
+  border-radius: t.$radius-xl;
+  border: 1px solid var(--border-color);
+  background: var(--bg-white);
+}
+@mixin card-hover {
+  transition:
+    transform t.$transition-base,
+    box-shadow t.$transition-base;
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  }
+}
+@mixin card-shadow-light {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+// ── Transitions ────────────────────────────────────────────
+@mixin transition-bg {
+  transition: background-color t.$transition-slow;
+}
+@mixin transition-color {
+  transition:
+    background-color t.$transition-slow,
+    color t.$transition-slow;
+}
+
+// ── Aspect ratio container ─────────────────────────────────
+@mixin aspect-ratio($ratio: 1) {
+  position: relative;
+  width: 100%;
+  padding-top: calc(100% / $ratio);
+  background-color: t.$color-cover-placeholder;
+  overflow: hidden;
+}
+@mixin aspect-ratio-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+// ── Hover overlay ──────────────────────────────────────────
+@mixin overlay-hover($bg: rgba(0, 0, 0, 0.3)) {
+  @include flex-center;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: $bg;
+  opacity: 0;
+  transition: opacity t.$transition-slow;
+  &:hover {
+    opacity: 1;
+  }
+}
+
+// ── Section patterns ───────────────────────────────────────
+@mixin section-title {
+  font-size: 18px;
+  font-weight: t.$fw-semibold;
+  margin-bottom: t.$spacing-xl;
+}
+@mixin setting-item-layout {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: t.$spacing-lg 0;
+  border-bottom: 1px solid var(--border-color);
+}
