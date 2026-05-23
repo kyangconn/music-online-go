@@ -3,16 +3,18 @@ import { VideoPlay, StarFilled } from "@element-plus/icons-vue"
 import { ElMessage } from "element-plus"
 import { ref, watch } from "vue"
 import { useRoute } from "vue-router"
+import type { Music, PaginatedData } from "@/types/api"
 import request from "@/utils/request"
 
 const route = useRoute()
-const musicList = ref<any[]>([])
+const musicList = ref<Music[]>([])
 const loading = ref(false)
 const searchQuery = ref("")
 const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(12)
 
+/** 获取音乐列表（支持搜索和分页） */
 const fetchMusic = async () => {
   loading.value = true
   try {
@@ -21,7 +23,7 @@ const fetchMusic = async () => {
       page: currentPage.value,
       page_size: pageSize.value,
     }
-    const res: any = await request.get("/musics", { params })
+    const res = await request.get<PaginatedData<Music>>("/musics", { params })
     musicList.value = res.data.items || []
     total.value = res.data.total
   } catch (error) {
@@ -42,6 +44,7 @@ watch(
   { immediate: true },
 )
 
+/** 处理分页切换 */
 const handlePageChange = (page: number) => {
   currentPage.value = page
   fetchMusic()

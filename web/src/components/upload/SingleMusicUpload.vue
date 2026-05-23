@@ -6,6 +6,7 @@ import { ElMessage } from "element-plus"
 import { ref, reactive } from "vue"
 import { useI18n } from "vue-i18n"
 import { useRouter } from "vue-router"
+import type { CreateMusicData, MusicMetadataFields } from "@/types/api"
 import request from "@/utils/request"
 import { loadCachedMeta, saveCachedMeta, removeCachedMeta, parseAudioFile, formatFileSize } from "@/utils/upload"
 
@@ -39,7 +40,8 @@ const touched = reactive({
   genre: false,
 })
 
-const applyMetaToForm = (meta: Record<string, string>) => {
+/** 将解析的元数据填入表单 */
+const applyMetaToForm = (meta: MusicMetadataFields) => {
   if (!touched.title && meta.title) form.title = meta.title
   if (!touched.artist && meta.artist) form.artist = meta.artist
   if (!touched.album && meta.album) form.album = meta.album
@@ -49,7 +51,8 @@ const applyMetaToForm = (meta: Record<string, string>) => {
   if (meta.duration) form.duration = meta.duration
 }
 
-const handleCoverChange = (file: any) => {
+/** 封面文件选择回调 */
+const handleCoverChange = (file: UploadFile) => {
   coverFile.value = file?.raw || null
 }
 
@@ -59,12 +62,14 @@ const handleCoverExceed = (files: UploadFile[]) => {
   if (raw) coverFile.value = raw
 }
 
+/** 移除封面 */
 const removeCover = () => {
   coverFile.value = null
   coverUploadRef.value?.clearFiles()
 }
 
-const handleAudioChange = async (file: any) => {
+/** 音频文件选择回调，自动解析标签 */
+const handleAudioChange = async (file: UploadFile) => {
   audioFile.value = file?.raw || null
   if (!audioFile.value) return
 
@@ -83,6 +88,7 @@ const handleAudioChange = async (file: any) => {
   }
 }
 
+/** 音频文件超限处理 */
 const handleAudioExceed = async (files: UploadFile[]) => {
   audioUploadRef.value?.clearFiles()
   const raw = files?.[0]?.raw as File | undefined
@@ -104,11 +110,13 @@ const handleAudioExceed = async (files: UploadFile[]) => {
   }
 }
 
+/** 移除音频 */
 const removeAudio = () => {
   audioFile.value = null
   audioUploadRef.value?.clearFiles()
 }
 
+/** 提交音乐创建并上传文件 */
 const handleSubmit = async () => {
   if (!form.title || !form.artist) {
     ElMessage.error("Title and artist are required")
@@ -117,7 +125,7 @@ const handleSubmit = async () => {
   loading.value = true
   uploadPercent.value = 0
   try {
-    const res: any = await request.post("/musics", {
+    const res = await request.post<CreateMusicData>("/musics", {
       title: form.title,
       artist: form.artist,
       intro: form.description,
@@ -287,7 +295,7 @@ const handleSubmit = async () => {
       </el-form-item>
 
       <div v-if="uploadPercent > 0" class="upload-progress">
-        <el-progress :percentage="uploadPercent" :stroke-width="12" :text-inside="true" />
+        <el-progress :percentage="uploadPercent" :stroke-width="12" text-inside />
       </div>
     </el-form>
   </div>

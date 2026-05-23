@@ -22,7 +22,8 @@ const updateForm = reactive({
 
 const isChangingPassword = computed(() => updateForm.new_password.length > 0)
 
-const validateConfirmPassword = (_rule: any, value: string, callback: any) => {
+/** 验证确认密码 */
+const validateConfirmPassword = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
   if (isChangingPassword.value) {
     if (!value) {
       callback(new Error(t("settings.password_confirm_error")))
@@ -44,7 +45,7 @@ const rules = reactive<FormRules>({
   ],
   current_password: [
     {
-      validator: (_rule: any, value: string, callback: any) => {
+      validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
         if (isChangingPassword.value && !value) {
           callback(new Error(t("settings.password_required")))
         } else {
@@ -56,7 +57,7 @@ const rules = reactive<FormRules>({
   ],
   new_password: [
     {
-      validator: (_rule: any, value: string, callback: any) => {
+      validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
         if (isChangingPassword.value && value.length < 6) {
           callback(new Error("Password must be at least 6 characters"))
         } else {
@@ -73,6 +74,7 @@ const emit = defineEmits<{
   (e: "cancel"): void
 }>()
 
+/** 提交资料和密码修改 */
 const handleSubmit = async (formEl: FormInstance | undefined) => {
   if (!formEl) return
   try {
@@ -98,8 +100,9 @@ const handleSubmit = async (formEl: FormInstance | undefined) => {
     updateForm.current_password = ""
     updateForm.new_password = ""
     updateForm.confirm_password = ""
-  } catch (error: any) {
-    ElMessage.error(error?.response?.data?.error || error.message || t("settings.save_failed"))
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : t("settings.save_failed")
+    ElMessage.error(msg)
   } finally {
     loading.value = false
   }

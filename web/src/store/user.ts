@@ -1,5 +1,6 @@
 import { defineStore } from "pinia"
 import { ref, computed } from "vue"
+import type { UserInfo, UpdateUserProfileData, TOTPSetupData } from "@/types/api"
 import request from "@/utils/request"
 
 /**
@@ -10,7 +11,7 @@ export const useUserStore = defineStore("user", () => {
   /** 用户认证令牌 */
   const token = ref(localStorage.getItem("token") || "")
   /** 用户信息对象 */
-  const user = ref(JSON.parse(localStorage.getItem("user") || "null"))
+  const user = ref<UserInfo | null>(JSON.parse(localStorage.getItem("user") || "null"))
 
   /** 用户是否已登录 */
   const isLoggedIn = computed(() => !!token.value)
@@ -35,7 +36,7 @@ export const useUserStore = defineStore("user", () => {
    * 设置用户信息
    * @param newUser - 新的用户信息对象
    */
-  function setUser(newUser: any) {
+  function setUser(newUser: UserInfo | null) {
     user.value = newUser
     try {
       localStorage.setItem("user", JSON.stringify(newUser))
@@ -51,9 +52,9 @@ export const useUserStore = defineStore("user", () => {
    * @returns 更新后的用户信息
    * @throws 当API请求失败时抛出错误
    */
-  async function updateUser(data: any) {
+  async function updateUser(data: UpdateUserProfileData) {
     try {
-      const response = await request.put("/users/profile", data)
+      const response = await request.put<UserInfo>("/users/profile", data)
       setUser(response.data)
       return response.data
     } catch (error) {
@@ -62,6 +63,11 @@ export const useUserStore = defineStore("user", () => {
     }
   }
 
+  /**
+   * 修改当前用户的登录密码
+   * @param oldPassword - 当前旧密码
+   * @param newPassword - 想要设置的新密码
+   */
   async function changePassword(oldPassword: string, newPassword: string) {
     try {
       await request.post("/users/change-password", {
@@ -74,17 +80,29 @@ export const useUserStore = defineStore("user", () => {
     }
   }
 
+  /**
+   * 向服务端请求生成 TOTP 两步验证的密钥和二维码
+   * @returns 包含 TOTP secret 和二维码 URL 的数据
+   */
   async function setupTOTP() {
-    const res: any = await request.post("/users/totp/setup")
-    return res.data as { secret: string; qr_code_url: string }
+    const res = await request.post<TOTPSetupData>("/users/totp/setup")
+    return res.data
   }
 
+  /**
+   * 使用用户提供的验证码启用 TOTP 两步验证
+   * @param code - 用户从验证器应用获取的 6 位验证码
+   */
   async function enableTOTP(code: string) {
     await request.post("/users/totp/enable", { code })
     if (user.value) user.value.totp_enabled = true
     setUser(user.value)
   }
 
+  /**
+   * 使用用户提供的验证码禁用 TOTP 两步验证
+   * @param code - 用户从验证器应用获取的 6 位验证码
+   */
   async function disableTOTP(code: string) {
     await request.post("/users/totp/disable", { code })
     if (user.value) user.value.totp_enabled = false

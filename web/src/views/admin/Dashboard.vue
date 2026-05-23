@@ -3,6 +3,7 @@ import { ElMessage } from "element-plus"
 import { ref, onMounted, computed } from "vue"
 import { useI18n } from "vue-i18n"
 import { useRouter } from "vue-router"
+import type { SystemInfoData } from "@/types/api"
 import DashboardOverview from "@/components/admin/DashboardOverview.vue"
 import DatabaseInfo from "@/components/admin/DatabaseInfo.vue"
 import MusicInfo from "@/components/admin/MusicInfo.vue"
@@ -15,7 +16,7 @@ const router = useRouter()
 const { t } = useI18n()
 
 const loading = ref(false)
-const info = ref<any>(null)
+const info = ref<SystemInfoData | null>(null)
 const title = computed(() => t("admin.dashboard"))
 const activeTab = ref("dashboard")
 const layoutMode = ref<"sidebar" | "tabs">("sidebar")
@@ -28,10 +29,11 @@ const tabs = computed<TabItem[]>(() => [
   { id: "music", label: t("admin.music") },
 ])
 
+/** 获取系统信息 */
 const fetchInfo = async () => {
   loading.value = true
   try {
-    const res: any = await request.get("/users/admin/system-info")
+    const res = await request.get<SystemInfoData>("/users/admin/system-info")
     info.value = res.data
   } catch (_e) {
     ElMessage.error("Failed to load system info")
@@ -40,6 +42,7 @@ const fetchInfo = async () => {
   }
 }
 
+/** 返回上一页 */
 const goBack = () => router.back()
 
 onMounted(fetchInfo)
@@ -56,23 +59,23 @@ onMounted(fetchInfo)
     @back="goBack"
   >
     <template #dashboard>
-      <DashboardOverview :loading="loading" :info="info" />
+      <DashboardOverview :loading="loading" :info="info!" />
     </template>
 
     <template #server>
-      <ServerInfo :loading="loading" :info="info" />
+      <ServerInfo :loading="loading" :info="info!" />
     </template>
 
     <template #runtime>
-      <RuntimeInfo :loading="loading" :info="info" />
+      <RuntimeInfo :loading="loading" :info="info!" />
     </template>
 
     <template #database>
-      <DatabaseInfo :loading="loading" :info="info" />
+      <DatabaseInfo :loading="loading" :info="info!" />
     </template>
 
     <template #music>
-      <MusicInfo :loading="loading" :info="info" />
+      <MusicInfo :loading="loading" :info="info!" />
     </template>
   </SideNavLayout>
 </template>

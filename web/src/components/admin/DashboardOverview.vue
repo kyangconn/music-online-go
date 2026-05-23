@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import type { SystemInfoData } from "@/types/api"
+
 defineProps<{
   loading: boolean
-  info: any
+  info: SystemInfoData
 }>()
 </script>
 

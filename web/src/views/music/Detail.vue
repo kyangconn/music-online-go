@@ -3,6 +3,7 @@ import { VideoPause, VideoPlay, Star, StarFilled } from "@element-plus/icons-vue
 import { ElMessage } from "element-plus"
 import { ref, onMounted, computed } from "vue"
 import { useRoute, useRouter } from "vue-router"
+import type { Music } from "@/types/api"
 import { useUserStore } from "@/store/user"
 import request from "@/utils/request"
 
@@ -11,7 +12,7 @@ const router = useRouter()
 const userStore = useUserStore()
 const id = route.params.id as string
 const loading = ref(true)
-const music = ref<any>(null)
+const music = ref<Music | null>(null)
 const audioRef = ref<HTMLAudioElement>()
 const isPlaying = ref(false)
 const currentTime = ref(0)
@@ -28,10 +29,11 @@ const audioSrc = computed(() => {
   return `/api/v1/musics/${id}/stream`
 })
 
+/** 获取音乐详情 */
 const fetchDetail = async () => {
   loading.value = true
   try {
-    const res: any = await request.get(`/musics/${id}`)
+    const res = await request.get<Music>(`/musics/${id}`)
     music.value = res.data
     isLiked.value = res.data.is_liked ?? false
     likeCount.value = res.data.like_count ?? 0
@@ -42,6 +44,7 @@ const fetchDetail = async () => {
   }
 }
 
+/** 切换播放/暂停 */
 const togglePlay = () => {
   if (!audioRef.value) return
   if (audioRef.value.paused) {
@@ -53,37 +56,44 @@ const togglePlay = () => {
   }
 }
 
+/** 音频时间更新回调 */
 const onTimeUpdate = () => {
   if (audioRef.value) {
     currentTime.value = audioRef.value.currentTime
   }
 }
 
+/** 音频元数据加载回调 */
 const onLoadedMetadata = () => {
   if (audioRef.value) {
     duration.value = audioRef.value.duration
   }
 }
 
+/** 播放结束回调 */
 const onEnded = () => {
   isPlaying.value = false
   currentTime.value = 0
 }
 
+/** 播放开始回调 */
 const onPlay = () => {
   isPlaying.value = true
 }
 
+/** 暂停回调 */
 const onPause = () => {
   isPlaying.value = false
 }
 
+/** 跳转到指定秒数 */
 const seek = (seconds: number) => {
   if (audioRef.value) {
     audioRef.value.currentTime = seconds
   }
 }
 
+/** 格式化秒数为 mm:ss */
 const formatTime = (seconds: number) => {
   if (!seconds || !isFinite(seconds)) return "0:00"
   const m = Math.floor(seconds / 60)
@@ -96,6 +106,7 @@ const progressPercent = computed(() => {
   return (currentTime.value / duration.value) * 100
 })
 
+/** 处理进度条点击跳转 */
 const handleProgressClick = (e: MouseEvent) => {
   const bar = e.currentTarget as HTMLElement
   const rect = bar.getBoundingClientRect()
@@ -103,6 +114,7 @@ const handleProgressClick = (e: MouseEvent) => {
   seek(percent * duration.value)
 }
 
+/** 切换点赞/取消点赞 */
 const handleLike = async () => {
   if (!userStore.isLoggedIn) {
     ElMessage.warning("Please login first")

@@ -3,13 +3,14 @@ import { FolderOpened } from "@element-plus/icons-vue"
 import { ElMessage } from "element-plus"
 import { ref, computed, onMounted } from "vue"
 import { useI18n } from "vue-i18n"
+import type { ScannedFileItem, CreateMusicData } from "@/types/api"
 import request from "@/utils/request"
 import { parseAudioFile, formatFileSize, formatDuration } from "@/utils/upload"
 
 const { t } = useI18n()
 
-const directoryHandle = ref<any>(null)
-const allScannedFiles = ref<any[]>([])
+const directoryHandle = ref<FileSystemDirectoryHandle | null>(null)
+const allScannedFiles = ref<ScannedFileItem[]>([])
 const currentPage = ref(1)
 const pageSize = ref(10)
 const fileScanLimit = 500
@@ -27,12 +28,14 @@ const parsing = ref(false)
 const batchUploading = ref(false)
 const batchProgress = ref(0)
 
+/** 请求目录访问权限并扫描音频文件 */
 const requestDirectoryAccess = async () => {
   if (supportsFSAccess.value) {
     parsing.value = true
     allScannedFiles.value = []
     currentPage.value = 1
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const handle = await (window as any).showDirectoryPicker({ mode: "read" })
       directoryHandle.value = handle
       await scanDirectory(handle)
@@ -43,9 +46,9 @@ const requestDirectoryAccess = async () => {
       } else {
         ElMessage.info("No audio files found.")
       }
-    } catch (error: any) {
-      if (error.name !== "AbortError") {
-        ElMessage.error(error?.message || t("settings.local_access_error"))
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name !== "AbortError") {
+        ElMessage.error(error.message || t("settings.local_access_error"))
       }
     } finally {
       parsing.value = false
@@ -55,6 +58,7 @@ const requestDirectoryAccess = async () => {
   }
 }
 
+/** 处理目录选择器的文件变更事件 */
 const handleDirectoryInputChange = async (event: Event) => {
   const input = event.target as HTMLInputElement
   const files = input.files
@@ -71,7 +75,7 @@ const handleDirectoryInputChange = async (event: Event) => {
       allScannedFiles.value.push({
         file,
         name: file.name,
-        path: (file as any).webkitRelativePath || file.name,
+        path: (file as File & { webkitRelativePath: string }).webkitRelativePath || file.name,
         size: file.size,
         type: file.type,
         metadata: null,
@@ -84,7 +88,8 @@ const handleDirectoryInputChange = async (event: Event) => {
   input.value = ""
 }
 
-const scanDirectory = async (dirHandle: any, path = "") => {
+/** 递归扫描目录中的音频文件 */
+const scanDirectory = async (dirHandle: FileSystemDirectoryHandle, path = "") => {
   for await (const entry of dirHandle.values()) {
     if (allScannedFiles.value.length >= fileScanLimit) return
     if (entry.kind === "file") {
@@ -109,6 +114,7 @@ const scanDirectory = async (dirHandle: any, path = "") => {
   }
 }
 
+/** 切换文件选中状态 */
 const toggleFileSelection = (path: string) => {
   if (selectedFiles.value.has(path)) {
     selectedFiles.value.delete(path)
@@ -117,7 +123,8 @@ const toggleFileSelection = (path: string) => {
   }
 }
 
-const parseFileMetadata = async (fileItem: any) => {
+/** 解析单个文件的音频元数据 */
+const parseFileMetadata = async (fileItem: ScannedFileItem) => {
   if (fileItem.metadata) return
   fileItem.loading = true
   try {
@@ -129,9 +136,10 @@ const parseFileMetadata = async (fileItem: any) => {
   }
 }
 
+/** 批量解析选中文件的元数据 */
 const parseAllSelectedMetadata = async () => {
   parsing.value = true
-  const selectedItems = paginatedFiles.value.filter((item: any) => selectedFiles.value.has(item.path))
+  const selectedItems = paginatedFiles.value.filter((item: ScannedFileItem) => selectedFiles.value.has(item.path))
   for (const item of selectedItems) {
     if (!item.metadata) {
       await parseFileMetadata(item)
@@ -142,6 +150,7 @@ const parseAllSelectedMetadata = async () => {
   ElMessage.success(`Parsed metadata for ${selectedItems.length} file(s).`)
 }
 
+/** 批量上传选中的文件 */
 const uploadSelectedFiles = async () => {
   if (selectedFiles.value.size === 0) {
     ElMessage.warning("Please select files to upload.")
@@ -149,13 +158,21 @@ const uploadSelectedFiles = async () => {
   }
   batchUploading.value = true
   batchProgress.value = 0
-  const selectedItems = allScannedFiles.value.filter((item: any) => selectedFiles.value.has(item.path))
+  const selectedItems = allScannedFiles.value.filter((item: ScannedFileItem) => selectedFiles.value.has(item.path))
   const total = selectedItems.length
   let completed = 0
   for (const item of selectedItems) {
     try {
-      const metadata = item.metadata || {}
-      const createRes: any = await request.post("/musics", {
+      const metadata = item.metadata || {
+        title: "",
+        artist: "",
+        album: "",
+        year: "",
+        track: "",
+        genre: "",
+        duration: "",
+      }
+      const createRes = await request.post<CreateMusicData>("/musics", {
         title: metadata.title || item.name.replace(/\.[^/.]+$/, ""),
         artist: metadata.artist || "",
         intro: "",
@@ -182,17 +199,18 @@ const uploadSelectedFiles = async () => {
   batchProgress.value = 0
 }
 
+/** 全选/取消全选 */
 const selectAll = () => {
-  const allSelected = paginatedFiles.value.every((item: any) => selectedFiles.value.has(item.path))
+  const allSelected = paginatedFiles.value.every((item: ScannedFileItem) => selectedFiles.value.has(item.path))
   if (allSelected) {
-    paginatedFiles.value.forEach((item: any) => selectedFiles.value.delete(item.path))
+    paginatedFiles.value.forEach((item: ScannedFileItem) => selectedFiles.value.delete(item.path))
   } else {
-    paginatedFiles.value.forEach((item: any) => selectedFiles.value.add(item.path))
+    paginatedFiles.value.forEach((item: ScannedFileItem) => selectedFiles.value.add(item.path))
   }
 }
 
 onMounted(() => {
-  supportsFSAccess.value = !!(window as any).showDirectoryPicker
+  supportsFSAccess.value = !!(window as unknown as { showDirectoryPicker?: unknown }).showDirectoryPicker
 })
 </script>
 
@@ -244,7 +262,7 @@ onMounted(() => {
     </div>
 
     <div v-if="batchProgress > 0" class="batch-progress-bar">
-      <el-progress :percentage="batchProgress" :stroke-width="14" :text-inside="true" />
+      <el-progress :percentage="batchProgress" :stroke-width="14" text-inside />
     </div>
 
     <div class="files-table" v-if="allScannedFiles.length > 0">

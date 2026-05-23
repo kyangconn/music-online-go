@@ -3,6 +3,7 @@ import type { FormInstance, FormRules } from "element-plus"
 import { ElMessage } from "element-plus"
 import { ref, reactive } from "vue"
 import { useRouter } from "vue-router"
+import type { LoginData } from "@/types/api"
 import { useUserStore } from "@/store/user"
 import request from "@/utils/request"
 
@@ -21,13 +22,14 @@ const rules = reactive<FormRules>({
   password: [{ required: true, message: "Please input password", trigger: "blur" }],
 })
 
+/** 处理登录表单提交 */
 const handleLogin = async (formEl: FormInstance | undefined) => {
   if (!formEl) return
   await formEl.validate(async (valid) => {
     if (valid) {
       loading.value = true
       try {
-        const res: any = await request.post("/users/login", loginForm)
+        const res = await request.post<LoginData>("/users/login", loginForm)
         userStore.setToken(res.data.token)
         userStore.setUser(res.data.user)
         ElMessage.success("Login successful")

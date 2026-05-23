@@ -17,7 +17,8 @@ const registerForm = reactive({
   full_name: "",
 })
 
-const validatePass2 = (_rule: any, value: any, callback: any) => {
+/** 验证确认密码是否一致 */
+const validatePass2 = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
   if (value === "") {
     callback(new Error("Please input the password again"))
   } else if (value !== registerForm.password) {
@@ -44,6 +45,7 @@ const rules = reactive<FormRules>({
   full_name: [{ required: true, message: "Please input full name", trigger: "blur" }],
 })
 
+/** 处理注册表单提交 */
 const handleRegister = async (formEl: FormInstance | undefined) => {
   if (!formEl) return
   await formEl.validate(async (valid) => {

@@ -3,7 +3,7 @@ import { ElMessage } from "element-plus"
 import { ref } from "vue"
 import { useI18n } from "vue-i18n"
 
-const directoryHandle = ref<any>(null)
+const directoryHandle = ref<FileSystemDirectoryHandle | null>(null)
 const hasPermission = ref(false)
 const requesting = ref(false)
 const { t } = useI18n()
@@ -11,7 +11,9 @@ const { t } = useI18n()
 const requestDirectoryAccess = async () => {
   requesting.value = true
   try {
-    const handle = await (window as any).showDirectoryPicker({ mode: "read" })
+    const handle = await (
+      window as unknown as { showDirectoryPicker: (opts: { mode: string }) => Promise<FileSystemDirectoryHandle> }
+    ).showDirectoryPicker({ mode: "read" })
     directoryHandle.value = handle
     hasPermission.value = true
     ElMessage.success(t("settings.local_access_granted"))
