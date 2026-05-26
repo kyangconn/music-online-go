@@ -1,4 +1,4 @@
-.PHONY: help build build-fe build-be build-silent dev-fe dev-be test lint lint-fe lint-be lint-fix lint-any lint-rules lint-quiet typecheck typecheck-fe fmt-fe docker clean
+.PHONY: help build build-fe build-be build-silent dev-fe dev-be test lint lint-fe lint-be docker clean
 
 .DEFAULT_GOAL := help
 
@@ -19,11 +19,6 @@ help: ## Show available commands
 	@echo "=== Quality ==="
 	@echo "  make lint           Run all linters (Go + ESLint)"
 	@echo "  make lint-fe        Run ESLint on frontend"
-	@echo "  make lint-fix       Run ESLint with auto-fix"
-	@echo "  make lint-any       Show @typescript-eslint/no-explicit-any warnings only"
-	@echo "  make lint-rules     Show ESLint rule statistics (sorted by count)"
-	@echo "  make typecheck      Run TypeScript type check (vue-tsc)"
-	@echo "  make fmt-fe         Format frontend code (prettier)"
 	@echo "  make lint-be        Run Go vet"
 	@echo "  make test           Run all tests (Go + frontend lint)"
 	@echo ""
@@ -60,31 +55,13 @@ test-be: ## Run Go tests
 lint: ## Run all linters (Go fmt + vet + ESLint)
 	go fmt ./...
 	go vet ./...
-	cd $(FE_DIR) && pnpm lint
+	cd $(FE_DIR) && pnpm lint --quiet --format compact
 
 lint-fe: ## Run ESLint on frontend
-	cd $(FE_DIR) && pnpm eslint .
-
-lint-quiet: ## Run ESLint on frontend (errors+warnings only, compact output)
-	cd $(FE_DIR) && pnpm eslint . --quiet --format compact
-
-lint-fix: ## Run ESLint with --fix
-	cd $(FE_DIR) && pnpm eslint . --fix
+	cd $(FE_DIR) && pnpm eslint . --fix --quiet --format compact
 
 lint-be: ## Run Go vet
 	go vet ./...
-
-# ── TypeScript ────────────────────────────────────────────
-
-typecheck: typecheck-fe ## Run TypeScript type check
-
-typecheck-fe: ## Run vue-tsc type check (no emit)
-	cd $(FE_DIR) && pnpm vue-tsc -b --noEmit
-
-# ── Formatting ────────────────────────────────────────────
-
-fmt-fe: ## Format frontend with prettier
-	cd $(FE_DIR) && pnpm prettier --write "src/**/*.{vue,ts,js,css,scss}"
 
 # ── Docker ────────────────────────────────────────────────
 

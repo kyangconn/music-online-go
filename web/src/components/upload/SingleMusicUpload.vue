@@ -183,7 +183,7 @@ const handleSubmit = async () => {
           <el-icon :size="28"><PictureFilled /></el-icon>
           <div class="file-card-info">
             <p class="file-card-label">{{ $t("add.cover") }}</p>
-            <p class="file-card-name">{{ coverFile ? coverFile.name : "Not selected" }}</p>
+            <p class="file-card-name">{{ coverFile ? coverFile.name : $t("common.not_selected") }}</p>
             <p v-if="coverFile" class="file-card-size">{{ formatFileSize(coverFile.size) }}</p>
           </div>
         </div>
@@ -210,7 +210,7 @@ const handleSubmit = async () => {
           <el-icon :size="28"><Headset /></el-icon>
           <div class="file-card-info">
             <p class="file-card-label">{{ $t("add.audio") }}</p>
-            <p class="file-card-name">{{ audioFile ? audioFile.name : "Not selected" }}</p>
+            <p class="file-card-name">{{ audioFile ? audioFile.name : $t("common.not_selected") }}</p>
             <p v-if="audioFile" class="file-card-size">{{ formatFileSize(audioFile.size) }}</p>
           </div>
         </div>

@@ -57,7 +57,7 @@ const handlePageChange = (page: number) => {
     </div>
 
     <div class="music-section">
-      <h2 v-if="searchQuery">Search Results for "{{ searchQuery }}"</h2>
+      <h2 v-if="searchQuery">{{ $t("common.search_results_for", { query: searchQuery }) }}</h2>
       <h2 v-else>{{ $t("nav.recommended") }}</h2>
 
       <div v-if="loading" class="loading-container">
@@ -65,7 +65,7 @@ const handlePageChange = (page: number) => {
       </div>
 
       <div v-else-if="musicList.length === 0" class="empty-state">
-        <el-empty description="No music found" />
+        <el-empty :description="$t('common.no_music_found')" />
       </div>
 
       <div v-else class="music-grid-tight">

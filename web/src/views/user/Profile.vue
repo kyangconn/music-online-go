@@ -42,12 +42,12 @@ onMounted(fetchUserMusics)
         </div>
       </div>
 
-      <h3 class="section-title">Uploaded Musics</h3>
+      <h3 class="section-title">{{ $t("common.uploaded_musics") }}</h3>
       <div v-if="loading">
         <el-skeleton :rows="3" animated />
       </div>
       <div v-else-if="musicList.length === 0" class="empty">
-        <el-empty description="No uploaded musics" />
+        <el-empty :description="$t('common.no_uploaded_musics')" />
       </div>
       <div v-else class="music-grid">
         <el-card v-for="m in musicList" :key="m.id" class="music-card" shadow="hover">
@@ -57,9 +57,9 @@ onMounted(fetchUserMusics)
           <div class="meta">
             <h4 class="title">{{ m.title }}</h4>
             <p class="artist">{{ m.artist }}</p>
-            <p class="likes">Likes: {{ m.like_count ?? 0 }}</p>
+            <p class="likes">{{ $t("common.likes") }}: {{ m.like_count ?? 0 }}</p>
             <router-link :to="`/music/${m.id}`">
-              <el-button size="small" type="primary">View</el-button>
+              <el-button size="small" type="primary">{{ $t("common.view") }}</el-button>
             </router-link>
           </div>
         </el-card>

@@ -239,7 +239,7 @@ onMounted(() => {
 
       <div class="batch-actions" v-if="allScannedFiles.length > 0">
         <el-button @click="selectAll">
-          {{ selectedFiles.size === allScannedFiles.length ? "Deselect All" : "Select All" }}
+          {{ selectedFiles.size === allScannedFiles.length ? $t("common.deselect_all") : $t("common.select_all") }}
         </el-button>
         <el-button
           type="primary"
@@ -248,7 +248,7 @@ onMounted(() => {
           @click="parseAllSelectedMetadata"
           :disabled="selectedFiles.size === 0"
         >
-          Parse Metadata
+          {{ $t("common.parse_metadata") }}
         </el-button>
         <el-button
           type="success"
@@ -256,7 +256,7 @@ onMounted(() => {
           @click="uploadSelectedFiles"
           :disabled="selectedFiles.size === 0"
         >
-          Upload ({{ selectedFiles.size }})
+          {{ $t("common.upload_count", { count: selectedFiles.size }) }}
         </el-button>
       </div>
     </div>
@@ -296,7 +296,10 @@ onMounted(() => {
         </el-table-column>
       </el-table>
       <div class="table-footer">
-        <span>Total: {{ allScannedFiles.length }} files · Selected: {{ selectedFiles.size }}</span>
+        <span
+          >{{ $t("common.total_files", { total: allScannedFiles.length }) }} ·
+          {{ $t("common.selected_files", { count: selectedFiles.size }) }}</span
+        >
         <el-pagination
           v-model:current-page="currentPage"
           :page-size="pageSize"
@@ -309,8 +312,8 @@ onMounted(() => {
     </div>
     <div class="empty-state" v-else>
       <el-icon :size="48"><FolderOpened /></el-icon>
-      <p>No audio files found or directory not selected.</p>
-      <p class="hint">Click the button above to start importing.</p>
+      <p>{{ $t("common.no_audio_found") }}</p>
+      <p class="hint">{{ $t("common.start_import_hint") }}</p>
     </div>
   </div>
 </template>

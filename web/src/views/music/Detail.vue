@@ -140,11 +140,11 @@ onMounted(fetchDetail)
             <h1 class="music-title">{{ music?.title }}</h1>
             <p class="music-artist">{{ music?.artist }}</p>
             <el-descriptions :column="1" border>
-              <el-descriptions-item label="Type">{{ music?.type }}</el-descriptions-item>
-              <el-descriptions-item label="Album">{{
-                music?.album_id ? "Album Track" : "Single"
+              <el-descriptions-item :label="$t('common.type')">{{ music?.type }}</el-descriptions-item>
+              <el-descriptions-item :label="$t('common.album')">{{
+                music?.album_id ? $t("common.album_track") : $t("common.single")
               }}</el-descriptions-item>
-              <el-descriptions-item label="Duration">{{ formatTime(duration) }}</el-descriptions-item>
+              <el-descriptions-item :label="$t('common.duration')">{{ formatTime(duration) }}</el-descriptions-item>
             </el-descriptions>
             <div class="likes-row">
               <el-button
@@ -156,7 +156,7 @@ onMounted(fetchDetail)
               </el-button>
             </div>
             <div class="actions">
-              <el-button @click="router.back()">Back</el-button>
+              <el-button @click="router.back()">{{ $t("common.back") }}</el-button>
             </div>
           </div>
         </div>
@@ -199,7 +199,7 @@ onMounted(fetchDetail)
           </div>
         </div>
         <div v-else class="no-audio-hint">
-          <el-alert title="No audio file available" type="info" :closable="false" show-icon />
+          <el-alert :title="$t('common.no_audio_available')" type="info" :closable="false" show-icon />
         </div>
       </div>
     </el-card>

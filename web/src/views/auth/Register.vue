@@ -17,7 +17,6 @@ const registerForm = reactive({
   full_name: "",
 })
 
-/** 验证确认密码是否一致 */
 const validatePass2 = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
   if (value === "") {
     callback(new Error("Please input the password again"))
@@ -45,7 +44,6 @@ const rules = reactive<FormRules>({
   full_name: [{ required: true, message: "Please input full name", trigger: "blur" }],
 })
 
-/** 处理注册表单提交 */
 const handleRegister = async (formEl: FormInstance | undefined) => {
   if (!formEl) return
   await formEl.validate(async (valid) => {
@@ -57,7 +55,6 @@ const handleRegister = async (formEl: FormInstance | undefined) => {
         ElMessage.success("Registration successful! Please login.")
         router.push("/login")
       } catch (_e) {
-        // Error handled by interceptor
       } finally {
         loading.value = false
       }
@@ -71,49 +68,51 @@ const handleRegister = async (formEl: FormInstance | undefined) => {
     <el-card class="auth-box">
       <template #header>
         <div class="card-header">
-          <h2>Create Account</h2>
-          <p>Join our music community today</p>
+          <h2>{{ $t("auth.register_title") }}</h2>
+          <p>{{ $t("auth.register_subtitle") }}</p>
         </div>
       </template>
 
       <el-form ref="formRef" :model="registerForm" :rules="rules" label-position="top" size="large">
-        <el-form-item label="Username" prop="username">
-          <el-input v-model="registerForm.username" placeholder="Choose a username" />
+        <el-form-item :label="$t('auth.username')" prop="username">
+          <el-input v-model="registerForm.username" :placeholder="$t('auth.username_choose')" />
         </el-form-item>
-
-        <el-form-item label="Full Name" prop="full_name">
-          <el-input v-model="registerForm.full_name" placeholder="Your full name" />
+        <el-form-item :label="$t('auth.full_name')" prop="full_name">
+          <el-input v-model="registerForm.full_name" :placeholder="$t('auth.full_name_placeholder')" />
         </el-form-item>
-
-        <el-form-item label="Email" prop="email">
-          <el-input v-model="registerForm.email" placeholder="Your email address" />
+        <el-form-item :label="$t('auth.email')" prop="email">
+          <el-input v-model="registerForm.email" :placeholder="$t('auth.email_placeholder')" />
         </el-form-item>
-
-        <el-form-item label="Password" prop="password">
-          <el-input v-model="registerForm.password" type="password" placeholder="Create a password" show-password />
-        </el-form-item>
-
-        <el-form-item label="Confirm Password" prop="confirmPassword">
+        <el-form-item :label="$t('auth.password_label')" prop="password">
           <el-input
-            v-model="registerForm.confirmPassword"
+            v-model="registerForm.password"
             type="password"
-            placeholder="Confirm your password"
+            :placeholder="$t('auth.password_create')"
             show-password
           />
         </el-form-item>
-
+        <el-form-item :label="$t('auth.confirm_password')" prop="confirmPassword">
+          <el-input
+            v-model="registerForm.confirmPassword"
+            type="password"
+            :placeholder="$t('auth.confirm_password_placeholder')"
+            show-password
+          />
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="loading" class="w-full" @click="handleRegister(formRef)">
-            Register
+            {{ $t("auth.register_btn") }}
           </el-button>
         </el-form-item>
         <el-form-item>
-          <el-button class="w-full" @click="router.push('/')"> Back to Home </el-button>
+          <el-button class="w-full" @click="router.push('/')">{{ $t("auth.back_home") }}</el-button>
         </el-form-item>
       </el-form>
 
       <div class="auth-footer-link">
-        <p>Already have an account? <router-link to="/login">Login here</router-link></p>
+        <p>
+          {{ $t("auth.have_account") }} <router-link to="/login">{{ $t("auth.login_here") }}</router-link>
+        </p>
       </div>
     </el-card>
   </div>
