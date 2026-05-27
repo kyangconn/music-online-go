@@ -1,63 +1,61 @@
 <script setup lang="ts">
-import { ArrowLeft } from "@element-plus/icons-vue"
-import { computed, watch } from "vue"
+import { ArrowLeft } from "@element-plus/icons-vue";
+import { computed, watch } from "vue";
 
 export interface TabItem {
-  id: string
-  label: string
-  icon?: string
-  badge?: string | number
-  disabled?: boolean
+  id: string;
+  label: string;
+  icon?: string;
+  badge?: string | number;
+  disabled?: boolean;
 }
 
 interface Props {
-  layoutMode?: "sidebar" | "tabs"
-  title?: string
-  tabs: TabItem[]
-  modelValue?: string
-  showContentHeader?: boolean
-  showBackButton?: boolean
+  title?: string;
+  tabs: TabItem[];
+  modelValue?: string;
+  showContentHeader?: boolean;
+  showBackButton?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  layoutMode: "sidebar",
   title: "设置",
   modelValue: "",
   showContentHeader: true,
   showBackButton: false,
-})
+});
 
 const emit = defineEmits<{
-  (e: "update:modelValue", value: string): void
-  (e: "tab-change", value: string): void
-  (e: "back"): void
-}>()
+  (e: "update:modelValue", value: string): void;
+  (e: "tab-change", value: string): void;
+  (e: "back"): void;
+}>();
 
 const getActiveTabLabel = computed(() => {
-  const active = props.tabs.find((tab) => tab.id === props.modelValue)
-  return active ? active.label : ""
-})
+  const active = props.tabs.find((tab) => tab.id === props.modelValue);
+  return active ? active.label : "";
+});
 
 const handleTabClick = (tabId: string) => {
   if (tabId !== props.modelValue) {
-    emit("update:modelValue", tabId)
-    emit("tab-change", tabId)
+    emit("update:modelValue", tabId);
+    emit("tab-change", tabId);
   }
-}
+};
 
 watch(
   () => props.tabs,
   (newTabs) => {
     if (newTabs && newTabs.length > 0 && (!props.modelValue || !newTabs.find((t) => t.id === props.modelValue))) {
-      emit("update:modelValue", newTabs[0]!.id)
+      emit("update:modelValue", newTabs[0]!.id);
     }
   },
   { immediate: true },
-)
+);
 </script>
 
 <template>
-  <div class="side-nav-layout" :class="layoutMode">
+  <div class="side-nav-layout">
     <div class="layout-wrapper">
       <header class="layout-header">
         <div class="header-left">
@@ -74,7 +72,7 @@ watch(
         </div>
       </header>
 
-      <aside class="layout-sidebar" v-if="layoutMode === 'sidebar'">
+      <aside class="layout-sidebar">
         <nav class="sidebar-nav">
           <ul>
             <li
@@ -97,25 +95,6 @@ watch(
           <slot name="sidebar-footer"></slot>
         </div>
       </aside>
-
-      <nav v-if="layoutMode === 'tabs'" class="layout-tabs">
-        <div class="tabs-container">
-          <button
-            v-for="tab in tabs"
-            :key="tab.id"
-            :class="{
-              'tab-button': true,
-              active: modelValue === tab.id,
-              disabled: tab.disabled,
-            }"
-            @click="!tab.disabled && handleTabClick(tab.id)"
-          >
-            <span class="tab-icon">{{ tab.icon }}</span>
-            <span class="tab-label">{{ tab.label }}</span>
-            <span v-if="tab.badge" class="tab-badge">{{ tab.badge }}</span>
-          </button>
-        </div>
-      </nav>
 
       <main class="layout-main">
         <div class="main-content">
@@ -147,7 +126,10 @@ watch(
 }
 
 .layout-wrapper {
-  @include flex-column(0);
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  grid-template-rows: auto 1fr;
+  grid-template-areas: "header header" "sidebar main";
   min-height: 700px;
   width: 100%;
   max-width: 1200px;
@@ -159,8 +141,8 @@ watch(
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
-// ── Header ────────────────────────────────────────────────
 .layout-header {
+  grid-area: header;
   @include flex-between;
   padding: $spacing-lg $spacing-2xl;
   border-bottom: 1px solid var(--border-color);
@@ -199,55 +181,25 @@ watch(
   font-size: 14px;
   font-weight: $fw-medium;
 }
-
 .header-right {
   @include inline-flex($spacing-md);
 }
 
-// ── Layout grid modes ─────────────────────────────────────
-.side-nav-layout.sidebar .layout-wrapper {
-  display: grid;
-  grid-template-columns: 260px 1fr;
-  grid-template-rows: auto 1fr;
-  grid-template-areas: "header header" "sidebar main";
-  .layout-header {
-    grid-area: header;
-  }
-  .layout-sidebar {
-    grid-area: sidebar;
-  }
-  .layout-main {
-    grid-area: main;
-  }
-}
-
-.side-nav-layout.tabs .layout-wrapper {
-  display: grid;
-  grid-template-rows: auto auto 1fr;
-  grid-template-areas: "header" "tabs" "main";
-  .layout-header {
-    grid-area: header;
-  }
-  .layout-tabs {
-    grid-area: tabs;
-  }
-  .layout-main {
-    grid-area: main;
-  }
-}
-
 // ── Sidebar ───────────────────────────────────────────────
 .layout-sidebar {
+  grid-area: sidebar;
   border-right: 1px solid var(--border-color);
   @include flex-column(0);
   overflow-y: auto;
   background-color: var(--bg-card);
 }
 
-.sidebar-nav ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+.sidebar-nav {
+  ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
 }
 
 .nav-item {
@@ -279,7 +231,6 @@ watch(
   font-size: 15px;
   flex: 1;
 }
-
 .nav-badge {
   background-color: var(--accent-color);
   color: white;
@@ -295,59 +246,9 @@ watch(
   border-top: 1px solid var(--border-color);
 }
 
-// ── Tabs ──────────────────────────────────────────────────
-.layout-tabs {
-  border-bottom: 1px solid var(--border-color);
-  background-color: var(--bg-card);
-  overflow-x: auto;
-}
-
-.tabs-container {
-  display: flex;
-  padding: 0 $spacing-xl;
-}
-
-.tab-button {
-  @include inline-flex($spacing-sm);
-  padding: $spacing-lg $spacing-2xl;
-  background: none;
-  border: none;
-  border-bottom: 3px solid transparent;
-  cursor: pointer;
-  transition: all $transition-base;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  font-size: 15px;
-  &:hover:not(.disabled) {
-    background-color: var(--hover-bg);
-    color: inherit;
-  }
-  &.active {
-    color: var(--accent-color);
-    border-bottom-color: var(--accent-color);
-    font-weight: $fw-semibold;
-    background-color: var(--active-bg);
-  }
-  &.disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-}
-
-.tab-icon {
-  font-size: $fs-md;
-}
-.tab-badge {
-  background-color: var(--accent-color);
-  color: white;
-  font-size: $fs-xs;
-  padding: $spacing-xs $spacing-sm;
-  border-radius: $radius-lg;
-  margin-left: $spacing-sm;
-}
-
 // ── Main content ──────────────────────────────────────────
 .layout-main {
+  grid-area: main;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -378,30 +279,18 @@ watch(
   min-height: 0;
 }
 
-// ── Responsive ────────────────────────────────────────────
+// ── Responsive: sidebar collapses, header goes sticky ─────
 @include tablet {
-  .side-nav-layout.sidebar .layout-wrapper {
+  .layout-wrapper {
     grid-template-columns: 1fr;
     grid-template-areas: "header" "main";
-    .layout-sidebar {
-      display: none;
-    }
-    .layout-header {
-      position: sticky;
-      top: 0;
-    }
   }
-  .side-nav-layout.tabs {
-    .tabs-container {
-      padding: 0 $spacing-md;
-    }
-    .tab-button {
-      padding: $spacing-md $spacing-lg;
-      font-size: 14px;
-    }
-    .tab-icon {
-      margin-right: 6px;
-    }
+  .layout-sidebar {
+    display: none;
+  }
+  .layout-header {
+    position: sticky;
+    top: 0;
   }
   .main-content {
     padding: $spacing-lg;

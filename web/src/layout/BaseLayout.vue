@@ -1,27 +1,27 @@
 <script setup lang="ts">
-import { Search, Moon, Sunny, Headset } from "@element-plus/icons-vue"
-import { ref, computed } from "vue"
-import { useRouter, useRoute } from "vue-router"
-import { useThemeStore } from "@/store/theme"
-import { useUserStore } from "@/store/user"
+import { Search, Moon, Sunny, Headset } from "@element-plus/icons-vue";
+import { ref, computed } from "vue";
+import { useRouter, useRoute } from "vue-router";
+import { useThemeStore } from "@/store/theme";
+import { useUserStore } from "@/store/user";
 
-const router = useRouter()
-const route = useRoute()
-const userStore = useUserStore()
-const themeStore = useThemeStore()
+const router = useRouter();
+const route = useRoute();
+const userStore = useUserStore();
+const themeStore = useThemeStore();
 
-const searchQuery = ref("")
+const searchQuery = ref("");
 const handleSearch = () => {
   if (searchQuery.value) {
-    router.push({ name: "Home", query: { q: searchQuery.value } })
+    router.push({ name: "Home", query: { q: searchQuery.value } });
   }
-}
-const hideSearch = computed(() => route.name === "Login" || route.name === "Register")
+};
+const hideSearch = computed(() => route.name === "Login" || route.name === "Register");
 
 const handleLogout = () => {
-  userStore.logout()
-  router.push("/")
-}
+  userStore.logout();
+  router.push("/");
+};
 </script>
 
 <template>

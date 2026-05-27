@@ -78,7 +78,7 @@ When in doubt, run `make help` to see all available commands.
 ### 7. Code Style
 
 - **Go**: Standard `gofmt`. Run `go fmt ./...` before committing.
-- **Vue/TS**: Follow the project's ESLint config (includes `eslint-plugin-vue`, `eslint-config-prettier`, `eslint-plugin-perfectionist`).
+- **Vue/TS**: Follow the project's ESLint config (includes `eslint-plugin-vue`, `typescript-eslint`, `eslint-plugin-perfectionist` for import ordering). There is no Prettier — ESLint handles both linting and formatting.
 - Keep changes minimal and consistent with existing patterns.
 
 ### 8. Important Nuances

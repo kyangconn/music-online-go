@@ -1,52 +1,52 @@
 <script setup lang="ts">
-import { VideoPlay, StarFilled } from "@element-plus/icons-vue"
-import { ElMessage } from "element-plus"
-import { ref, watch } from "vue"
-import { useRoute } from "vue-router"
-import type { Music, PaginatedData } from "@/types/api"
-import request from "@/utils/request"
+import { VideoPlay, StarFilled } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
+import { ref, watch } from "vue";
+import { useRoute } from "vue-router";
+import type { Music, PaginatedData } from "@/types/api";
+import request from "@/utils/request";
 
-const route = useRoute()
-const musicList = ref<Music[]>([])
-const loading = ref(false)
-const searchQuery = ref("")
-const total = ref(0)
-const currentPage = ref(1)
-const pageSize = ref(12)
+const route = useRoute();
+const musicList = ref<Music[]>([]);
+const loading = ref(false);
+const searchQuery = ref("");
+const total = ref(0);
+const currentPage = ref(1);
+const pageSize = ref(12);
 
 const fetchMusic = async () => {
-  loading.value = true
+  loading.value = true;
   try {
     const params = {
       q: searchQuery.value,
       page: currentPage.value,
       page_size: pageSize.value,
-    }
-    const res = await request.get<PaginatedData<Music>>("/musics", { params })
-    musicList.value = res.data.items || []
-    total.value = res.data.total
+    };
+    const res = await request.get<PaginatedData<Music>>("/musics", { params });
+    musicList.value = res.data.items || [];
+    total.value = res.data.total;
   } catch (error) {
-    console.error(error)
-    ElMessage.error("Failed to load music list")
+    console.error(error);
+    ElMessage.error("Failed to load music list");
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
 watch(
   () => route.query.q,
   (newQ) => {
-    searchQuery.value = (newQ as string) || ""
-    currentPage.value = 1
-    fetchMusic()
+    searchQuery.value = (newQ as string) || "";
+    currentPage.value = 1;
+    fetchMusic();
   },
   { immediate: true },
-)
+);
 
 const handlePageChange = (page: number) => {
-  currentPage.value = page
-  fetchMusic()
-}
+  currentPage.value = page;
+  fetchMusic();
+};
 </script>
 
 <template>

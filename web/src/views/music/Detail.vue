@@ -1,122 +1,122 @@
 <script setup lang="ts">
-import { VideoPause, VideoPlay, Star, StarFilled } from "@element-plus/icons-vue"
-import { ElMessage } from "element-plus"
-import { ref, onMounted, computed } from "vue"
-import { useRoute, useRouter } from "vue-router"
-import type { Music } from "@/types/api"
-import { useUserStore } from "@/store/user"
-import request from "@/utils/request"
+import { VideoPause, VideoPlay, Star, StarFilled } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
+import { ref, onMounted, computed } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import type { Music } from "@/types/api";
+import { useUserStore } from "@/store/user";
+import request from "@/utils/request";
 
-const route = useRoute()
-const router = useRouter()
-const userStore = useUserStore()
-const id = route.params.id as string
-const loading = ref(true)
-const music = ref<Music | null>(null)
-const audioRef = ref<HTMLAudioElement>()
-const isPlaying = ref(false)
-const currentTime = ref(0)
-const duration = ref(0)
-const volume = ref(0.8)
-const isLiked = ref(false)
-const likeCount = ref(0)
+const route = useRoute();
+const router = useRouter();
+const userStore = useUserStore();
+const id = route.params.id as string;
+const loading = ref(true);
+const music = ref<Music | null>(null);
+const audioRef = ref<HTMLAudioElement>();
+const isPlaying = ref(false);
+const currentTime = ref(0);
+const duration = ref(0);
+const volume = ref(0.8);
+const isLiked = ref(false);
+const likeCount = ref(0);
 
 const audioSrc = computed(() => {
-  if (!music.value) return ""
+  if (!music.value) return "";
   if (music.value.path && music.value.path.startsWith("/")) {
-    return music.value.path
+    return music.value.path;
   }
-  return `/api/v1/musics/${id}/stream`
-})
+  return `/api/v1/musics/${id}/stream`;
+});
 
 const fetchDetail = async () => {
-  loading.value = true
+  loading.value = true;
   try {
-    const res = await request.get<Music>(`/musics/${id}`)
-    music.value = res.data
-    isLiked.value = res.data.is_liked ?? false
-    likeCount.value = res.data.like_count ?? 0
+    const res = await request.get<Music>(`/musics/${id}`);
+    music.value = res.data;
+    isLiked.value = res.data.is_liked ?? false;
+    likeCount.value = res.data.like_count ?? 0;
   } catch (_e) {
-    ElMessage.error("Failed to load music detail")
+    ElMessage.error("Failed to load music detail");
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
 const togglePlay = () => {
-  if (!audioRef.value) return
+  if (!audioRef.value) return;
   if (audioRef.value.paused) {
-    audioRef.value.play()
-    isPlaying.value = true
+    audioRef.value.play();
+    isPlaying.value = true;
   } else {
-    audioRef.value.pause()
-    isPlaying.value = false
+    audioRef.value.pause();
+    isPlaying.value = false;
   }
-}
+};
 
 const onTimeUpdate = () => {
-  if (audioRef.value) currentTime.value = audioRef.value.currentTime
-}
+  if (audioRef.value) currentTime.value = audioRef.value.currentTime;
+};
 const onLoadedMetadata = () => {
-  if (audioRef.value) duration.value = audioRef.value.duration
-}
+  if (audioRef.value) duration.value = audioRef.value.duration;
+};
 const onEnded = () => {
-  isPlaying.value = false
-  currentTime.value = 0
-}
+  isPlaying.value = false;
+  currentTime.value = 0;
+};
 const onPlay = () => {
-  isPlaying.value = true
-}
+  isPlaying.value = true;
+};
 const onPause = () => {
-  isPlaying.value = false
-}
+  isPlaying.value = false;
+};
 const seek = (seconds: number) => {
-  if (audioRef.value) audioRef.value.currentTime = seconds
-}
+  if (audioRef.value) audioRef.value.currentTime = seconds;
+};
 
 const formatTime = (seconds: number) => {
-  if (!seconds || !isFinite(seconds)) return "0:00"
-  const m = Math.floor(seconds / 60)
-  const s = Math.floor(seconds % 60)
-  return `${m}:${s.toString().padStart(2, "0")}`
-}
+  if (!seconds || !isFinite(seconds)) return "0:00";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+};
 
 const progressPercent = computed(() => {
-  if (!duration.value) return 0
-  return (currentTime.value / duration.value) * 100
-})
+  if (!duration.value) return 0;
+  return (currentTime.value / duration.value) * 100;
+});
 
 const handleProgressClick = (e: MouseEvent) => {
-  const bar = e.currentTarget as HTMLElement
-  const rect = bar.getBoundingClientRect()
-  const percent = (e.clientX - rect.left) / rect.width
-  seek(percent * duration.value)
-}
+  const bar = e.currentTarget as HTMLElement;
+  const rect = bar.getBoundingClientRect();
+  const percent = (e.clientX - rect.left) / rect.width;
+  seek(percent * duration.value);
+};
 
 const handleLike = async () => {
   if (!userStore.isLoggedIn) {
-    ElMessage.warning("Please login first")
-    router.push("/login")
-    return
+    ElMessage.warning("Please login first");
+    router.push("/login");
+    return;
   }
   try {
     if (isLiked.value) {
-      await request.delete(`/musics/${id}/like`)
-      isLiked.value = false
-      likeCount.value = Math.max(0, likeCount.value - 1)
-      ElMessage.success("Unliked")
+      await request.delete(`/musics/${id}/like`);
+      isLiked.value = false;
+      likeCount.value = Math.max(0, likeCount.value - 1);
+      ElMessage.success("Unliked");
     } else {
-      await request.post(`/musics/${id}/like`)
-      isLiked.value = true
-      likeCount.value += 1
-      ElMessage.success("Liked")
+      await request.post(`/musics/${id}/like`);
+      isLiked.value = true;
+      likeCount.value += 1;
+      ElMessage.success("Liked");
     }
   } catch (_e) {
-    ElMessage.error("Operation failed")
+    ElMessage.error("Operation failed");
   }
-}
+};
 
-onMounted(fetchDetail)
+onMounted(fetchDetail);
 </script>
 
 <template>
@@ -191,7 +191,7 @@ onMounted(fetchDetail)
                 class="volume-slider"
                 @input="
                   (v: number) => {
-                    if (audioRef) audioRef.volume = v
+                    if (audioRef) audioRef.volume = v;
                   }
                 "
               />

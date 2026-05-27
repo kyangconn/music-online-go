@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { ElMessage, type FormInstance, type FormRules } from "element-plus"
-import { ref, reactive, computed } from "vue"
-import { useI18n } from "vue-i18n"
-import { useUserStore } from "@/store/user"
+import { ElMessage, type FormInstance, type FormRules } from "element-plus";
+import { ref, reactive, computed } from "vue";
+import { useI18n } from "vue-i18n";
+import { useUserStore } from "@/store/user";
 
-const { t } = useI18n()
-const userStore = useUserStore()
+const { t } = useI18n();
+const userStore = useUserStore();
 
-const loading = ref(false)
-const formRef = ref<FormInstance>()
+const loading = ref(false);
+const formRef = ref<FormInstance>();
 
 const updateForm = reactive({
   full_name: userStore.user?.full_name || "",
@@ -18,24 +18,24 @@ const updateForm = reactive({
   current_password: "",
   new_password: "",
   confirm_password: "",
-})
+});
 
-const isChangingPassword = computed(() => updateForm.new_password.length > 0)
+const isChangingPassword = computed(() => updateForm.new_password.length > 0);
 
 /** 验证确认密码 */
 const validateConfirmPassword = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
   if (isChangingPassword.value) {
     if (!value) {
-      callback(new Error(t("settings.password_confirm_error")))
+      callback(new Error(t("settings.password_confirm_error")));
     } else if (value !== updateForm.new_password) {
-      callback(new Error(t("settings.password_confirm_error")))
+      callback(new Error(t("settings.password_confirm_error")));
     } else {
-      callback()
+      callback();
     }
   } else {
-    callback()
+    callback();
   }
-}
+};
 
 const rules = reactive<FormRules>({
   full_name: [{ required: true, message: "Please input full name", trigger: "blur" }],
@@ -47,9 +47,9 @@ const rules = reactive<FormRules>({
     {
       validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
         if (isChangingPassword.value && !value) {
-          callback(new Error(t("settings.password_required")))
+          callback(new Error(t("settings.password_required")));
         } else {
-          callback()
+          callback();
         }
       },
       trigger: "blur",
@@ -59,54 +59,54 @@ const rules = reactive<FormRules>({
     {
       validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
         if (isChangingPassword.value && value.length < 6) {
-          callback(new Error("Password must be at least 6 characters"))
+          callback(new Error("Password must be at least 6 characters"));
         } else {
-          callback()
+          callback();
         }
       },
       trigger: "blur",
     },
   ],
   confirm_password: [{ validator: validateConfirmPassword, trigger: "blur" }],
-})
+});
 
 const emit = defineEmits<{
-  (e: "cancel"): void
-}>()
+  (e: "cancel"): void;
+}>();
 
 /** 提交资料和密码修改 */
 const handleSubmit = async (formEl: FormInstance | undefined) => {
-  if (!formEl) return
+  if (!formEl) return;
   try {
-    const valid = await formEl.validate()
-    if (!valid) return
-    loading.value = true
+    const valid = await formEl.validate();
+    if (!valid) return;
+    loading.value = true;
 
-    const profileData: Record<string, string> = {}
-    if (updateForm.full_name !== (userStore.user?.full_name || "")) profileData.full_name = updateForm.full_name
-    if (updateForm.email !== (userStore.user?.email || "")) profileData.email = updateForm.email
-    if (updateForm.nickname !== (userStore.user?.nickname || "")) profileData.nickname = updateForm.nickname
-    if (updateForm.bio !== (userStore.user?.bio || "")) profileData.bio = updateForm.bio
+    const profileData: Record<string, string> = {};
+    if (updateForm.full_name !== (userStore.user?.full_name || "")) profileData.full_name = updateForm.full_name;
+    if (updateForm.email !== (userStore.user?.email || "")) profileData.email = updateForm.email;
+    if (updateForm.nickname !== (userStore.user?.nickname || "")) profileData.nickname = updateForm.nickname;
+    if (updateForm.bio !== (userStore.user?.bio || "")) profileData.bio = updateForm.bio;
 
     if (Object.keys(profileData).length > 0) {
-      await userStore.updateUser(profileData)
+      await userStore.updateUser(profileData);
     }
 
     if (isChangingPassword.value) {
-      await userStore.changePassword(updateForm.current_password, updateForm.new_password)
+      await userStore.changePassword(updateForm.current_password, updateForm.new_password);
     }
 
-    ElMessage.success(t("settings.save_success"))
-    updateForm.current_password = ""
-    updateForm.new_password = ""
-    updateForm.confirm_password = ""
+    ElMessage.success(t("settings.save_success"));
+    updateForm.current_password = "";
+    updateForm.new_password = "";
+    updateForm.confirm_password = "";
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : t("settings.save_failed")
-    ElMessage.error(msg)
+    const msg = error instanceof Error ? error.message : t("settings.save_failed");
+    ElMessage.error(msg);
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 </script>
 
 <template>

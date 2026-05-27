@@ -1,24 +1,24 @@
 <script setup lang="ts">
-import { Moon, Sunny, Refresh } from "@element-plus/icons-vue"
-import { computed } from "vue"
-import { useThemeStore } from "@/store/theme"
+import { Moon, Sunny, Refresh } from "@element-plus/icons-vue";
+import { computed } from "vue";
+import { useThemeStore } from "@/store/theme";
 
-const themeStore = useThemeStore()
+const themeStore = useThemeStore();
 
 const themeMode = computed({
   get() {
-    if (themeStore.autoSync) return "auto"
-    return themeStore.isDark ? "dark" : "light"
+    if (themeStore.autoSync) return "auto";
+    return themeStore.isDark ? "dark" : "light";
   },
   set(mode: string) {
     if (mode === "auto") {
-      themeStore.setAutoSync(true)
+      themeStore.setAutoSync(true);
     } else {
-      themeStore.setAutoSync(false)
-      themeStore.setDarkMode(mode === "dark")
+      themeStore.setAutoSync(false);
+      themeStore.setDarkMode(mode === "dark");
     }
   },
-})
+});
 </script>
 
 <template>

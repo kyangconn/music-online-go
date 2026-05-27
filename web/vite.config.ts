@@ -1,11 +1,12 @@
 import vue from "@vitejs/plugin-vue"
-import path from "path"
+import { fileURLToPath, URL } from "node:url"
 import { defineConfig, loadEnv } from "vite"
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "")
   const apiTarget = env.VITE_API_PROXY_TARGET || "http://localhost:8080"
+
   return {
     plugins: [vue()],
     server: {
@@ -22,7 +23,7 @@ export default defineConfig(({ mode }) => {
     },
     resolve: {
       alias: {
-        "@": path.resolve(__dirname, "./src"),
+        "@": fileURLToPath(new URL("./src", import.meta.url)),
       },
     },
     css: {

@@ -24,18 +24,17 @@
     ),
   ),
   $font-family: (
-    "":
-      (
-        "HarmonyOS Sans",
-        "Helvetica Neue",
-        Helvetica,
-        "PingFang SC",
-        "Hiragino Sans GB",
-        "Microsoft YaHei",
-        "微软雅黑",
-        Arial,
-        sans-serif,
-      ),
+    "": (
+      "HarmonyOS Sans",
+      "Helvetica Neue",
+      Helvetica,
+      "PingFang SC",
+      "Hiragino Sans GB",
+      "Microsoft YaHei",
+      "微软雅黑",
+      Arial,
+      sans-serif,
+    ),
   ),
   $border-radius: (
     "base": 4px,
@@ -44,7 +43,7 @@
     "large": 40px,
     "default": 32px,
     "small": 24px,
-  ),
+  )
 );
 
 // Full Element Plus styles (compiled from SCSS sources)

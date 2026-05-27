@@ -1,24 +1,24 @@
 <script setup lang="ts">
-import type { AxiosProgressEvent } from "axios"
-import type { UploadInstance, UploadFile } from "element-plus"
-import { Close, UploadFilled, PictureFilled, Headset, QuestionFilled } from "@element-plus/icons-vue"
-import { ElMessage } from "element-plus"
-import { ref, reactive } from "vue"
-import { useI18n } from "vue-i18n"
-import { useRouter } from "vue-router"
-import type { CreateMusicData, MusicMetadataFields } from "@/types/api"
-import request from "@/utils/request"
-import { loadCachedMeta, saveCachedMeta, removeCachedMeta, parseAudioFile, formatFileSize } from "@/utils/upload"
+import type { AxiosProgressEvent } from "axios";
+import type { UploadInstance, UploadFile } from "element-plus";
+import { Close, UploadFilled, PictureFilled, Headset, QuestionFilled } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
+import { ref, reactive } from "vue";
+import { useI18n } from "vue-i18n";
+import { useRouter } from "vue-router";
+import type { CreateMusicData, MusicMetadataFields } from "@/types/api";
+import request from "@/utils/request";
+import { loadCachedMeta, saveCachedMeta, removeCachedMeta, parseAudioFile, formatFileSize } from "@/utils/upload";
 
-const router = useRouter()
-useI18n()
+const router = useRouter();
+useI18n();
 
-const loading = ref(false)
-const coverFile = ref<File | null>(null)
-const audioFile = ref<File | null>(null)
-const uploadPercent = ref(0)
-const coverUploadRef = ref<UploadInstance>()
-const audioUploadRef = ref<UploadInstance>()
+const loading = ref(false);
+const coverFile = ref<File | null>(null);
+const audioFile = ref<File | null>(null);
+const uploadPercent = ref(0);
+const coverUploadRef = ref<UploadInstance>();
+const audioUploadRef = ref<UploadInstance>();
 
 const form = reactive({
   title: "",
@@ -29,7 +29,7 @@ const form = reactive({
   genre: "",
   duration: "",
   description: "",
-})
+});
 
 const touched = reactive({
   title: false,
@@ -38,123 +38,123 @@ const touched = reactive({
   year: false,
   track: false,
   genre: false,
-})
+});
 
 /** 将解析的元数据填入表单 */
 const applyMetaToForm = (meta: MusicMetadataFields) => {
-  if (!touched.title && meta.title) form.title = meta.title
-  if (!touched.artist && meta.artist) form.artist = meta.artist
-  if (!touched.album && meta.album) form.album = meta.album
-  if (!touched.year && meta.year) form.year = meta.year
-  if (!touched.track && meta.track) form.track = meta.track
-  if (!touched.genre && meta.genre) form.genre = meta.genre
-  if (meta.duration) form.duration = meta.duration
-}
+  if (!touched.title && meta.title) form.title = meta.title;
+  if (!touched.artist && meta.artist) form.artist = meta.artist;
+  if (!touched.album && meta.album) form.album = meta.album;
+  if (!touched.year && meta.year) form.year = meta.year;
+  if (!touched.track && meta.track) form.track = meta.track;
+  if (!touched.genre && meta.genre) form.genre = meta.genre;
+  if (meta.duration) form.duration = meta.duration;
+};
 
 /** 封面文件选择回调 */
 const handleCoverChange = (file: UploadFile) => {
-  coverFile.value = file?.raw || null
-}
+  coverFile.value = file?.raw || null;
+};
 
 const handleCoverExceed = (files: UploadFile[]) => {
-  coverUploadRef.value?.clearFiles()
-  const raw = files?.[0]?.raw as File | undefined
-  if (raw) coverFile.value = raw
-}
+  coverUploadRef.value?.clearFiles();
+  const raw = files?.[0]?.raw as File | undefined;
+  if (raw) coverFile.value = raw;
+};
 
 /** 移除封面 */
 const removeCover = () => {
-  coverFile.value = null
-  coverUploadRef.value?.clearFiles()
-}
+  coverFile.value = null;
+  coverUploadRef.value?.clearFiles();
+};
 
 /** 音频文件选择回调，自动解析标签 */
 const handleAudioChange = async (file: UploadFile) => {
-  audioFile.value = file?.raw || null
-  if (!audioFile.value) return
+  audioFile.value = file?.raw || null;
+  if (!audioFile.value) return;
 
-  const cached = loadCachedMeta(audioFile.value)
+  const cached = loadCachedMeta(audioFile.value);
   if (cached) {
-    applyMetaToForm(cached)
-    return
+    applyMetaToForm(cached);
+    return;
   }
 
   try {
-    const meta = await parseAudioFile(audioFile.value)
-    saveCachedMeta(audioFile.value, meta)
-    applyMetaToForm(meta)
+    const meta = await parseAudioFile(audioFile.value);
+    saveCachedMeta(audioFile.value, meta);
+    applyMetaToForm(meta);
   } catch (_e) {
-    ElMessage.warning("Failed to read audio tags")
+    ElMessage.warning("Failed to read audio tags");
   }
-}
+};
 
 /** 音频文件超限处理 */
 const handleAudioExceed = async (files: UploadFile[]) => {
-  audioUploadRef.value?.clearFiles()
-  const raw = files?.[0]?.raw as File | undefined
-  if (!raw) return
-  audioFile.value = raw
+  audioUploadRef.value?.clearFiles();
+  const raw = files?.[0]?.raw as File | undefined;
+  if (!raw) return;
+  audioFile.value = raw;
 
-  const cached = loadCachedMeta(raw)
+  const cached = loadCachedMeta(raw);
   if (cached) {
-    applyMetaToForm(cached)
-    return
+    applyMetaToForm(cached);
+    return;
   }
 
   try {
-    const meta = await parseAudioFile(raw)
-    saveCachedMeta(raw, meta)
-    applyMetaToForm(meta)
+    const meta = await parseAudioFile(raw);
+    saveCachedMeta(raw, meta);
+    applyMetaToForm(meta);
   } catch (_e) {
-    ElMessage.warning("Failed to read audio tags")
+    ElMessage.warning("Failed to read audio tags");
   }
-}
+};
 
 /** 移除音频 */
 const removeAudio = () => {
-  audioFile.value = null
-  audioUploadRef.value?.clearFiles()
-}
+  audioFile.value = null;
+  audioUploadRef.value?.clearFiles();
+};
 
 /** 提交音乐创建并上传文件 */
 const handleSubmit = async () => {
   if (!form.title || !form.artist) {
-    ElMessage.error("Title and artist are required")
-    return
+    ElMessage.error("Title and artist are required");
+    return;
   }
-  loading.value = true
-  uploadPercent.value = 0
+  loading.value = true;
+  uploadPercent.value = 0;
   try {
     const res = await request.post<CreateMusicData>("/musics", {
       title: form.title,
       artist: form.artist,
       intro: form.description,
-    })
-    const musicId = res.data?.id
+    });
+    const musicId = res.data?.id;
     if (!musicId) {
-      ElMessage.error("Failed to create music record")
-      return
+      ElMessage.error("Failed to create music record");
+      return;
     }
 
     if (audioFile.value || coverFile.value) {
-      const fd = new FormData()
-      if (audioFile.value) fd.append("file", audioFile.value)
-      if (coverFile.value) fd.append("cover", coverFile.value)
+      const fd = new FormData();
+      if (audioFile.value) fd.append("file", audioFile.value);
+      if (coverFile.value) fd.append("cover", coverFile.value);
       await request.post(`/musics/${musicId}/upload`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
         onUploadProgress: (event: AxiosProgressEvent) => {
-          if (!event.total) return
-          uploadPercent.value = Math.round((event.loaded / event.total) * 100)
+          if (!event.total) return;
+          uploadPercent.value = Math.round((event.loaded / event.total) * 100);
         },
-      })
+      });
     }
 
-    if (audioFile.value) removeCachedMeta(audioFile.value)
-    ElMessage.success("Music uploaded successfully")
-    coverFile.value = null
-    audioFile.value = null
-    coverUploadRef.value?.clearFiles()
-    audioUploadRef.value?.clearFiles()
+    if (audioFile.value) removeCachedMeta(audioFile.value);
+    ElMessage.success("Music uploaded successfully");
+    coverFile.value = null;
+    audioFile.value = null;
+    coverUploadRef.value?.clearFiles();
+    audioUploadRef.value?.clearFiles();
     Object.assign(form, {
       title: "",
       artist: "",
@@ -164,15 +164,15 @@ const handleSubmit = async () => {
       genre: "",
       duration: "",
       description: "",
-    })
+    });
   } catch (_e) {
   } finally {
-    loading.value = false
+    loading.value = false;
     setTimeout(() => {
-      uploadPercent.value = 0
-    }, 800)
+      uploadPercent.value = 0;
+    }, 800);
   }
-}
+};
 </script>
 
 <template>

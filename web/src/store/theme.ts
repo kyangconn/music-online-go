@@ -1,5 +1,5 @@
-import { defineStore } from "pinia"
-import { ref, watch, onMounted } from "vue"
+import { defineStore } from "pinia";
+import { ref, watch, onMounted } from "vue";
 
 /**
  * 主题状态管理存储
@@ -7,54 +7,54 @@ import { ref, watch, onMounted } from "vue"
  */
 export const useThemeStore = defineStore("theme", () => {
   /** 当前是否为深色模式 */
-  const isDark = ref(false)
+  const isDark = ref(false);
   /** 是否自动同步系统主题 */
-  const autoSync = ref(true)
+  const autoSync = ref(true);
 
   /**
    * 设置深色模式
    * @param value - true 为深色模式，false 为浅色模式
    */
   const setDarkMode = (value: boolean) => {
-    isDark.value = value
+    isDark.value = value;
     try {
       if (value) {
-        document.documentElement.classList.add("dark")
-        localStorage.setItem("theme", "dark")
+        document.documentElement.classList.add("dark");
+        localStorage.setItem("theme", "dark");
       } else {
-        document.documentElement.classList.remove("dark")
-        localStorage.setItem("theme", "light")
+        document.documentElement.classList.remove("dark");
+        localStorage.setItem("theme", "light");
       }
     } catch (error) {
-      console.error("设置主题失败:", error)
+      console.error("设置主题失败:", error);
       // 即使存储失败，也应用主题到DOM，但可能无法持久化
     }
-  }
+  };
 
   /**
    * 设置自动同步系统主题功能
    * @param value - true 启用自动同步，false 禁用自动同步
    */
   const setAutoSync = (value: boolean) => {
-    autoSync.value = value
+    autoSync.value = value;
     try {
-      localStorage.setItem("auto-sync-theme", String(value))
+      localStorage.setItem("auto-sync-theme", String(value));
     } catch (error) {
-      console.error("保存自动同步设置失败:", error)
+      console.error("保存自动同步设置失败:", error);
     }
     if (value) {
-      applySystemTheme()
+      applySystemTheme();
     }
-  }
+  };
 
   /**
    * 切换深色/浅色模式
    * 切换时会禁用自动同步功能
    */
   const toggleDarkMode = () => {
-    setAutoSync(false)
-    setDarkMode(!isDark.value)
-  }
+    setAutoSync(false);
+    setDarkMode(!isDark.value);
+  };
 
   /**
    * 应用系统主题设置
@@ -62,14 +62,14 @@ export const useThemeStore = defineStore("theme", () => {
    */
   const applySystemTheme = () => {
     try {
-      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
-      setDarkMode(mediaQuery.matches)
+      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      setDarkMode(mediaQuery.matches);
     } catch (error) {
-      console.error("获取系统主题失败:", error)
+      console.error("获取系统主题失败:", error);
       // 默认使用浅色模式
-      setDarkMode(false)
+      setDarkMode(false);
     }
-  }
+  };
 
   /**
    * 初始化主题设置
@@ -77,22 +77,22 @@ export const useThemeStore = defineStore("theme", () => {
    */
   onMounted(() => {
     try {
-      const savedTheme = localStorage.getItem("theme")
-      const savedAutoSync = localStorage.getItem("auto-sync-theme")
+      const savedTheme = localStorage.getItem("theme");
+      const savedAutoSync = localStorage.getItem("auto-sync-theme");
 
-      autoSync.value = savedAutoSync !== "false"
+      autoSync.value = savedAutoSync !== "false";
 
       if (autoSync.value) {
-        applySystemTheme()
+        applySystemTheme();
       } else {
-        setDarkMode(savedTheme === "dark")
+        setDarkMode(savedTheme === "dark");
       }
     } catch (error) {
-      console.error("初始化主题设置失败:", error)
+      console.error("初始化主题设置失败:", error);
       // 使用默认设置
-      setDarkMode(false)
+      setDarkMode(false);
     }
-  })
+  });
 
   /**
    * 监听自动同步设置变化
@@ -100,9 +100,9 @@ export const useThemeStore = defineStore("theme", () => {
    */
   watch(autoSync, (newValue) => {
     if (newValue) {
-      applySystemTheme()
+      applySystemTheme();
     }
-  })
+  });
 
   /**
    * 监听系统主题变化
@@ -111,12 +111,12 @@ export const useThemeStore = defineStore("theme", () => {
   try {
     window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
       if (autoSync.value) {
-        setDarkMode(e.matches)
+        setDarkMode(e.matches);
       }
-    })
+    });
   } catch (error) {
-    console.error("监听系统主题变化失败:", error)
+    console.error("监听系统主题变化失败:", error);
   }
 
-  return { isDark, autoSync, setAutoSync, setDarkMode, toggleDarkMode, applySystemTheme }
-})
+  return { isDark, autoSync, setAutoSync, setDarkMode, toggleDarkMode, applySystemTheme };
+});

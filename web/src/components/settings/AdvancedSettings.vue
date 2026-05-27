@@ -1,36 +1,36 @@
 <script setup lang="ts">
-import { ElMessage } from "element-plus"
-import { ref } from "vue"
-import { useI18n } from "vue-i18n"
+import { ElMessage } from "element-plus";
+import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 
-const directoryHandle = ref<FileSystemDirectoryHandle | null>(null)
-const hasPermission = ref(false)
-const requesting = ref(false)
-const { t } = useI18n()
+const directoryHandle = ref<FileSystemDirectoryHandle | null>(null);
+const hasPermission = ref(false);
+const requesting = ref(false);
+const { t } = useI18n();
 
 const requestDirectoryAccess = async () => {
-  requesting.value = true
+  requesting.value = true;
   try {
     const handle = await (
       window as unknown as { showDirectoryPicker: (opts: { mode: string }) => Promise<FileSystemDirectoryHandle> }
-    ).showDirectoryPicker({ mode: "read" })
-    directoryHandle.value = handle
-    hasPermission.value = true
-    ElMessage.success(t("settings.local_access_granted"))
+    ).showDirectoryPicker({ mode: "read" });
+    directoryHandle.value = handle;
+    hasPermission.value = true;
+    ElMessage.success(t("settings.local_access_granted"));
   } catch (error: unknown) {
-    const err = error as DOMException
-    if (err.name === "AbortError") return
-    ElMessage.error(t("settings.local_access_error"))
+    const err = error as DOMException;
+    if (err.name === "AbortError") return;
+    ElMessage.error(t("settings.local_access_error"));
   } finally {
-    requesting.value = false
+    requesting.value = false;
   }
-}
+};
 
 const revokeAccess = () => {
-  directoryHandle.value = null
-  hasPermission.value = false
-  ElMessage.info(t("settings.local_access_revoked"))
-}
+  directoryHandle.value = null;
+  hasPermission.value = false;
+  ElMessage.info(t("settings.local_access_revoked"));
+};
 </script>
 
 <template>

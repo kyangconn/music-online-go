@@ -3,10 +3,10 @@
  * 定义所有页面路由、权限控制和路由守卫
  */
 
-import { createRouter, createWebHistory } from "vue-router"
-import BaseLayout from "@/layout/BaseLayout.vue"
-import { useUserStore } from "@/store/user"
-import Home from "@/views/Home.vue"
+import { createRouter, createWebHistory } from "vue-router";
+import BaseLayout from "@/layout/BaseLayout.vue";
+import { useUserStore } from "@/store/user";
+import Home from "@/views/Home.vue";
 
 /**
  * 路由配置数组
@@ -61,7 +61,7 @@ const routes = [
       },
     ],
   },
-]
+];
 
 /**
  * 创建路由实例
@@ -70,7 +70,7 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
-})
+});
 
 /**
  * 全局路由守卫
@@ -80,20 +80,20 @@ const router = createRouter({
  * @param next - 路由跳转函数
  */
 router.beforeEach((to, _from, next) => {
-  const userStore = useUserStore()
+  const userStore = useUserStore();
 
   // 检查是否需要认证
   if (to.meta.requiresAuth && !userStore.isLoggedIn) {
-    next("/login")
+    next("/login");
   }
   // 检查是否需要管理员权限
   else if (to.meta.requiresAdmin && !userStore.isAdmin) {
-    next("/")
+    next("/");
   }
   // 允许访问
   else {
-    next()
+    next();
   }
-})
+});
 
-export default router
+export default router;

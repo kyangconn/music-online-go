@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import type { FormInstance, FormRules } from "element-plus"
-import { ElMessage } from "element-plus"
-import { ref, reactive } from "vue"
-import { useRouter } from "vue-router"
-import request from "@/utils/request"
+import type { FormInstance, FormRules } from "element-plus";
+import { ElMessage } from "element-plus";
+import { ref, reactive } from "vue";
+import { useRouter } from "vue-router";
+import request from "@/utils/request";
 
-const router = useRouter()
-const formRef = ref<FormInstance>()
-const loading = ref(false)
+const router = useRouter();
+const formRef = ref<FormInstance>();
+const loading = ref(false);
 
 const registerForm = reactive({
   username: "",
@@ -15,17 +15,17 @@ const registerForm = reactive({
   password: "",
   confirmPassword: "",
   full_name: "",
-})
+});
 
 const validatePass2 = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
   if (value === "") {
-    callback(new Error("Please input the password again"))
+    callback(new Error("Please input the password again"));
   } else if (value !== registerForm.password) {
-    callback(new Error("Two inputs don't match!"))
+    callback(new Error("Two inputs don't match!"));
   } else {
-    callback()
+    callback();
   }
-}
+};
 
 const rules = reactive<FormRules>({
   username: [{ required: true, message: "Please input username", trigger: "blur" }],
@@ -42,25 +42,25 @@ const rules = reactive<FormRules>({
     { validator: validatePass2, trigger: "blur" },
   ],
   full_name: [{ required: true, message: "Please input full name", trigger: "blur" }],
-})
+});
 
 const handleRegister = async (formEl: FormInstance | undefined) => {
-  if (!formEl) return
+  if (!formEl) return;
   await formEl.validate(async (valid) => {
     if (valid) {
-      loading.value = true
+      loading.value = true;
       try {
-        const { confirmPassword: _confirmPw, ...data } = registerForm
-        await request.post("/users/register", data)
-        ElMessage.success("Registration successful! Please login.")
-        router.push("/login")
+        const { confirmPassword: _confirmPw, ...data } = registerForm;
+        await request.post("/users/register", data);
+        ElMessage.success("Registration successful! Please login.");
+        router.push("/login");
       } catch (_e) {
       } finally {
-        loading.value = false
+        loading.value = false;
       }
     }
-  })
-}
+  });
+};
 </script>
 
 <template>

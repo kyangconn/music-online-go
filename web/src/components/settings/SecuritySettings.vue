@@ -1,75 +1,75 @@
 <script setup lang="ts">
-import { ElMessage } from "element-plus"
-import QRCode from "qrcode"
-import { ref } from "vue"
-import { useI18n } from "vue-i18n"
-import { useUserStore } from "@/store/user"
+import { ElMessage } from "element-plus";
+import QRCode from "qrcode";
+import { ref } from "vue";
+import { useI18n } from "vue-i18n";
+import { useUserStore } from "@/store/user";
 
-const { t } = useI18n()
-const userStore = useUserStore()
+const { t } = useI18n();
+const userStore = useUserStore();
 
-const loading = ref(false)
-const setupOpen = ref(false)
-const secret = ref("")
-const qrDataUrl = ref("")
-const setupCode = ref("")
-const disableCode = ref("")
-const disableDialogVisible = ref(false)
+const loading = ref(false);
+const setupOpen = ref(false);
+const secret = ref("");
+const qrDataUrl = ref("");
+const setupCode = ref("");
+const disableCode = ref("");
+const disableDialogVisible = ref(false);
 
 const startSetup = async () => {
-  loading.value = true
+  loading.value = true;
   try {
-    const data = await userStore.setupTOTP()
-    secret.value = data.secret
-    qrDataUrl.value = await QRCode.toDataURL(data.qr_code_url)
-    setupOpen.value = true
+    const data = await userStore.setupTOTP();
+    secret.value = data.secret;
+    qrDataUrl.value = await QRCode.toDataURL(data.qr_code_url);
+    setupOpen.value = true;
   } catch (_e) {
-    ElMessage.error("Failed to setup TOTP")
+    ElMessage.error("Failed to setup TOTP");
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
 const handleEnable = async () => {
   if (setupCode.value.length !== 6) {
-    ElMessage.warning(t("settings.totp_code_required"))
-    return
+    ElMessage.warning(t("settings.totp_code_required"));
+    return;
   }
-  loading.value = true
+  loading.value = true;
   try {
-    await userStore.enableTOTP(setupCode.value)
-    ElMessage.success(t("settings.totp_enabled_success"))
-    setupOpen.value = false
-    setupCode.value = ""
+    await userStore.enableTOTP(setupCode.value);
+    ElMessage.success(t("settings.totp_enabled_success"));
+    setupOpen.value = false;
+    setupCode.value = "";
   } catch (_e) {
-    ElMessage.error("Invalid code")
+    ElMessage.error("Invalid code");
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
 const handleDisable = async () => {
   if (disableCode.value.length !== 6) {
-    ElMessage.warning(t("settings.totp_code_required"))
-    return
+    ElMessage.warning(t("settings.totp_code_required"));
+    return;
   }
-  loading.value = true
+  loading.value = true;
   try {
-    await userStore.disableTOTP(disableCode.value)
-    ElMessage.success(t("settings.totp_disabled_success"))
-    disableDialogVisible.value = false
-    disableCode.value = ""
+    await userStore.disableTOTP(disableCode.value);
+    ElMessage.success(t("settings.totp_disabled_success"));
+    disableDialogVisible.value = false;
+    disableCode.value = "";
   } catch (_e) {
-    ElMessage.error("Invalid code")
+    ElMessage.error("Invalid code");
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
 const cancelSetup = () => {
-  setupOpen.value = false
-  setupCode.value = ""
-}
+  setupOpen.value = false;
+  setupCode.value = "";
+};
 </script>
 
 <template>

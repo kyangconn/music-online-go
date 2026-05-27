@@ -1,45 +1,45 @@
 <script setup lang="ts">
-import type { FormInstance, FormRules } from "element-plus"
-import { ElMessage } from "element-plus"
-import { ref, reactive } from "vue"
-import { useRouter } from "vue-router"
-import type { LoginData } from "@/types/api"
-import { useUserStore } from "@/store/user"
-import request from "@/utils/request"
+import type { FormInstance, FormRules } from "element-plus";
+import { ElMessage } from "element-plus";
+import { ref, reactive } from "vue";
+import { useRouter } from "vue-router";
+import type { LoginData } from "@/types/api";
+import { useUserStore } from "@/store/user";
+import request from "@/utils/request";
 
-const router = useRouter()
-const userStore = useUserStore()
-const formRef = ref<FormInstance>()
-const loading = ref(false)
+const router = useRouter();
+const userStore = useUserStore();
+const formRef = ref<FormInstance>();
+const loading = ref(false);
 
 const loginForm = reactive({
   username: "",
   password: "",
-})
+});
 
 const rules = reactive<FormRules>({
   username: [{ required: true, message: "Please input username", trigger: "blur" }],
   password: [{ required: true, message: "Please input password", trigger: "blur" }],
-})
+});
 
 const handleLogin = async (formEl: FormInstance | undefined) => {
-  if (!formEl) return
+  if (!formEl) return;
   await formEl.validate(async (valid) => {
     if (valid) {
-      loading.value = true
+      loading.value = true;
       try {
-        const res = await request.post<LoginData>("/users/login", loginForm)
-        userStore.setToken(res.data.token)
-        userStore.setUser(res.data.user)
-        ElMessage.success("Login successful")
-        router.push("/")
+        const res = await request.post<LoginData>("/users/login", loginForm);
+        userStore.setToken(res.data.token);
+        userStore.setUser(res.data.user);
+        ElMessage.success("Login successful");
+        router.push("/");
       } catch (_e) {
       } finally {
-        loading.value = false
+        loading.value = false;
       }
     }
-  })
-}
+  });
+};
 </script>
 
 <template>

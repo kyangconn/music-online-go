@@ -1,25 +1,24 @@
 <script setup lang="ts">
-import { ElMessage } from "element-plus"
-import { ref, onMounted, computed } from "vue"
-import { useI18n } from "vue-i18n"
-import { useRouter } from "vue-router"
-import type { SystemInfoData } from "@/types/api"
-import DashboardOverview from "@/components/admin/DashboardOverview.vue"
-import DatabaseInfo from "@/components/admin/DatabaseInfo.vue"
-import MusicInfo from "@/components/admin/MusicInfo.vue"
-import RuntimeInfo from "@/components/admin/RuntimeInfo.vue"
-import ServerInfo from "@/components/admin/ServerInfo.vue"
-import SideNavLayout, { type TabItem } from "@/layout/SideNavLayout.vue"
-import request from "@/utils/request"
+import { ElMessage } from "element-plus";
+import { ref, onMounted, computed } from "vue";
+import { useI18n } from "vue-i18n";
+import { useRouter } from "vue-router";
+import type { SystemInfoData } from "@/types/api";
+import DashboardOverview from "@/components/admin/DashboardOverview.vue";
+import DatabaseInfo from "@/components/admin/DatabaseInfo.vue";
+import MusicInfo from "@/components/admin/MusicInfo.vue";
+import RuntimeInfo from "@/components/admin/RuntimeInfo.vue";
+import ServerInfo from "@/components/admin/ServerInfo.vue";
+import SideNavLayout, { type TabItem } from "@/layout/SideNavLayout.vue";
+import request from "@/utils/request";
 
-const router = useRouter()
-const { t } = useI18n()
+const router = useRouter();
+const { t } = useI18n();
 
-const loading = ref(false)
-const info = ref<SystemInfoData | null>(null)
-const title = computed(() => t("admin.dashboard"))
-const activeTab = ref("dashboard")
-const layoutMode = ref<"sidebar" | "tabs">("sidebar")
+const loading = ref(false);
+const info = ref<SystemInfoData | null>(null);
+const title = computed(() => t("admin.dashboard"));
+const activeTab = ref("dashboard");
 
 const tabs = computed<TabItem[]>(() => [
   { id: "dashboard", label: t("admin.dashboard") },
@@ -27,25 +26,25 @@ const tabs = computed<TabItem[]>(() => [
   { id: "runtime", label: t("admin.runtime") },
   { id: "database", label: t("admin.database") },
   { id: "music", label: t("admin.music") },
-])
+]);
 
 /** 获取系统信息 */
 const fetchInfo = async () => {
-  loading.value = true
+  loading.value = true;
   try {
-    const res = await request.get<SystemInfoData>("/users/admin/system-info")
-    info.value = res.data
+    const res = await request.get<SystemInfoData>("/users/admin/system-info");
+    info.value = res.data;
   } catch (_e) {
-    ElMessage.error("Failed to load system info")
+    ElMessage.error("Failed to load system info");
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
 /** 返回上一页 */
-const goBack = () => router.back()
+const goBack = () => router.back();
 
-onMounted(fetchInfo)
+onMounted(fetchInfo);
 </script>
 
 <template>
@@ -53,7 +52,6 @@ onMounted(fetchInfo)
     v-model="activeTab"
     :title="title"
     :tabs="tabs"
-    :layout-mode="layoutMode"
     :show-content-header="false"
     show-back-button
     @back="goBack"

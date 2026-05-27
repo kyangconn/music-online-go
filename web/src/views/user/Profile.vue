@@ -1,35 +1,35 @@
 <script setup lang="ts">
-import { Plus } from "@element-plus/icons-vue"
-import { ElMessage } from "element-plus"
-import { ref, onMounted } from "vue"
-import { useRouter } from "vue-router"
-import type { Music, PaginatedData } from "@/types/api"
-import { useUserStore } from "@/store/user"
-import request from "@/utils/request"
+import { Plus } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
+import { ref, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import type { Music, PaginatedData } from "@/types/api";
+import { useUserStore } from "@/store/user";
+import request from "@/utils/request";
 
-const router = useRouter()
-const userStore = useUserStore()
-const loading = ref(true)
-const musicList = ref<Music[]>([])
+const router = useRouter();
+const userStore = useUserStore();
+const loading = ref(true);
+const musicList = ref<Music[]>([]);
 
 const fetchUserMusics = async () => {
-  loading.value = true
+  loading.value = true;
   try {
-    const userId = userStore.user?.id
-    const res = await request.get<PaginatedData<Music>>(`/users/${userId}/musics`)
-    musicList.value = res.data.items || []
+    const userId = userStore.user?.id;
+    const res = await request.get<PaginatedData<Music>>(`/users/${userId}/musics`);
+    musicList.value = res.data.items || [];
   } catch (_e) {
-    ElMessage.error("Failed to load user musics")
+    ElMessage.error("Failed to load user musics");
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
 const goUpload = () => {
-  router.push("/music/add")
-}
+  router.push("/music/add");
+};
 
-onMounted(fetchUserMusics)
+onMounted(fetchUserMusics);
 </script>
 
 <template>

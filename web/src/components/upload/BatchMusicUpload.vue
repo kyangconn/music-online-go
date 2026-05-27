@@ -1,76 +1,76 @@
 <script setup lang="ts">
-import { FolderOpened } from "@element-plus/icons-vue"
-import { ElMessage } from "element-plus"
-import { ref, computed, onMounted } from "vue"
-import { useI18n } from "vue-i18n"
-import type { ScannedFileItem, CreateMusicData } from "@/types/api"
-import request from "@/utils/request"
-import { parseAudioFile, formatFileSize, formatDuration } from "@/utils/upload"
+import { FolderOpened } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
+import { ref, computed, onMounted } from "vue";
+import { useI18n } from "vue-i18n";
+import type { ScannedFileItem, CreateMusicData } from "@/types/api";
+import request from "@/utils/request";
+import { parseAudioFile, formatFileSize, formatDuration } from "@/utils/upload";
 
-const { t } = useI18n()
+const { t } = useI18n();
 
-const directoryHandle = ref<FileSystemDirectoryHandle | null>(null)
-const allScannedFiles = ref<ScannedFileItem[]>([])
-const currentPage = ref(1)
-const pageSize = ref(10)
-const fileScanLimit = 500
-const scanDelayMs = 10
-const supportsFSAccess = ref(false)
-const directoryInputRef = ref<HTMLInputElement>()
+const directoryHandle = ref<FileSystemDirectoryHandle | null>(null);
+const allScannedFiles = ref<ScannedFileItem[]>([]);
+const currentPage = ref(1);
+const pageSize = ref(10);
+const fileScanLimit = 500;
+const scanDelayMs = 10;
+const supportsFSAccess = ref(false);
+const directoryInputRef = ref<HTMLInputElement>();
 
 const paginatedFiles = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  return allScannedFiles.value.slice(start, start + pageSize.value)
-})
+  const start = (currentPage.value - 1) * pageSize.value;
+  return allScannedFiles.value.slice(start, start + pageSize.value);
+});
 
-const selectedFiles = ref<Set<string>>(new Set())
-const parsing = ref(false)
-const batchUploading = ref(false)
-const batchProgress = ref(0)
+const selectedFiles = ref<Set<string>>(new Set());
+const parsing = ref(false);
+const batchUploading = ref(false);
+const batchProgress = ref(0);
 
 /** 请求目录访问权限并扫描音频文件 */
 const requestDirectoryAccess = async () => {
   if (supportsFSAccess.value) {
-    parsing.value = true
-    allScannedFiles.value = []
-    currentPage.value = 1
+    parsing.value = true;
+    allScannedFiles.value = [];
+    currentPage.value = 1;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const handle = await (window as any).showDirectoryPicker({ mode: "read" })
-      directoryHandle.value = handle
-      await scanDirectory(handle)
+      const handle = await (window as any).showDirectoryPicker({ mode: "read" });
+      directoryHandle.value = handle;
+      await scanDirectory(handle);
       if (allScannedFiles.value.length >= fileScanLimit) {
-        ElMessage.warning(`Scan stopped at ${fileScanLimit} files.`)
+        ElMessage.warning(`Scan stopped at ${fileScanLimit} files.`);
       } else if (allScannedFiles.value.length > 0) {
-        ElMessage.success(`Found ${allScannedFiles.value.length} audio file(s).`)
+        ElMessage.success(`Found ${allScannedFiles.value.length} audio file(s).`);
       } else {
-        ElMessage.info("No audio files found.")
+        ElMessage.info("No audio files found.");
       }
     } catch (error: unknown) {
       if (error instanceof DOMException && error.name !== "AbortError") {
-        ElMessage.error(error.message || t("settings.local_access_error"))
+        ElMessage.error(error.message || t("settings.local_access_error"));
       }
     } finally {
-      parsing.value = false
+      parsing.value = false;
     }
   } else {
-    directoryInputRef.value?.click()
+    directoryInputRef.value?.click();
   }
-}
+};
 
 /** 处理目录选择器的文件变更事件 */
 const handleDirectoryInputChange = async (event: Event) => {
-  const input = event.target as HTMLInputElement
-  const files = input.files
-  if (!files || files.length === 0) return
+  const input = event.target as HTMLInputElement;
+  const files = input.files;
+  if (!files || files.length === 0) return;
 
-  parsing.value = true
-  allScannedFiles.value = []
-  currentPage.value = 1
+  parsing.value = true;
+  allScannedFiles.value = [];
+  currentPage.value = 1;
 
   for (const file of Array.from(files)) {
-    if (allScannedFiles.value.length >= fileScanLimit) break
-    const name = file.name.toLowerCase()
+    if (allScannedFiles.value.length >= fileScanLimit) break;
+    const name = file.name.toLowerCase();
     if (/\.(mp3|wav|flac|ogg|m4a|aac|wma|aiff|ape)$/.test(name)) {
       allScannedFiles.value.push({
         file,
@@ -80,22 +80,22 @@ const handleDirectoryInputChange = async (event: Event) => {
         type: file.type,
         metadata: null,
         loading: false,
-      })
-      await new Promise((resolve) => setTimeout(resolve, scanDelayMs))
+      });
+      await new Promise((resolve) => setTimeout(resolve, scanDelayMs));
     }
   }
-  parsing.value = false
-  input.value = ""
-}
+  parsing.value = false;
+  input.value = "";
+};
 
 /** 递归扫描目录中的音频文件 */
 const scanDirectory = async (dirHandle: FileSystemDirectoryHandle, path = "") => {
   for await (const entry of dirHandle.values()) {
-    if (allScannedFiles.value.length >= fileScanLimit) return
+    if (allScannedFiles.value.length >= fileScanLimit) return;
     if (entry.kind === "file") {
-      const name = entry.name.toLowerCase()
+      const name = entry.name.toLowerCase();
       if (/\.(mp3|wav|flac|ogg|m4a|aac|wma|aiff|ape)$/.test(name)) {
-        const file = await entry.getFile()
+        const file = await entry.getFile();
         allScannedFiles.value.push({
           handle: entry,
           file,
@@ -105,62 +105,62 @@ const scanDirectory = async (dirHandle: FileSystemDirectoryHandle, path = "") =>
           type: file.type,
           metadata: null,
           loading: false,
-        })
-        await new Promise((resolve) => setTimeout(resolve, scanDelayMs))
+        });
+        await new Promise((resolve) => setTimeout(resolve, scanDelayMs));
       }
     } else if (entry.kind === "directory") {
-      await scanDirectory(entry, path ? `${path}/${entry.name}` : entry.name)
+      await scanDirectory(entry, path ? `${path}/${entry.name}` : entry.name);
     }
   }
-}
+};
 
 /** 切换文件选中状态 */
 const toggleFileSelection = (path: string) => {
   if (selectedFiles.value.has(path)) {
-    selectedFiles.value.delete(path)
+    selectedFiles.value.delete(path);
   } else {
-    selectedFiles.value.add(path)
+    selectedFiles.value.add(path);
   }
-}
+};
 
 /** 解析单个文件的音频元数据 */
 const parseFileMetadata = async (fileItem: ScannedFileItem) => {
-  if (fileItem.metadata) return
-  fileItem.loading = true
+  if (fileItem.metadata) return;
+  fileItem.loading = true;
   try {
-    fileItem.metadata = await parseAudioFile(fileItem.file)
+    fileItem.metadata = await parseAudioFile(fileItem.file);
   } catch (_e) {
-    fileItem.metadata = { title: "", artist: "", album: "", year: "", track: "", genre: "", duration: "" }
+    fileItem.metadata = { title: "", artist: "", album: "", year: "", track: "", genre: "", duration: "" };
   } finally {
-    fileItem.loading = false
+    fileItem.loading = false;
   }
-}
+};
 
 /** 批量解析选中文件的元数据 */
 const parseAllSelectedMetadata = async () => {
-  parsing.value = true
-  const selectedItems = paginatedFiles.value.filter((item: ScannedFileItem) => selectedFiles.value.has(item.path))
+  parsing.value = true;
+  const selectedItems = paginatedFiles.value.filter((item: ScannedFileItem) => selectedFiles.value.has(item.path));
   for (const item of selectedItems) {
     if (!item.metadata) {
-      await parseFileMetadata(item)
-      await new Promise((resolve) => setTimeout(resolve, 50))
+      await parseFileMetadata(item);
+      await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
-  parsing.value = false
-  ElMessage.success(`Parsed metadata for ${selectedItems.length} file(s).`)
-}
+  parsing.value = false;
+  ElMessage.success(`Parsed metadata for ${selectedItems.length} file(s).`);
+};
 
 /** 批量上传选中的文件 */
 const uploadSelectedFiles = async () => {
   if (selectedFiles.value.size === 0) {
-    ElMessage.warning("Please select files to upload.")
-    return
+    ElMessage.warning("Please select files to upload.");
+    return;
   }
-  batchUploading.value = true
-  batchProgress.value = 0
-  const selectedItems = allScannedFiles.value.filter((item: ScannedFileItem) => selectedFiles.value.has(item.path))
-  const total = selectedItems.length
-  let completed = 0
+  batchUploading.value = true;
+  batchProgress.value = 0;
+  const selectedItems = allScannedFiles.value.filter((item: ScannedFileItem) => selectedFiles.value.has(item.path));
+  const total = selectedItems.length;
+  let completed = 0;
   for (const item of selectedItems) {
     try {
       const metadata = item.metadata || {
@@ -171,47 +171,47 @@ const uploadSelectedFiles = async () => {
         track: "",
         genre: "",
         duration: "",
-      }
+      };
       const createRes = await request.post<CreateMusicData>("/musics", {
         title: metadata.title || item.name.replace(/\.[^/.]+$/, ""),
         artist: metadata.artist || "",
         intro: "",
-      })
-      const musicId = createRes.data?.id
+      });
+      const musicId = createRes.data?.id;
       if (!musicId) {
-        ElMessage.error(`Failed to create record for ${item.name}`)
-        continue
+        ElMessage.error(`Failed to create record for ${item.name}`);
+        continue;
       }
-      const fd = new FormData()
-      fd.append("file", item.file)
+      const fd = new FormData();
+      fd.append("file", item.file);
       await request.post(`/musics/${musicId}/upload`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
-      })
-      completed++
-      batchProgress.value = Math.round((completed / total) * 100)
+      });
+      completed++;
+      batchProgress.value = Math.round((completed / total) * 100);
     } catch (_e) {
-      ElMessage.error(`Failed to upload ${item.name}`)
+      ElMessage.error(`Failed to upload ${item.name}`);
     }
   }
-  batchUploading.value = false
-  if (completed > 0) ElMessage.success(`Uploaded ${completed} of ${total} file(s).`)
-  selectedFiles.value.clear()
-  batchProgress.value = 0
-}
+  batchUploading.value = false;
+  if (completed > 0) ElMessage.success(`Uploaded ${completed} of ${total} file(s).`);
+  selectedFiles.value.clear();
+  batchProgress.value = 0;
+};
 
 /** 全选/取消全选 */
 const selectAll = () => {
-  const allSelected = paginatedFiles.value.every((item: ScannedFileItem) => selectedFiles.value.has(item.path))
+  const allSelected = paginatedFiles.value.every((item: ScannedFileItem) => selectedFiles.value.has(item.path));
   if (allSelected) {
-    paginatedFiles.value.forEach((item: ScannedFileItem) => selectedFiles.value.delete(item.path))
+    paginatedFiles.value.forEach((item: ScannedFileItem) => selectedFiles.value.delete(item.path));
   } else {
-    paginatedFiles.value.forEach((item: ScannedFileItem) => selectedFiles.value.add(item.path))
+    paginatedFiles.value.forEach((item: ScannedFileItem) => selectedFiles.value.add(item.path));
   }
-}
+};
 
 onMounted(() => {
-  supportsFSAccess.value = !!(window as unknown as { showDirectoryPicker?: unknown }).showDirectoryPicker
-})
+  supportsFSAccess.value = !!(window as unknown as { showDirectoryPicker?: unknown }).showDirectoryPicker;
+});
 </script>
 
 <template>
