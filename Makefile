@@ -4,6 +4,13 @@
 
 FE_DIR := web
 
+# Detect OS for binary extension
+ifeq ($(OS),Windows_NT)
+    BINARY := music-online.exe
+else
+    BINARY := music-online
+endif
+
 help: ## Show available commands
 	@echo "Music Online Go - Available Commands"
 	@echo ""
@@ -31,13 +38,15 @@ build: build-fe build-be ## Build frontend then backend
 build-fe: ## Build Vue frontend, output to cmd/server/dist/
 	cd $(FE_DIR) && pnpm install --frozen-lockfile && pnpm build
 
-build-silent: build-fe-silent build-be ## Build frontend (silent) then backend
-
-build-fe-silent: ## Build Vue frontend silently (no progress output)
-	cd $(FE_DIR) && pnpm install --frozen-lockfile && pnpm --silent build
-
 build-be: ## Build Go server binary
-	go build -v -o music-server ./cmd/server
+	go build -v -o $(BINARY) ./cmd/server
+
+dev:
+	@echo "Starting frontend (Vite) + backend (Go)..."
+	@trap 'kill 0' EXIT; \
+		$(MAKE) dev-fe & \
+		$(MAKE) dev-be & \
+		wait
 
 dev-fe: ## Start Vite dev server at localhost:5173
 	cd $(FE_DIR) && pnpm dev
