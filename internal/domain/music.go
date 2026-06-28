@@ -3,6 +3,7 @@
 package domain
 
 import (
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -100,7 +101,7 @@ func (m *Music) ToResponse() *MusicResponse {
 	if m == nil {
 		return nil
 	}
-	return &MusicResponse{
+	resp := &MusicResponse{
 		ID:          m.ID,
 		CreatedAt:   m.CreatedAt,
 		UpdatedAt:   m.UpdatedAt,
@@ -108,6 +109,7 @@ func (m *Music) ToResponse() *MusicResponse {
 		Artist:      m.Artist,
 		Intro:       m.Intro,
 		Img:         m.Img,
+		Path:        m.Path,
 		Type:        m.Type,
 		IssuingDate: m.IssuingDate,
 		UserID:      m.UserID,
@@ -115,4 +117,13 @@ func (m *Music) ToResponse() *MusicResponse {
 		IsLiked:     m.IsLiked,
 		LikeCount:   m.LikeCount,
 	}
+
+	if resp.Path != "" {
+		resp.Path = fmt.Sprintf("/api/v1/musics/%d/stream", m.ID)
+	}
+	if resp.Img != "" {
+		resp.Img = fmt.Sprintf("/api/v1/musics/%d/cover", m.ID)
+	}
+
+	return resp
 }

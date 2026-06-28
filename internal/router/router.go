@@ -118,6 +118,7 @@ func registerMusicRoutes(api *gin.RouterGroup, musicHandler *handler.MusicHandle
 	api.GET("/users/:id/likes", middleware.OptionalAuthMiddleware(), musicHandler.ListUserLikedMusic)
 
 	musicPublic.GET("/:id/stream", musicHandler.Stream)
+	musicPublic.GET("/:id/cover", musicHandler.Cover)
 
 	musicProtected := api.Group("/musics")
 	musicProtected.Use(middleware.AuthMiddleware())

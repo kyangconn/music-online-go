@@ -3,6 +3,7 @@
 package handler
 
 import (
+	"errors"
 	"mime"
 	"net/http"
 	"os"
@@ -163,10 +164,12 @@ func (h *MusicHandler) Update(c *gin.Context) {
 		return
 	}
 
-	// TODO: Add ownership check here or in service
-
-	music, err := h.musicService.Update(uint(id), &req)
+	music, err := h.musicService.Update(c.GetUint("userID"), c.GetString("role"), uint(id), &req)
 	if err != nil {
+		if errors.Is(err, service.ErrForbidden) {
+			Forbidden(c, "You can only update your own music")
+			return
+		}
 		InternalServerError(c, "Failed to update music")
 		return
 	}
@@ -190,7 +193,11 @@ func (h *MusicHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.musicService.Delete(uint(id)); err != nil {
+	if err := h.musicService.Delete(c.GetUint("userID"), c.GetString("role"), uint(id)); err != nil {
+		if errors.Is(err, service.ErrForbidden) {
+			Forbidden(c, "You can only delete your own music")
+			return
+		}
 		InternalServerError(c, "Failed to delete music")
 		return
 	}
@@ -338,26 +345,41 @@ func (h *MusicHandler) Stream(c *gin.Context) {
 		return
 	}
 
-	music, err := h.musicService.GetByID(uint(id), nil)
+	audioPath, err := h.musicService.GetAudioPath(uint(id))
 	if err != nil {
-		NotFound(c, "Music not found")
-		return
-	}
-
-	if music.Path == "" {
 		NotFound(c, "No audio file available")
 		return
 	}
 
-	file, err := os.Open(music.Path)
+	h.serveMediaFile(c, audioPath, "Audio file not found on disk")
+}
+
+func (h *MusicHandler) Cover(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		NotFound(c, "Audio file not found on disk")
+		BadRequest(c, "Invalid music ID")
+		return
+	}
+
+	coverPath, err := h.musicService.GetCoverPath(uint(id))
+	if err != nil {
+		NotFound(c, "No cover file available")
+		return
+	}
+
+	h.serveMediaFile(c, coverPath, "Cover file not found on disk")
+}
+
+func (h *MusicHandler) serveMediaFile(c *gin.Context, mediaPath string, missingMessage string) {
+	file, err := os.Open(mediaPath)
+	if err != nil {
+		NotFound(c, missingMessage)
 		return
 	}
 	defer func() {
 		fileErr := file.Close()
 		if fileErr != nil {
-			pklog.Errorf("Failed to close stream file %s: %v", music.Path, fileErr)
+			pklog.Errorf("Failed to close media file %s: %v", mediaPath, fileErr)
 		}
 	}()
 
@@ -367,7 +389,7 @@ func (h *MusicHandler) Stream(c *gin.Context) {
 		return
 	}
 
-	ext := filepath.Ext(music.Path)
+	ext := filepath.Ext(mediaPath)
 	contentType := mime.TypeByExtension(ext)
 	if contentType == "" {
 		contentType = "application/octet-stream"

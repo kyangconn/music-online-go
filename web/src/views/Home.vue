@@ -78,7 +78,7 @@ const handlePageChange = (page: number) => {
         >
           <div class="cover-image">
             <el-image
-              :src="music.cover_url || 'https://via.placeholder.com/300x300?text=Music'"
+              :src="music.img || music.cover_url || 'https://via.placeholder.com/300x300?text=Music'"
               fit="cover"
               loading="lazy"
             >

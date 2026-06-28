@@ -4,6 +4,9 @@ package database
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -53,19 +56,49 @@ func Connect() error {
 
 func getDialector(cfg config.DatabaseConfig) (gorm.Dialector, error) {
 	switch cfg.Type {
-	case "sqlite":
-		path := cfg.Path
-		if path == "" {
-			path = "music.db"
+	case "sqlite", "":
+		path, err := prepareSQLitePath(cfg.Path)
+		if err != nil {
+			return nil, err
 		}
 		return sqlite.Open(path), nil
-	case "postgres", "":
+	case "postgres":
+		if !hasPostgresConfig(cfg) {
+			pklog.Infof("PostgreSQL config is incomplete; falling back to SQLite database")
+			path, err := prepareSQLitePath(cfg.Path)
+			if err != nil {
+				return nil, err
+			}
+			return sqlite.Open(path), nil
+		}
 		dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
 			cfg.Host, cfg.User, cfg.Password, cfg.Name, cfg.Port, cfg.SSLMode)
 		return postgres.Open(dsn), nil
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", cfg.Type)
 	}
+}
+
+func hasPostgresConfig(cfg config.DatabaseConfig) bool {
+	return cfg.Host != "" && cfg.User != "" && cfg.Name != ""
+}
+
+func prepareSQLitePath(path string) (string, error) {
+	if path == "" {
+		path = "music.db"
+	}
+	if path == ":memory:" || strings.HasPrefix(path, "file:") {
+		return path, nil
+	}
+
+	dir := filepath.Dir(path)
+	if dir == "." || dir == "" {
+		return path, nil
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create sqlite directory: %w", err)
+	}
+	return path, nil
 }
 
 func AutoMigrate() error {

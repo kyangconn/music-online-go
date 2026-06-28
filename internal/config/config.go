@@ -68,7 +68,8 @@ func LoadConfig() error {
 	viper.SetDefault("server.write_timeout", 30)
 	viper.SetDefault("server.upload_dir", "uploads")
 	viper.SetDefault("server.log_file", "")
-	viper.SetDefault("database.type", "postgres")
+	viper.SetDefault("database.type", "sqlite")
+	viper.SetDefault("database.path", "music.db")
 	viper.SetDefault("database.sslmode", "disable")
 	viper.SetDefault("jwt.expire_hour", 24)
 

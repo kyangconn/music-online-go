@@ -60,7 +60,12 @@ Visit `http://localhost:8080`.
 ## Development
 
 ```bash
-# Start both dev servers
+# Install/update frontend dependencies from the repo root
+make install-fe      # Install from pnpm-lock
+make install-fe-dev  # Install/update dependencies for development
+
+# Start dev servers
+make dev       # Backend + frontend
 make dev-be    # Backend :8080
 make dev-fe    # Frontend :5173 (proxies /api to backend)
 ```
@@ -81,6 +86,8 @@ Frontend output goes to `cmd/server/dist/` and is embedded into the Go binary vi
 
 ```bash
 make test       # Go tests + frontend ESLint
+make check      # Non-mutating checks: Go vet + frontend typecheck/ESLint
+make verify     # Go tests + check
 make lint       # Frontend ESLint
 make lint-be    # Go vet
 ```
@@ -89,9 +96,12 @@ make lint-be    # Go vet
 
 ```bash
 make docker
+mkdir -p data
+cp config-example.yaml data/config.yaml
+docker run --rm -p 8080:8080 -v "$PWD/data:/data" music-online-go
 ```
 
-Multi-stage: Node build → Go build → Alpine runtime.
+Multi-stage: Node build → Go build → Alpine runtime. The image does not bake in `config.yaml`; provide configuration at runtime through `/data/config.yaml`, environment variables, or CLI flags. Container defaults store data in `/data/music.db` and `/data/uploads`, so mount `/data` for persistence.
 
 ## Configuration
 
@@ -124,7 +134,7 @@ On startup, `config.yaml` is searched in the following order — **later paths t
 
 If `MO_CONFIG_FILE` env var or `--config-file` is set, that path is used directly and all search is skipped.
 
-If no config file is found, the program starts normally with all defaults.
+If no config file is found, the program starts normally with all defaults. The default database is a SQLite file named `music.db`; PostgreSQL is used only when explicitly configured with host/user/name.
 
 ### Environment Variables
 
@@ -162,7 +172,7 @@ See [config-example.yaml](./config-example.yaml).
 
 | Key                 | Type   | Default      | Description                                         |
 |---------------------|--------|--------------|-----------------------------------------------------|
-| `database.type`     | string | `"postgres"` | Database type: `sqlite` / `postgres`                |
+| `database.type`     | string | `"sqlite"`   | Database type: `sqlite` / `postgres`                |
 | `database.host`     | string | —            | PostgreSQL host (postgres only)                     |
 | `database.port`     | string | —            | PostgreSQL port (postgres only)                     |
 | `database.user`     | string | —            | PostgreSQL user (postgres only)                     |
@@ -174,11 +184,14 @@ See [config-example.yaml](./config-example.yaml).
 Env var examples:
 
 ```bash
-# SQLite
+# SQLite (default file database)
+DATABASE_TYPE=sqlite DATABASE_PATH=music.db ./music-server
+
+# SQLite (in-memory, tests only)
 DATABASE_TYPE=sqlite DATABASE_PATH=:memory: ./music-server
 
 # PostgreSQL
-DATABASE_HOST=localhost DATABASE_PORT=5432 DATABASE_USER=postgres DATABASE_PASSWORD=postgres DATABASE_NAME=music-online ./music-server
+DATABASE_TYPE=postgres DATABASE_HOST=localhost DATABASE_PORT=5432 DATABASE_USER=postgres DATABASE_PASSWORD=postgres DATABASE_NAME=music-online ./music-server
 ```
 
 #### jwt

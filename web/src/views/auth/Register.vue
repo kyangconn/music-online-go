@@ -2,10 +2,12 @@
 import type { FormInstance, FormRules } from "element-plus";
 import { ElMessage } from "element-plus";
 import { ref, reactive } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import request from "@/utils/request";
 
 const router = useRouter();
+const { t } = useI18n();
 const formRef = ref<FormInstance>();
 const loading = ref(false);
 
@@ -35,7 +37,7 @@ const rules = reactive<FormRules>({
   ],
   password: [
     { required: true, message: "Please input password", trigger: "blur" },
-    { min: 6, message: "Length should be at least 6", trigger: "blur" },
+    { min: 8, message: t("auth.password_min_length"), trigger: "blur" },
   ],
   confirmPassword: [
     { required: true, message: "Please confirm your password", trigger: "blur" },

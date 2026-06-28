@@ -3,6 +3,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -16,18 +17,25 @@ import (
 	"github.com/kyangconn/music-online-go/internal/repository"
 )
 
+var (
+	ErrForbidden     = errors.New("forbidden")
+	ErrMediaNotFound = errors.New("media file not found")
+)
+
 // MusicService defines music business logic operations.
 type MusicService interface {
 	Create(userID uint, req *domain.CreateMusicRequest) (*domain.MusicResponse, error)
 	GetByID(id uint, currentUserID *uint) (*domain.MusicResponse, error)
 	Search(query string, page, pageSize int, currentUserID *uint) ([]*domain.MusicResponse, int64, error)
 	ListByUserID(userID uint, page, pageSize int, currentUserID *uint) ([]*domain.MusicResponse, int64, error)
-	Update(id uint, req *domain.UpdateMusicRequest) (*domain.MusicResponse, error)
-	Delete(id uint) error
+	Update(userID uint, role string, id uint, req *domain.UpdateMusicRequest) (*domain.MusicResponse, error)
+	Delete(userID uint, role string, id uint) error
 	Like(userID, musicID uint) error
 	Unlike(userID, musicID uint) error
 	ListLikedByUserID(userID uint, page, pageSize int, currentUserID *uint) ([]*domain.MusicResponse, int64, error)
 	UploadFiles(id uint, audioHeader, coverHeader *multipart.FileHeader) (*domain.MusicResponse, error)
+	GetAudioPath(id uint) (string, error)
+	GetCoverPath(id uint) (string, error)
 	// Admin
 	AdminDelete(id uint) error
 }
@@ -108,10 +116,13 @@ func (s *musicService) ListByUserID(userID uint, page, pageSize int, currentUser
 	return responses, total, nil
 }
 
-func (s *musicService) Update(id uint, req *domain.UpdateMusicRequest) (*domain.MusicResponse, error) {
+func (s *musicService) Update(userID uint, role string, id uint, req *domain.UpdateMusicRequest) (*domain.MusicResponse, error) {
 	music, err := s.repo.FindByID(id)
 	if err != nil {
 		return nil, err
+	}
+	if !canManageMusic(music, userID, role) {
+		return nil, ErrForbidden
 	}
 
 	if req.Title != nil {
@@ -143,7 +154,15 @@ func (s *musicService) Update(id uint, req *domain.UpdateMusicRequest) (*domain.
 	return music.ToResponse(), nil
 }
 
-func (s *musicService) Delete(id uint) error {
+func (s *musicService) Delete(userID uint, role string, id uint) error {
+	music, err := s.repo.FindByID(id)
+	if err != nil {
+		return err
+	}
+	if !canManageMusic(music, userID, role) {
+		return ErrForbidden
+	}
+
 	return s.repo.Delete(id)
 }
 
@@ -175,6 +194,32 @@ func (s *musicService) ListLikedByUserID(userID uint, page, pageSize int, curren
 	}
 
 	return responses, total, nil
+}
+
+func (s *musicService) GetAudioPath(id uint) (string, error) {
+	music, err := s.repo.FindByID(id)
+	if err != nil {
+		return "", err
+	}
+	if music.Path == "" {
+		return "", ErrMediaNotFound
+	}
+	return music.Path, nil
+}
+
+func (s *musicService) GetCoverPath(id uint) (string, error) {
+	music, err := s.repo.FindByID(id)
+	if err != nil {
+		return "", err
+	}
+	if music.Img == "" {
+		return "", ErrMediaNotFound
+	}
+	return music.Img, nil
+}
+
+func canManageMusic(music *domain.Music, userID uint, role string) bool {
+	return role == "admin" || music.UserID == userID
 }
 
 // enrichMusicResponse populates IsLiked and LikeCount.

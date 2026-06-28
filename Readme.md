@@ -60,7 +60,12 @@ make build
 ## 开发
 
 ```bash
+# 安装/更新前端依赖（从根目录控制 web/）
+make install-fe      # 按 pnpm-lock 安装
+make install-fe-dev  # 开发时安装/更新依赖
+
 # 同时启动前后端开发服务器
+make dev       # 后端 + 前端
 make dev-be    # 后端 :8080
 make dev-fe    # 前端 :5173（自动代理 API 到后端）
 ```
@@ -81,6 +86,8 @@ make build-be   # 仅后端（需已有前端产物）
 
 ```bash
 make test       # Go 测试 + 前端 ESLint
+make check      # 非修改型检查：Go vet + 前端 typecheck/ESLint
+make verify     # Go 测试 + check
 make lint       # 前端 ESLint
 make lint-be    # Go vet
 ```
@@ -89,9 +96,12 @@ make lint-be    # Go vet
 
 ```bash
 make docker
+mkdir -p data
+cp config-example.yaml data/config.yaml
+docker run --rm -p 8080:8080 -v "$PWD/data:/data" music-online-go
 ```
 
-多阶段构建：前端 node → 编译 → Go 编译 → Alpine 运行镜像。
+多阶段构建：前端 node → 编译 → Go 编译 → Alpine 运行镜像。镜像不内置 `config.yaml`；运行时通过 `/data/config.yaml`、环境变量或命令行参数提供配置。默认容器数据路径为 `/data/music.db` 和 `/data/uploads`，因此应挂载 `/data` 保持数据持久化。
 
 ## 配置
 
@@ -123,7 +133,7 @@ make docker
 
 如果 `MO_CONFIG_FILE` 环境变量或 `--config-file` 参数被设置，则直接使用指定路径，跳过所有搜索。
 
-找不到配置文件时程序正常启动，全部使用默认值。
+找不到配置文件时程序正常启动，全部使用默认值。默认数据库是 SQLite 文件 `music.db`；只有显式配置 PostgreSQL 且提供 host/user/name 时才连接 PostgreSQL。
 
 ### 环境变量
 
@@ -161,7 +171,7 @@ SERVER_PORT=8080 DATABASE_TYPE=sqlite DATABASE_PATH=/data/music.db ./music-serve
 
 | 字段                  | 类型     | 默认值          | 说明                                  |
 |---------------------|--------|--------------|-------------------------------------|
-| `database.type`     | string | `"postgres"` | 数据库类型：`sqlite` / `postgres`         |
+| `database.type`     | string | `"sqlite"`   | 数据库类型：`sqlite` / `postgres`         |
 | `database.host`     | string | -            | PostgreSQL 主机（仅 postgres）           |
 | `database.port`     | string | -            | PostgreSQL 端口（仅 postgres）           |
 | `database.user`     | string | -            | PostgreSQL 用户（仅 postgres）           |
@@ -173,11 +183,14 @@ SERVER_PORT=8080 DATABASE_TYPE=sqlite DATABASE_PATH=/data/music.db ./music-serve
 环境变量示例：
 
 ```bash
-# SQLite
+# SQLite（默认文件数据库）
+DATABASE_TYPE=sqlite DATABASE_PATH=music.db ./music-server
+
+# SQLite（仅测试用内存数据库）
 DATABASE_TYPE=sqlite DATABASE_PATH=:memory: ./music-server
 
 # PostgreSQL
-DATABASE_HOST=localhost DATABASE_PORT=5432 DATABASE_USER=postgres DATABASE_PASSWORD=postgres DATABASE_NAME=music-online ./music-server
+DATABASE_TYPE=postgres DATABASE_HOST=localhost DATABASE_PORT=5432 DATABASE_USER=postgres DATABASE_PASSWORD=postgres DATABASE_NAME=music-online ./music-server
 ```
 
 #### jwt

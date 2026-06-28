@@ -58,8 +58,8 @@ const rules = reactive<FormRules>({
   new_password: [
     {
       validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
-        if (isChangingPassword.value && value.length < 6) {
-          callback(new Error("Password must be at least 6 characters"));
+        if (isChangingPassword.value && value.length < 8) {
+          callback(new Error(t("settings.password_min_length")));
         } else {
           callback();
         }

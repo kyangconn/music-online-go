@@ -18,6 +18,7 @@
   "password_new_desc": "请输入新密码，留空表示保持当前密码",
   "password_confirm": "确认新密码",
   "password_confirm_error": "两次输入的密码不一致",
+  "password_min_length": "密码至少需要 8 个字符",
   "password_required": "修改敏感信息需要验证当前密码",
   "save_success": "保存成功",
   "save_failed": "保存失败",

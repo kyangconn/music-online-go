@@ -28,11 +28,17 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-extldflag
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates tzdata
 
-WORKDIR /root/
+WORKDIR /app
 
-COPY config.yaml ./
 COPY --from=backend-builder /app/main .
 
+ENV SERVER_PORT=8080 \
+    SERVER_MODE=release \
+    DATABASE_TYPE=sqlite \
+    DATABASE_PATH=/data/music.db \
+    SERVER_UPLOAD_DIR=/data/uploads
+
+VOLUME ["/data"]
 EXPOSE 8080
 
 CMD ["./main"]

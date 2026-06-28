@@ -93,6 +93,8 @@ func TestMain(m *testing.M) {
 	{
 		musicPublic.GET("", musicHandler.Search)
 		musicPublic.GET("/:id", musicHandler.GetByID)
+		musicPublic.GET("/:id/stream", musicHandler.Stream)
+		musicPublic.GET("/:id/cover", musicHandler.Cover)
 	}
 	api.GET("/users/:id/musics", middleware.OptionalAuthMiddleware(), musicHandler.ListUserMusic)
 	api.GET("/users/:id/likes", middleware.OptionalAuthMiddleware(), musicHandler.ListUserLikedMusic)
