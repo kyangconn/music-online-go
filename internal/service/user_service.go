@@ -38,6 +38,9 @@ type userService struct {
 	userRepo repository.UserRepository
 }
 
+// dummyPasswordHash keeps failed login timing closer when the account does not exist.
+const dummyPasswordHash = "$2a$10$OLIc7WDuS61Ho.Ezf91LNO9AOgRWT3WbAmBnvG2OrzkqLR9vOCnpC"
+
 func NewUserService(userRepo repository.UserRepository) UserService {
 	return &userService{userRepo: userRepo}
 }
@@ -76,6 +79,9 @@ func (s *userService) Login(req *domain.LoginRequest) (*domain.LoginResponse, er
 		// 如果按用户名找不到，尝试按邮箱查找
 		user, err = s.userRepo.FindByEmail(req.Username)
 		if err != nil {
+			if _, verifyErr := password.VerifyPassword(req.Password, dummyPasswordHash); verifyErr != nil {
+				return nil, fmt.Errorf("failed to verify password: %w", verifyErr)
+			}
 			return nil, errors.New("invalid credentials")
 		}
 	}

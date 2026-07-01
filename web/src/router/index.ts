@@ -36,11 +36,13 @@ const routes = [
         path: "/profile",
         name: "Profile",
         component: () => import("@/views/user/Profile.vue").catch(() => Home),
+        meta: { requiresAuth: true },
       },
       {
         path: "/settings",
         name: "Settings",
         component: () => import("@/views/user/Settings.vue").catch(() => Home),
+        meta: { requiresAuth: true },
       },
       {
         path: "/music/:id",
@@ -81,10 +83,13 @@ const router = createRouter({
  */
 router.beforeEach((to, _from, next) => {
   const userStore = useUserStore();
+  const requiresAuth = Boolean(to.meta.requiresAuth || to.meta.requiresAdmin);
+  const redirect = { path: "/login", query: { redirect: to.fullPath } };
 
   // 检查是否需要认证
-  if (to.meta.requiresAuth && !userStore.isLoggedIn) {
-    next("/login");
+  if (requiresAuth && (!userStore.isLoggedIn || isTokenExpired(userStore.token))) {
+    userStore.logout();
+    next(redirect);
   }
   // 检查是否需要管理员权限
   else if (to.meta.requiresAdmin && !userStore.isAdmin) {
@@ -95,5 +100,18 @@ router.beforeEach((to, _from, next) => {
     next();
   }
 });
+
+const isTokenExpired = (token: string) => {
+  if (!token) return true;
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return true;
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const decoded = JSON.parse(atob(normalized)) as { exp?: number };
+    return typeof decoded.exp !== "number" || decoded.exp * 1000 <= Date.now();
+  } catch (_e) {
+    return true;
+  }
+};
 
 export default router;

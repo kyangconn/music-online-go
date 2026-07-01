@@ -4,8 +4,8 @@ import type { MusicMetadataFields } from "@/types/api";
 
 const META_CACHE_PREFIX = "music-meta:";
 
-/** 根据文件名和大小生成元数据缓存键 */
-export const makeMetaCacheKey = (file: File) => `${META_CACHE_PREFIX}${file.name}:${file.size}`;
+/** 根据文件名、大小和修改时间生成元数据缓存键 */
+export const makeMetaCacheKey = (file: File) => `${META_CACHE_PREFIX}${file.name}:${file.size}:${file.lastModified}`;
 
 /** 从 localStorage 加载缓存的音频元数据 */
 export const loadCachedMeta = (file: File): MusicMetadataFields | null => {
@@ -44,7 +44,7 @@ export const extractMetaFields = (common: ICommonTagsResult, format?: IFormat): 
   year: typeof common.year === "number" ? String(common.year) : "",
   track: common.track && typeof common.track.no === "number" ? String(common.track.no) : "",
   genre: common.genre?.length ? common.genre.join("; ") : "",
-  duration: format?.duration ? String(Math.round(format.duration)) : "",
+  duration: format?.duration ? formatDuration(format.duration) : "",
 });
 
 /** 解析音频文件并返回标准化的元数据字段 */
@@ -64,6 +64,7 @@ export const formatFileSize = (bytes: number) => {
 
 /** 将秒数格式化为 mm:ss 时长字符串 */
 export const formatDuration = (seconds: number) => {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, "0")}`;

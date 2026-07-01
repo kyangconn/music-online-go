@@ -8,9 +8,13 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/kyangconn/music-online-go/internal/domain"
+	"github.com/kyangconn/music-online-go/internal/pkg/database"
 )
 
 func TestHealthEndpoint(t *testing.T) {
@@ -105,6 +109,33 @@ func TestCreateMusicTagAuthRequired(t *testing.T) {
 	}
 }
 
+func TestCreateMusicDefaultsToSingle(t *testing.T) {
+	token := registerAndLogin(t, "defaulttypeuser")
+
+	body := `{"title":"No Type Song","artist":"Test Artist"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/musics", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	testRouter.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create music without type: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Data struct {
+			Type string `json:"type"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("create music response parse: %v", err)
+	}
+	if resp.Data.Type != "single" {
+		t.Fatalf("type = %q, want single", resp.Data.Type)
+	}
+}
+
 func TestUploadAndStreamMusic(t *testing.T) {
 	token := registerAndLogin(t, "mediauser")
 	musicID := createMusic(t, token, "Media Song")
@@ -134,6 +165,19 @@ func TestUploadAndStreamMusic(t *testing.T) {
 	}
 	if strings.Contains(uploadResp.Data.Path, `\`) || strings.Contains(uploadResp.Data.Img, `\`) {
 		t.Fatalf("media URLs should not expose OS path separators: %+v", uploadResp.Data)
+	}
+
+	var stored domain.Music
+	if err := database.DB.First(&stored, musicID).Error; err != nil {
+		t.Fatalf("load stored music: %v", err)
+	}
+	audioPath := filepath.ToSlash(stored.Path)
+	coverPath := filepath.ToSlash(stored.Img)
+	if !strings.HasSuffix(audioPath, "/"+strconv.Itoa(int(musicID))+"/audio.mp3") {
+		t.Fatalf("stored audio path = %q, want uploads/<id>/audio.mp3", stored.Path)
+	}
+	if !strings.HasSuffix(coverPath, "/"+strconv.Itoa(int(musicID))+"/cover.png") {
+		t.Fatalf("stored cover path = %q, want uploads/<id>/cover.png", stored.Img)
 	}
 
 	w = httptest.NewRecorder()

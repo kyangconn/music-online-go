@@ -3,9 +3,9 @@ import { FolderOpened } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { ref, computed, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
-import type { ScannedFileItem, CreateMusicData } from "@/types/api";
+import type { ScannedFileItem, CreateMusicData, CreateMusicRequest } from "@/types/api";
 import request from "@/utils/request";
-import { parseAudioFile, formatFileSize, formatDuration } from "@/utils/upload";
+import { parseAudioFile, formatFileSize } from "@/utils/upload";
 
 const { t } = useI18n();
 
@@ -27,6 +27,7 @@ const selectedFiles = ref<Set<string>>(new Set());
 const parsing = ref(false);
 const batchUploading = ref(false);
 const batchProgress = ref(0);
+const defaultArtist = "Unknown Artist";
 
 /** 请求目录访问权限并扫描音频文件 */
 const requestDirectoryAccess = async () => {
@@ -172,11 +173,13 @@ const uploadSelectedFiles = async () => {
         genre: "",
         duration: "",
       };
-      const createRes = await request.post<CreateMusicData>("/musics", {
+      const payload: CreateMusicRequest = {
         title: metadata.title || item.name.replace(/\.[^/.]+$/, ""),
-        artist: metadata.artist || "",
+        artist: metadata.artist || defaultArtist,
         intro: "",
-      });
+        type: "single",
+      };
+      const createRes = await request.post<CreateMusicData>("/musics", payload);
       const musicId = createRes.data?.id;
       if (!musicId) {
         ElMessage.error(`Failed to create record for ${item.name}`);
@@ -278,7 +281,7 @@ onMounted(() => {
         </el-table-column>
         <el-table-column :label="$t('add.music_duration')" width="90">
           <template #default="{ row }">
-            {{ row.metadata?.duration ? formatDuration(Number(row.metadata.duration)) : "—" }}
+            {{ row.metadata?.duration || "—" }}
           </template>
         </el-table-column>
         <el-table-column :label="$t('add.music_artist')" width="140" show-overflow-tooltip>

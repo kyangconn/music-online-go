@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { VideoPlay, StarFilled } from "@element-plus/icons-vue";
+import { ArrowLeft, VideoPlay, StarFilled } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import type { Music, PaginatedData } from "@/types/api";
+import MusicCover from "@/components/music/MusicCover.vue";
 import request from "@/utils/request";
 
 const route = useRoute();
+const router = useRouter();
 const musicList = ref<Music[]>([]);
 const loading = ref(false);
 const searchQuery = ref("");
@@ -47,6 +49,10 @@ const handlePageChange = (page: number) => {
   currentPage.value = page;
   fetchMusic();
 };
+
+const clearSearch = () => {
+  router.push({ path: "/" });
+};
 </script>
 
 <template>
@@ -57,8 +63,13 @@ const handlePageChange = (page: number) => {
     </div>
 
     <div class="music-section">
-      <h2 v-if="searchQuery">{{ $t("common.search_results_for", { query: searchQuery }) }}</h2>
-      <h2 v-else>{{ $t("nav.recommended") }}</h2>
+      <div class="section-heading">
+        <h2 v-if="searchQuery">{{ $t("common.search_results_for", { query: searchQuery }) }}</h2>
+        <h2 v-else>{{ $t("nav.recommended") }}</h2>
+        <el-button v-if="searchQuery" plain :icon="ArrowLeft" @click="clearSearch">
+          {{ $t("common.back") }}
+        </el-button>
+      </div>
 
       <div v-if="loading" class="loading-container">
         <el-skeleton :rows="3" animated />
@@ -77,17 +88,7 @@ const handlePageChange = (page: number) => {
           shadow="hover"
         >
           <div class="cover-image">
-            <el-image
-              :src="music.img || music.cover_url || 'https://via.placeholder.com/300x300?text=Music'"
-              fit="cover"
-              loading="lazy"
-            >
-              <template #error>
-                <div class="image-slot">
-                  <el-icon><icon-picture /></el-icon>
-                </div>
-              </template>
-            </el-image>
+            <MusicCover :src="music.img || music.cover_url" />
             <div class="play-overlay">
               <router-link :to="`/music/${music.id}`">
                 <el-button type="primary" circle :icon="VideoPlay" size="large" />
@@ -149,9 +150,19 @@ const handlePageChange = (page: number) => {
   }
 }
 
+.section-heading {
+  @include flex-between;
+  gap: $spacing-md;
+  margin-bottom: $spacing-lg;
+
+  h2 {
+    margin: 0;
+  }
+}
+
 .cover-image {
   @include aspect-ratio;
-  .el-image {
+  :deep(.music-cover) {
     @include aspect-ratio-inner;
   }
 }
@@ -193,15 +204,14 @@ const handlePageChange = (page: number) => {
 }
 
 .pagination-container {
-  @include flex-center;
+@include flex-center;
   margin-top: 2rem;
 }
 
-.image-slot {
-  @include flex-center;
-  width: 100%;
-  height: 100%;
-  background: $color-image-slot-bg;
-  color: $color-image-slot-text;
+@include mobile {
+  .section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </style>

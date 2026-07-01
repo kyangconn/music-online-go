@@ -49,6 +49,7 @@ onMounted(fetchInfo);
 
 <template>
   <SideNavLayout
+    class="admin-dashboard"
     v-model="activeTab"
     :title="title"
     :tabs="tabs"
@@ -77,3 +78,15 @@ onMounted(fetchInfo);
     </template>
   </SideNavLayout>
 </template>
+
+<style scoped lang="scss">
+.admin-dashboard {
+  :deep(.doc-section) {
+    width: 100%;
+  }
+
+  :deep(.doc-section .kv-list) {
+    max-width: none;
+  }
+}
+</style>

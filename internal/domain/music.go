@@ -64,7 +64,7 @@ type CreateMusicRequest struct {
 	Intro       string    `json:"intro"`
 	Img         string    `json:"img"`
 	Path        string    `json:"path"`
-	Type        MusicType `json:"type" binding:"oneof=single album"`
+	Type        MusicType `json:"type" binding:"omitempty,oneof=single album"`
 	IssuingDate time.Time `json:"issuing_date"`
 	AlbumID     *uint     `json:"album_id"`
 }

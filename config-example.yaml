@@ -3,6 +3,7 @@ server:
   mode: "release"
   read_timeout: 30
   write_timeout: 30
+  upload_dir: "uploads"
 
 database:
   type: "sqlite"

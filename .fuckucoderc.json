@@ -1,0 +1,18 @@
+{
+  "exclude": [
+    "**/node_modules/**",
+    "vendor/**",
+    "**/*.test.ts",
+    "docs/**"
+  ],
+  "include": ["**/*"],
+  "concurrency": 8,
+  "output": {
+    "format": "console",
+    "top": 20,
+    "showDetails": true
+  },
+  "i18n": {
+    "locale": "zh"
+  }
+}

@@ -76,6 +76,7 @@ make dev-fe    # 前端 :5173（自动代理 API 到后端）
 
 ```bash
 make build      # 前端构建 + 后端编译
+make build-silent # 较少输出的前端构建 + 后端编译
 make build-fe   # 仅前端
 make build-be   # 仅后端（需已有前端产物）
 ```
@@ -88,7 +89,8 @@ make build-be   # 仅后端（需已有前端产物）
 make test       # Go 测试 + 前端 ESLint
 make check      # 非修改型检查：Go vet + 前端 typecheck/ESLint
 make verify     # Go 测试 + check
-make lint       # 前端 ESLint
+make lint       # 修改型检查：Go fmt + Go vet + 前端 ESLint --fix
+make lint-fe    # 前端 ESLint --fix
 make lint-be    # Go vet
 ```
 
@@ -166,6 +168,8 @@ SERVER_PORT=8080 DATABASE_TYPE=sqlite DATABASE_PATH=/data/music.db ./music-serve
 | `server.write_timeout` | int    | `30`        | HTTP 写超时（秒）              |
 | `server.upload_dir`    | string | `"uploads"` | 上传文件存储目录                 |
 | `server.log_file`      | string | `""`        | 日志文件路径（空表示仅 stdout）      |
+
+`server.upload_dir` 支持绝对路径或相对路径；相对路径按服务进程的当前工作目录解析。本地 `make dev-be` 默认会写到仓库根目录下的 `uploads/`，Docker 默认通过 `SERVER_UPLOAD_DIR=/data/uploads` 写入挂载卷。
 
 #### database
 

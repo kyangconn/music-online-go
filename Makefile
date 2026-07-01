@@ -22,6 +22,7 @@ help: ## Show available commands
 	@echo ""
 	@echo "=== Build ==="
 	@echo "  make build          Build frontend + backend (production)"
+	@echo "  make build-silent   Build frontend with quieter output + backend"
 	@echo "  make build-fe       Build frontend only"
 	@echo "  make build-be       Build backend only (requires dist/)"
 	@echo ""
@@ -49,6 +50,12 @@ install-fe-dev: ## Install/update frontend dependencies for local development
 	pnpm --dir $(FE_DIR) install
 
 build: build-fe build-be ## Build frontend then backend
+
+build-silent: ## Build frontend with quieter output, then backend
+	pnpm --dir $(FE_DIR) install --frozen-lockfile --silent
+	pnpm --dir $(FE_DIR) exec vue-tsc -b
+	pnpm --dir $(FE_DIR) exec vite build --logLevel warn
+	go build -v -o $(BINARY) ./cmd/server
 
 build-fe: ## Build Vue frontend, output to cmd/server/dist/
 	pnpm --dir $(FE_DIR) install --frozen-lockfile
@@ -92,7 +99,7 @@ lint: ## Run all linters (Go fmt + vet + ESLint)
 	pnpm --dir $(FE_DIR) lint --quiet
 
 lint-fe: ## Run ESLint on frontend
-	pnpm --dir $(FE_DIR) eslint . --fix --quiet
+	pnpm --dir $(FE_DIR) exec eslint . --fix --quiet
 
 lint-be: ## Run Go vet
 	go vet ./...

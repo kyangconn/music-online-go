@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import type { AxiosProgressEvent } from "axios";
+import axios, { type AxiosProgressEvent } from "axios";
 import type { UploadInstance, UploadFile } from "element-plus";
 import { Close, UploadFilled, PictureFilled, Headset, QuestionFilled } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { ref, reactive } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
-import type { CreateMusicData, MusicMetadataFields } from "@/types/api";
+import type { CreateMusicData, CreateMusicRequest, MusicMetadataFields } from "@/types/api";
 import request from "@/utils/request";
 import { loadCachedMeta, saveCachedMeta, removeCachedMeta, parseAudioFile, formatFileSize } from "@/utils/upload";
 
@@ -68,6 +68,11 @@ const removeCover = () => {
   coverUploadRef.value?.clearFiles();
 };
 
+const selectCover = () => {
+  const input = coverUploadRef.value?.$el?.querySelector("input") as HTMLInputElement | null;
+  input?.click();
+};
+
 /** 音频文件选择回调，自动解析标签 */
 const handleAudioChange = async (file: UploadFile) => {
   audioFile.value = file?.raw || null;
@@ -116,20 +121,54 @@ const removeAudio = () => {
   audioUploadRef.value?.clearFiles();
 };
 
+const selectAudio = () => {
+  const input = audioUploadRef.value?.$el?.querySelector("input") as HTMLInputElement | null;
+  input?.click();
+};
+
+interface UploadErrorResponse {
+  error?: string;
+  message?: string;
+}
+
+const getUploadErrorMessage = (error: unknown) => {
+  if (axios.isAxiosError<UploadErrorResponse>(error)) {
+    const data = error.response?.data;
+    return data?.error || data?.message || error.message || "Upload failed";
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return "Upload failed";
+};
+
+const resetTouched = () => {
+  Object.assign(touched, {
+    title: false,
+    artist: false,
+    album: false,
+    year: false,
+    track: false,
+    genre: false,
+  });
+};
+
 /** 提交音乐创建并上传文件 */
 const handleSubmit = async () => {
-  if (!form.title || !form.artist) {
+  const title = form.title.trim();
+  const artist = form.artist.trim();
+  if (!title || !artist) {
     ElMessage.error("Title and artist are required");
     return;
   }
   loading.value = true;
-  uploadPercent.value = 0;
+  uploadPercent.value = audioFile.value || coverFile.value ? 1 : 0;
   try {
-    const res = await request.post<CreateMusicData>("/musics", {
-      title: form.title,
-      artist: form.artist,
-      intro: form.description,
-    });
+    const payload: CreateMusicRequest = {
+      title,
+      artist,
+      intro: form.description.trim(),
+      type: "single",
+    };
+    const res = await request.post<CreateMusicData>("/musics", payload);
     const musicId = res.data?.id;
     if (!musicId) {
       ElMessage.error("Failed to create music record");
@@ -144,9 +183,10 @@ const handleSubmit = async () => {
         headers: { "Content-Type": "multipart/form-data" },
         onUploadProgress: (event: AxiosProgressEvent) => {
           if (!event.total) return;
-          uploadPercent.value = Math.round((event.loaded / event.total) * 100);
+          uploadPercent.value = Math.max(1, Math.round((event.loaded / event.total) * 100));
         },
       });
+      uploadPercent.value = 100;
     }
 
     if (audioFile.value) removeCachedMeta(audioFile.value);
@@ -165,7 +205,9 @@ const handleSubmit = async () => {
       duration: "",
       description: "",
     });
-  } catch (_e) {
+    resetTouched();
+  } catch (error) {
+    ElMessage.error(getUploadErrorMessage(error));
   } finally {
     loading.value = false;
     setTimeout(() => {
@@ -178,7 +220,7 @@ const handleSubmit = async () => {
 <template>
   <div class="single-upload">
     <div class="file-cards">
-      <div class="file-card" :class="{ filled: coverFile }">
+      <div class="file-card" :class="{ filled: coverFile }" role="button" tabindex="0" @click="selectCover" @keydown.enter.prevent="selectCover">
         <div class="file-card-body">
           <el-icon :size="28"><PictureFilled /></el-icon>
           <div class="file-card-info">
@@ -187,12 +229,11 @@ const handleSubmit = async () => {
             <p v-if="coverFile" class="file-card-size">{{ formatFileSize(coverFile.size) }}</p>
           </div>
         </div>
-        <button v-if="coverFile" class="dismiss-btn" @click="removeCover" :aria-label="$t('common.delete')">
+        <button v-if="coverFile" class="dismiss-btn" @click.stop="removeCover" :aria-label="$t('common.delete')">
           <el-icon :size="14"><Close /></el-icon>
         </button>
         <el-upload
-          v-else
-          class="card-upload-overlay"
+          class="card-upload-input"
           ref="coverUploadRef"
           :show-file-list="false"
           :limit="1"
@@ -201,11 +242,12 @@ const handleSubmit = async () => {
           :on-exceed="handleCoverExceed"
           accept="image/*"
         >
-          <el-icon :size="20"><UploadFilled /></el-icon>
+          <span class="upload-input-trigger" />
         </el-upload>
+        <el-icon v-if="!coverFile" class="card-upload-icon" :size="20"><UploadFilled /></el-icon>
       </div>
 
-      <div class="file-card" :class="{ filled: audioFile }">
+      <div class="file-card" :class="{ filled: audioFile }" role="button" tabindex="0" @click="selectAudio" @keydown.enter.prevent="selectAudio">
         <div class="file-card-body">
           <el-icon :size="28"><Headset /></el-icon>
           <div class="file-card-info">
@@ -214,12 +256,11 @@ const handleSubmit = async () => {
             <p v-if="audioFile" class="file-card-size">{{ formatFileSize(audioFile.size) }}</p>
           </div>
         </div>
-        <button v-if="audioFile" class="dismiss-btn" @click="removeAudio" :aria-label="$t('common.delete')">
+        <button v-if="audioFile" class="dismiss-btn" @click.stop="removeAudio" :aria-label="$t('common.delete')">
           <el-icon :size="14"><Close /></el-icon>
         </button>
         <el-upload
-          v-else
-          class="card-upload-overlay"
+          class="card-upload-input"
           ref="audioUploadRef"
           :show-file-list="false"
           :limit="1"
@@ -228,12 +269,13 @@ const handleSubmit = async () => {
           :on-exceed="handleAudioExceed"
           accept="audio/*"
         >
-          <el-icon :size="20"><UploadFilled /></el-icon>
+          <span class="upload-input-trigger" />
         </el-upload>
+        <el-icon v-if="!audioFile" class="card-upload-icon" :size="20"><UploadFilled /></el-icon>
       </div>
     </div>
 
-    <el-form label-position="top" :model="form">
+    <el-form class="upload-form" label-position="top" :model="form">
       <el-row :gutter="20">
         <el-col :span="12">
           <el-form-item :label="$t('add.music_title')">
@@ -308,6 +350,11 @@ const handleSubmit = async () => {
   margin-bottom: $spacing-2xl;
 }
 
+.single-upload {
+  overflow: visible;
+  padding: 2px;
+}
+
 .file-card {
   flex: 1;
   position: relative;
@@ -335,6 +382,8 @@ const handleSubmit = async () => {
   @include inline-flex($spacing-md);
   flex: 1;
   color: var(--text-secondary);
+  min-width: 0;
+  padding-right: $spacing-3xl;
 }
 
 .file-card.filled .file-card-body {
@@ -368,8 +417,8 @@ const handleSubmit = async () => {
 
 .dismiss-btn {
   position: absolute;
-  top: -8px;
-  right: -8px;
+  top: $spacing-sm;
+  right: $spacing-sm;
   width: $spacing-2xl;
   height: $spacing-2xl;
   border-radius: $radius-round;
@@ -383,7 +432,7 @@ const handleSubmit = async () => {
     transform 0.15s,
     box-shadow 0.15s;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-  z-index: 2;
+  z-index: 3;
 
   &:hover {
     transform: scale(1.15);
@@ -391,17 +440,46 @@ const handleSubmit = async () => {
   }
 }
 
-.card-upload-overlay {
+.card-upload-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+
+  :deep(.el-upload) {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.upload-input-trigger {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.card-upload-icon {
   position: absolute;
   top: 50%;
   right: $spacing-lg;
   transform: translateY(-50%);
   color: var(--text-light);
-  cursor: pointer;
   transition: color $transition-base;
+  pointer-events: none;
+  z-index: 2;
+}
 
-  &:hover {
-    color: var(--accent-color);
+.file-card:hover .card-upload-icon {
+  color: var(--accent-color);
+}
+
+.upload-form {
+  overflow: visible;
+  padding-inline: 2px;
+
+  :deep(.el-form-item) {
+    overflow: visible;
   }
 }
 

@@ -339,9 +339,7 @@ func (h *UserHandler) DisableTOTP(c *gin.Context) {
 // @Failure 401 {object} Response "未授权"
 // @Router /api/v1/users [get]
 func (h *UserHandler) ListUsers(c *gin.Context) {
-
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	page, pageSize := parsePagination(c, 20)
 
 	users, total, err := h.userService.ListUsers(page, pageSize)
 	if err != nil {

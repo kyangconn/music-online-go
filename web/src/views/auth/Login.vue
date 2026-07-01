@@ -32,7 +32,8 @@ const handleLogin = async (formEl: FormInstance | undefined) => {
         userStore.setToken(res.data.token);
         userStore.setUser(res.data.user);
         ElMessage.success("Login successful");
-        router.push("/");
+        const redirect = router.currentRoute.value.query.redirect;
+        router.push(typeof redirect === "string" ? redirect : "/");
       } catch (_e) {
       } finally {
         loading.value = false;

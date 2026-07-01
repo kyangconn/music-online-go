@@ -76,6 +76,7 @@ The frontend dev server proxies `/api` requests to the backend automatically.
 
 ```bash
 make build      # Build frontend then backend
+make build-silent # Quieter frontend build + backend build
 make build-fe   # Frontend only
 make build-be   # Backend only (requires dist/)
 ```
@@ -88,7 +89,8 @@ Frontend output goes to `cmd/server/dist/` and is embedded into the Go binary vi
 make test       # Go tests + frontend ESLint
 make check      # Non-mutating checks: Go vet + frontend typecheck/ESLint
 make verify     # Go tests + check
-make lint       # Frontend ESLint
+make lint       # Mutating checks: Go fmt + Go vet + frontend ESLint --fix
+make lint-fe    # Frontend ESLint --fix
 make lint-be    # Go vet
 ```
 
@@ -167,6 +169,8 @@ See [config-example.yaml](./config-example.yaml).
 | `server.write_timeout` | int    | `30`        | HTTP write timeout (seconds)        |
 | `server.upload_dir`    | string | `"uploads"` | Upload file storage directory       |
 | `server.log_file`      | string | `""`        | Log file path (empty = stdout only) |
+
+`server.upload_dir` may be absolute or relative. Relative paths are resolved from the server process working directory. Local `make dev-be` writes to `uploads/` under the repo root by default; Docker defaults to `SERVER_UPLOAD_DIR=/data/uploads` inside the mounted volume.
 
 #### database
 

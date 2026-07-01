@@ -3,6 +3,25 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $processes = @()
 
+function Join-Command {
+    param(
+        [string]$CommandName,
+        [string[]]$Arguments
+    )
+
+    $parts = @("&", (Quote-PSArgument $CommandName))
+    foreach ($arg in $Arguments) {
+        $parts += Quote-PSArgument $arg
+    }
+    return $parts -join " "
+}
+
+function Quote-PSArgument {
+    param([string]$Value)
+
+    return "'" + ($Value -replace "'", "''") + "'"
+}
+
 function Start-DevProcess {
     param(
         [string]$Name,
@@ -11,13 +30,30 @@ function Start-DevProcess {
     )
 
     Write-Host "Starting $Name..."
-    $process = Start-Process `
-        -FilePath $FilePath `
-        -ArgumentList $Arguments `
-        -WorkingDirectory $root `
-        -NoNewWindow `
-        -PassThru
+
+    $commandLine = @(
+        '$ErrorActionPreference = "Stop"'
+        "Set-Location -LiteralPath $(Quote-PSArgument $root)"
+        (Join-Command $FilePath $Arguments)
+    ) -join "; "
+    $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($commandLine))
+
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = (Get-Command powershell.exe -ErrorAction Stop).Source
+    $startInfo.Arguments = "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $encodedCommand"
+    $startInfo.WorkingDirectory = $root
+    $startInfo.UseShellExecute = $false
+
+    $process = [System.Diagnostics.Process]::Start($startInfo)
     return $process
+}
+
+function Stop-DevProcess {
+    param([System.Diagnostics.Process]$Process)
+
+    if ($Process -and -not $Process.HasExited) {
+        & taskkill.exe /PID $Process.Id /T /F | Out-Null
+    }
 }
 
 try {
@@ -36,8 +72,6 @@ try {
 }
 finally {
     foreach ($process in $processes) {
-        if ($process -and -not $process.HasExited) {
-            Stop-Process -Id $process.Id -Force
-        }
+        Stop-DevProcess $process
     }
 }

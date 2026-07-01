@@ -193,8 +193,7 @@ func fmtDuration(d time.Duration) string {
 // @Router /api/v1/admin/users [get]
 func (h *AdminHandler) ListUsers(c *gin.Context) {
 	query := c.Query("q")
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	page, pageSize := parsePagination(c, 10)
 
 	users, total, err := h.userService.SearchUsers(query, page, pageSize)
 	if err != nil {

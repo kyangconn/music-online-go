@@ -49,6 +49,8 @@ export interface UpdateUserProfileData {
 
 // ---- 音乐相关 ----
 
+export type MusicType = "single" | "album";
+
 export interface Music {
   id: number;
   title: string;
@@ -56,7 +58,7 @@ export interface Music {
   album_id: number | null;
   intro: string;
   img: string;
-  type: string;
+  type: MusicType;
   issuing_date: string;
   path: string;
   user_id: number;
@@ -67,11 +69,18 @@ export interface Music {
   cover_url?: string;
 }
 
-export interface CreateMusicData {
-  id: number;
+export interface CreateMusicRequest {
   title: string;
   artist: string;
+  intro?: string;
+  img?: string;
+  path?: string;
+  type?: MusicType;
+  issuing_date?: string;
+  album_id?: number | null;
 }
+
+export type CreateMusicData = Music;
 
 // ---- TOTP 相关 ----
 

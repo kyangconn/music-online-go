@@ -9,7 +9,7 @@ import (
 	"mime/multipart"
 	"os"
 	"path/filepath"
-	"time"
+	"strconv"
 
 	"github.com/kyangconn/music-online-go/internal/config"
 	"github.com/kyangconn/music-online-go/internal/domain"
@@ -49,12 +49,18 @@ func NewMusicService(repo repository.MusicRepository) MusicService {
 }
 
 func (s *musicService) Create(userID uint, req *domain.CreateMusicRequest) (*domain.MusicResponse, error) {
+	musicType := req.Type
+	if musicType == "" {
+		musicType = domain.MusicTypeSingle
+	}
+
 	music := &domain.Music{
 		Title:       req.Title,
 		Artist:      req.Artist,
 		Intro:       req.Intro,
 		Img:         req.Img,
-		Type:        req.Type,
+		Path:        req.Path,
+		Type:        musicType,
 		IssuingDate: req.IssuingDate,
 		UserID:      userID,
 		AlbumID:     req.AlbumID,
@@ -251,70 +257,23 @@ func (s *musicService) UploadFiles(id uint, audioHeader, coverHeader *multipart.
 	}
 
 	uploadDir := config.AppConfig.Server.UploadDir
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+	musicDir := filepath.Join(uploadDir, strconv.FormatUint(uint64(id), 10))
+	if err := os.MkdirAll(musicDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create upload directory: %w", err)
 	}
 
 	if audioHeader != nil {
-		ext := filepath.Ext(audioHeader.Filename)
-		filename := fmt.Sprintf("audio_%d_%d%s", id, time.Now().UnixMilli(), ext)
-		dest := filepath.Join(uploadDir, filename)
-
-		src, err := audioHeader.Open()
+		dest, err := saveUploadedMediaFile(musicDir, "audio", audioHeader)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open audio file: %w", err)
-		}
-		defer func() {
-			err := src.Close()
-			if err != nil {
-				pklog.Errorf("Failed to close audio source: %v", err)
-			}
-		}()
-
-		dst, err := os.Create(dest)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create audio file: %w", err)
-		}
-		defer func() {
-			err := dst.Close()
-			if err != nil {
-				pklog.Errorf("Failed to close audio destination: %v", err)
-			}
-		}()
-
-		if _, err := io.Copy(dst, src); err != nil {
-			return nil, fmt.Errorf("failed to save audio file: %w", err)
+			return nil, err
 		}
 		music.Path = dest
 	}
 
 	if coverHeader != nil {
-		ext := filepath.Ext(coverHeader.Filename)
-		filename := fmt.Sprintf("cover_%d_%d%s", id, time.Now().UnixMilli(), ext)
-		dest := filepath.Join(uploadDir, filename)
-
-		src, err := coverHeader.Open()
+		dest, err := saveUploadedMediaFile(musicDir, "cover", coverHeader)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open cover file: %w", err)
-		}
-		defer func(src multipart.File) {
-			err := src.Close()
-			if err != nil {
-			}
-		}(src)
-
-		dst, err := os.Create(dest)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create cover file: %w", err)
-		}
-		defer func(dst *os.File) {
-			err := dst.Close()
-			if err != nil {
-			}
-		}(dst)
-
-		if _, err := io.Copy(dst, src); err != nil {
-			return nil, fmt.Errorf("failed to save cover file: %w", err)
+			return nil, err
 		}
 		music.Img = dest
 	}
@@ -324,4 +283,34 @@ func (s *musicService) UploadFiles(id uint, audioHeader, coverHeader *multipart.
 	}
 
 	return music.ToResponse(), nil
+}
+
+func saveUploadedMediaFile(dir, baseName string, header *multipart.FileHeader) (string, error) {
+	ext := filepath.Ext(header.Filename)
+	dest := filepath.Join(dir, baseName+ext)
+
+	src, err := header.Open()
+	if err != nil {
+		return "", fmt.Errorf("failed to open %s file: %w", baseName, err)
+	}
+	defer func() {
+		if err := src.Close(); err != nil {
+			pklog.Errorf("Failed to close %s source: %v", baseName, err)
+		}
+	}()
+
+	dst, err := os.Create(dest)
+	if err != nil {
+		return "", fmt.Errorf("failed to create %s file: %w", baseName, err)
+	}
+	defer func() {
+		if err := dst.Close(); err != nil {
+			pklog.Errorf("Failed to close %s destination: %v", baseName, err)
+		}
+	}()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return "", fmt.Errorf("failed to save %s file: %w", baseName, err)
+	}
+	return dest, nil
 }

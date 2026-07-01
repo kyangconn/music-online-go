@@ -4,6 +4,7 @@ import { ElMessage } from "element-plus";
 import { ref, onMounted, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { Music } from "@/types/api";
+import MusicCover from "@/components/music/MusicCover.vue";
 import { useUserStore } from "@/store/user";
 import request from "@/utils/request";
 
@@ -129,11 +130,7 @@ onMounted(fetchDetail);
         <div class="detail-top">
           <div class="cover-section">
             <div class="cover">
-              <el-image
-                :src="music?.img || 'https://via.placeholder.com/400x400?text=Album'"
-                fit="cover"
-                :preview-src-list="music?.img ? [music.img] : []"
-              />
+              <MusicCover :src="music?.img" preview />
             </div>
           </div>
           <div class="info-section">
@@ -223,6 +220,7 @@ onMounted(fetchDetail);
 
 .cover {
   width: 280px;
+  aspect-ratio: 1;
   border-radius: $radius-md;
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);

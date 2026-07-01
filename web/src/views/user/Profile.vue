@@ -4,6 +4,7 @@ import { ElMessage } from "element-plus";
 import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import type { Music, PaginatedData } from "@/types/api";
+import MusicCover from "@/components/music/MusicCover.vue";
 import { useUserStore } from "@/store/user";
 import request from "@/utils/request";
 
@@ -52,7 +53,7 @@ onMounted(fetchUserMusics);
       <div v-else class="music-grid">
         <el-card v-for="m in musicList" :key="m.id" class="music-card" shadow="hover">
           <div class="cover">
-            <el-image :src="m.img || 'https://via.placeholder.com/160x160?text=Music'" fit="cover" />
+            <MusicCover :src="m.img || m.cover_url" />
           </div>
           <div class="meta">
             <h4 class="title">{{ m.title }}</h4>

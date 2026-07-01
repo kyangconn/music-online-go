@@ -44,7 +44,8 @@ service.interceptors.response.use(
 
         const currentPath = window.location.pathname;
         if (currentPath !== "/login" && currentPath !== "/register") {
-          window.location.href = "/login";
+          const currentLocation = window.location.pathname + window.location.search + window.location.hash;
+          window.location.href = `/login?redirect=${encodeURIComponent(currentLocation)}`;
         }
       } else if (status === 403) {
         console.warn("Forbidden:", data);

@@ -123,8 +123,7 @@ func (h *MusicHandler) GetByID(c *gin.Context) {
 // @Router /api/v1/musics [get]
 func (h *MusicHandler) Search(c *gin.Context) {
 	query := c.Query("q")
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	page, pageSize := parsePagination(c, 10)
 
 	currentUserID := h.getUserID(c)
 	musics, total, err := h.musicService.Search(query, page, pageSize, currentUserID)
@@ -276,8 +275,7 @@ func (h *MusicHandler) ListUserMusic(c *gin.Context) {
 		return
 	}
 
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	page, pageSize := parsePagination(c, 10)
 
 	currentUserID := h.getUserID(c)
 	musics, total, err := h.musicService.ListByUserID(uint(userID), page, pageSize, currentUserID)
@@ -311,8 +309,7 @@ func (h *MusicHandler) ListUserLikedMusic(c *gin.Context) {
 		return
 	}
 
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	page, pageSize := parsePagination(c, 10)
 
 	currentUserID := h.getUserID(c)
 	musics, total, err := h.musicService.ListLikedByUserID(uint(userID), page, pageSize, currentUserID)
