@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/kyangconn/music-online-go/internal/domain"
 	pklog "github.com/kyangconn/music-online-go/internal/pkg/log"
+	"github.com/kyangconn/music-online-go/internal/repository"
 	"github.com/kyangconn/music-online-go/internal/service"
 )
 
@@ -42,7 +43,7 @@ func (h *MusicHandler) Create(c *gin.Context) {
 	}
 
 	userID := c.GetUint("userID")
-	music, err := h.musicService.Create(userID, &req)
+	music, err := h.musicService.Create(c.Request.Context(), userID, &req)
 	if err != nil {
 		InternalServerError(c, "Failed to create music")
 		return
@@ -77,7 +78,7 @@ func (h *MusicHandler) UploadFile(c *gin.Context) {
 		return
 	}
 
-	music, err := h.musicService.UploadFiles(uint(id), audioFile, coverFile)
+	music, err := h.musicService.UploadFiles(c.Request.Context(), uint(id), audioFile, coverFile)
 	if err != nil {
 		InternalServerError(c, "Failed to upload files")
 		return
@@ -102,7 +103,7 @@ func (h *MusicHandler) GetByID(c *gin.Context) {
 	}
 
 	currentUserID := h.getUserID(c)
-	music, err := h.musicService.GetByID(uint(id), currentUserID)
+	music, err := h.musicService.GetByID(c.Request.Context(), uint(id), currentUserID)
 	if err != nil {
 		NotFound(c, "Music not found")
 		return
@@ -126,7 +127,7 @@ func (h *MusicHandler) Search(c *gin.Context) {
 	page, pageSize := parsePagination(c, 10)
 
 	currentUserID := h.getUserID(c)
-	musics, total, err := h.musicService.Search(query, page, pageSize, currentUserID)
+	musics, total, err := h.musicService.Search(c.Request.Context(), query, page, pageSize, currentUserID)
 	if err != nil {
 		InternalServerError(c, "Failed to search music")
 		return
@@ -163,7 +164,7 @@ func (h *MusicHandler) Update(c *gin.Context) {
 		return
 	}
 
-	music, err := h.musicService.Update(c.GetUint("userID"), c.GetString("role"), uint(id), &req)
+	music, err := h.musicService.Update(c.Request.Context(), c.GetUint("userID"), c.GetString("role"), uint(id), &req)
 	if err != nil {
 		if errors.Is(err, service.ErrForbidden) {
 			Forbidden(c, "You can only update your own music")
@@ -192,7 +193,7 @@ func (h *MusicHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.musicService.Delete(c.GetUint("userID"), c.GetString("role"), uint(id)); err != nil {
+	if err := h.musicService.Delete(c.Request.Context(), c.GetUint("userID"), c.GetString("role"), uint(id)); err != nil {
 		if errors.Is(err, service.ErrForbidden) {
 			Forbidden(c, "You can only delete your own music")
 			return
@@ -221,8 +222,8 @@ func (h *MusicHandler) Like(c *gin.Context) {
 	}
 
 	userID := c.GetUint("userID")
-	if err := h.musicService.Like(userID, uint(id)); err != nil {
-		if err.Error() == "music not found" {
+	if err := h.musicService.Like(c.Request.Context(), userID, uint(id)); err != nil {
+		if errors.Is(err, repository.ErrMusicNotFound) {
 			NotFound(c, "Music not found")
 			return
 		}
@@ -250,7 +251,7 @@ func (h *MusicHandler) Unlike(c *gin.Context) {
 	}
 
 	userID := c.GetUint("userID")
-	if err := h.musicService.Unlike(userID, uint(id)); err != nil {
+	if err := h.musicService.Unlike(c.Request.Context(), userID, uint(id)); err != nil {
 		InternalServerError(c, "Failed to unlike music")
 		return
 	}
@@ -278,7 +279,7 @@ func (h *MusicHandler) ListUserMusic(c *gin.Context) {
 	page, pageSize := parsePagination(c, 10)
 
 	currentUserID := h.getUserID(c)
-	musics, total, err := h.musicService.ListByUserID(uint(userID), page, pageSize, currentUserID)
+	musics, total, err := h.musicService.ListByUserID(c.Request.Context(), uint(userID), page, pageSize, currentUserID)
 	if err != nil {
 		InternalServerError(c, "Failed to list user music")
 		return
@@ -312,7 +313,7 @@ func (h *MusicHandler) ListUserLikedMusic(c *gin.Context) {
 	page, pageSize := parsePagination(c, 10)
 
 	currentUserID := h.getUserID(c)
-	musics, total, err := h.musicService.ListLikedByUserID(uint(userID), page, pageSize, currentUserID)
+	musics, total, err := h.musicService.ListLikedByUserID(c.Request.Context(), uint(userID), page, pageSize, currentUserID)
 	if err != nil {
 		InternalServerError(c, "Failed to list liked music")
 		return
@@ -342,7 +343,7 @@ func (h *MusicHandler) Stream(c *gin.Context) {
 		return
 	}
 
-	audioPath, err := h.musicService.GetAudioPath(uint(id))
+	audioPath, err := h.musicService.GetAudioPath(c.Request.Context(), uint(id))
 	if err != nil {
 		NotFound(c, "No audio file available")
 		return
@@ -358,7 +359,7 @@ func (h *MusicHandler) Cover(c *gin.Context) {
 		return
 	}
 
-	coverPath, err := h.musicService.GetCoverPath(uint(id))
+	coverPath, err := h.musicService.GetCoverPath(c.Request.Context(), uint(id))
 	if err != nil {
 		NotFound(c, "No cover file available")
 		return

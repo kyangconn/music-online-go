@@ -14,7 +14,7 @@ import (
 // MusicTagHandler 音乐标签处理器
 // 负责处理音乐标签相关的HTTP请求，包括创建、查询、更新、删除等操作
 type MusicTagHandler struct {
-	service *service.MusicTagService
+	service service.MusicTagService
 }
 
 // MatchTagResponse 标签匹配响应
@@ -24,8 +24,8 @@ type MatchTagResponse struct {
 	Tag       *domain.MusicTagResponse `json:"tag,omitempty"`
 }
 
-func NewMusicTagHandler(service *service.MusicTagService) *MusicTagHandler {
-	return &MusicTagHandler{service: service}
+func NewMusicTagHandler(svc service.MusicTagService) *MusicTagHandler {
+	return &MusicTagHandler{service: svc}
 }
 
 // CreateMusicTag 创建新的音乐标签（支持无文件反向上传）
@@ -33,17 +33,17 @@ func NewMusicTagHandler(service *service.MusicTagService) *MusicTagHandler {
 func (h *MusicTagHandler) CreateMusicTag(c *gin.Context) {
 	var req domain.CreateMusicTagRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		BadRequest(c, err.Error())
 		return
 	}
 
-	tag, err := h.service.Create(&req)
+	tag, err := h.service.Create(c.Request.Context(), &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		InternalServerError(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusCreated, tag.ToResponse())
+	Created(c, tag.ToResponse())
 }
 
 // GetMusicTag 根据ID获取音乐标签
@@ -51,17 +51,17 @@ func (h *MusicTagHandler) CreateMusicTag(c *gin.Context) {
 func (h *MusicTagHandler) GetMusicTag(c *gin.Context) {
 	id, err := parseUintParam(c, "id")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		BadRequest(c, err.Error())
 		return
 	}
 
-	tag, err := h.service.GetByID(id)
+	tag, err := h.service.GetByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Tag not found"})
+		NotFound(c, "Tag not found")
 		return
 	}
 
-	c.JSON(http.StatusOK, tag)
+	Success(c, tag)
 }
 
 // UpdateMusicTag 更新现有的音乐标签
@@ -69,23 +69,23 @@ func (h *MusicTagHandler) GetMusicTag(c *gin.Context) {
 func (h *MusicTagHandler) UpdateMusicTag(c *gin.Context) {
 	id, err := parseUintParam(c, "id")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		BadRequest(c, err.Error())
 		return
 	}
 
 	var req domain.UpdateMusicTagRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		BadRequest(c, err.Error())
 		return
 	}
 
-	tag, err := h.service.Update(id, &req)
+	tag, err := h.service.Update(c.Request.Context(), id, &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		InternalServerError(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, tag.ToResponse())
+	Success(c, tag.ToResponse())
 }
 
 // DeleteMusicTag 根据ID删除音乐标签
@@ -93,34 +93,34 @@ func (h *MusicTagHandler) UpdateMusicTag(c *gin.Context) {
 func (h *MusicTagHandler) DeleteMusicTag(c *gin.Context) {
 	id, err := parseUintParam(c, "id")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		BadRequest(c, err.Error())
 		return
 	}
 
-	if err := h.service.Delete(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if err := h.service.Delete(c.Request.Context(), id); err != nil {
+		InternalServerError(c, err.Error())
 		return
 	}
 
-	c.Status(http.StatusNoContent)
+	Success(c, gin.H{"message": "Tag deleted successfully"})
 }
 
 // SearchMusicTags 搜索音乐标签（支持分页）
-// GET /api/v1/music-tags
+// POST /api/v1/music-tags/search
 func (h *MusicTagHandler) SearchMusicTags(c *gin.Context) {
 	var params domain.TagSearchParams
-	if err := c.ShouldBindQuery(&params); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := c.ShouldBindJSON(&params); err != nil {
+		BadRequest(c, err.Error())
 		return
 	}
 
-	tags, total, err := h.service.Search(&params)
+	tags, total, err := h.service.Search(c.Request.Context(), &params)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		InternalServerError(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	Success(c, gin.H{
 		"tags":   tags,
 		"total":  total,
 		"limit":  params.Limit,
@@ -133,13 +133,13 @@ func (h *MusicTagHandler) SearchMusicTags(c *gin.Context) {
 func (h *MusicTagHandler) MatchTags(c *gin.Context) {
 	var req domain.CreateMusicTagRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		BadRequest(c, err.Error())
 		return
 	}
 
-	matchedTag, isMatched, err := h.service.MatchTags(&req)
+	matchedTag, isMatched, err := h.service.MatchTags(c.Request.Context(), &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		InternalServerError(c, err.Error())
 		return
 	}
 
@@ -148,7 +148,7 @@ func (h *MusicTagHandler) MatchTags(c *gin.Context) {
 		response.Tag = matchedTag.ToResponse()
 	}
 
-	c.JSON(http.StatusOK, response)
+	Success(c, response)
 }
 
 // SearchTracks MusicBee兼容的搜索端点
@@ -160,7 +160,7 @@ func (h *MusicTagHandler) SearchTracks(c *gin.Context) {
 		return
 	}
 
-	tags, total, err := h.service.Search(&params)
+	tags, total, err := h.service.Search(c.Request.Context(), &params)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -182,7 +182,7 @@ func (h *MusicTagHandler) SubmitTrack(c *gin.Context) {
 		return
 	}
 
-	tag, err := h.service.Create(&req)
+	tag, err := h.service.Create(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -196,17 +196,17 @@ func (h *MusicTagHandler) SubmitTrack(c *gin.Context) {
 func (h *MusicTagHandler) LookupByMBID(c *gin.Context) {
 	mbid := c.Query("musicbrainz_id")
 	if mbid == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "musicbrainz_id parameter required"})
+		BadRequest(c, "musicbrainz_id parameter required")
 		return
 	}
 
-	tag, err := h.service.GetByMusicBrainzID(mbid)
+	tag, err := h.service.GetByMusicBrainzID(c.Request.Context(), mbid)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Tag not found"})
+		NotFound(c, "Tag not found")
 		return
 	}
 
-	c.JSON(http.StatusOK, tag)
+	Success(c, tag)
 }
 
 // parseUintParam 解析URL路径中的无符号整数参数

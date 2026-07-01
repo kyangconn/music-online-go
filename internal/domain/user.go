@@ -50,6 +50,7 @@ type RegisterRequest struct {
 type LoginRequest struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
+	TOTPCode string `json:"totp_code" binding:"omitempty,len=6"`
 }
 
 // UpdateUserRequest 更新用户请求DTO

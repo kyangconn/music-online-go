@@ -3,6 +3,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -10,28 +11,37 @@ import (
 	"github.com/kyangconn/music-online-go/internal/pkg/jwt"
 	"github.com/kyangconn/music-online-go/internal/pkg/password"
 	"github.com/kyangconn/music-online-go/internal/repository"
+	"github.com/pquerna/otp/totp"
+)
+
+var (
+	ErrInvalidCredentials   = errors.New("invalid credentials")
+	ErrAccountInactive      = errors.New("account is inactive")
+	ErrTOTPCodeRequired     = errors.New("totp code required")
+	ErrInvalidTOTPCode      = errors.New("invalid totp code")
+	ErrOldPasswordIncorrect = errors.New("old password is incorrect")
 )
 
 // UserService defines user business logic operations.
 type UserService interface {
-	Register(req *domain.RegisterRequest) (*domain.UserResponse, error)
-	Login(req *domain.LoginRequest) (*domain.LoginResponse, error)
-	GetUserByID(id uint) (*domain.UserResponse, error)
-	GetUserByUsername(username string) (*domain.UserResponse, error)
-	UpdateUser(id uint, req *domain.UpdateUserRequest) (*domain.UserResponse, error)
-	DeleteUser(id uint) error
-	ChangePassword(userID uint, oldPassword, newPassword string) error
-	VerifyUser(id uint) error
-	ListUsers(page, pageSize int) ([]*domain.UserResponse, int64, error)
+	Register(ctx context.Context, req *domain.RegisterRequest) (*domain.UserResponse, error)
+	Login(ctx context.Context, req *domain.LoginRequest) (*domain.LoginResponse, error)
+	GetUserByID(ctx context.Context, id uint) (*domain.UserResponse, error)
+	GetUserByUsername(ctx context.Context, username string) (*domain.UserResponse, error)
+	UpdateUser(ctx context.Context, id uint, req *domain.UpdateUserRequest) (*domain.UserResponse, error)
+	DeleteUser(ctx context.Context, id uint) error
+	ChangePassword(ctx context.Context, userID uint, oldPassword, newPassword string) error
+	VerifyUser(ctx context.Context, id uint) error
+	ListUsers(ctx context.Context, page, pageSize int) ([]*domain.UserResponse, int64, error)
 	// Admin methods
-	UpdateUserStatus(id uint, isActive bool) error
-	UpdateUserRole(id uint, role string) error
-	SearchUsers(query string, page, pageSize int) ([]*domain.UserResponse, int64, error)
-	CountAll() (int64, error)
+	UpdateUserStatus(ctx context.Context, id uint, isActive bool) error
+	UpdateUserRole(ctx context.Context, id uint, role string) error
+	SearchUsers(ctx context.Context, query string, page, pageSize int) ([]*domain.UserResponse, int64, error)
+	CountAll(ctx context.Context) (int64, error)
 	// TOTP
-	SetupTOTP(userID uint) (*domain.TOTPSetupResponse, error)
-	EnableTOTP(userID uint, code string) error
-	DisableTOTP(userID uint, code string) error
+	SetupTOTP(ctx context.Context, userID uint) (*domain.TOTPSetupResponse, error)
+	EnableTOTP(ctx context.Context, userID uint, code string) error
+	DisableTOTP(ctx context.Context, userID uint, code string) error
 }
 
 type userService struct {
@@ -45,7 +55,7 @@ func NewUserService(userRepo repository.UserRepository) UserService {
 	return &userService{userRepo: userRepo}
 }
 
-func (s *userService) Register(req *domain.RegisterRequest) (*domain.UserResponse, error) {
+func (s *userService) Register(ctx context.Context, req *domain.RegisterRequest) (*domain.UserResponse, error) {
 	// 哈希密码
 	hashedPassword, err := password.HashPassword(req.Password)
 	if err != nil {
@@ -61,34 +71,34 @@ func (s *userService) Register(req *domain.RegisterRequest) (*domain.UserRespons
 		Role:     "user",
 	}
 
-	if err := s.userRepo.Create(user); err != nil {
+	if err := s.userRepo.Create(ctx, user); err != nil {
 		return nil, err
 	}
 
 	return user.ToResponse(), nil
 }
 
-func (s *userService) Login(req *domain.LoginRequest) (*domain.LoginResponse, error) {
+func (s *userService) Login(ctx context.Context, req *domain.LoginRequest) (*domain.LoginResponse, error) {
 	// 查找用户（支持用户名或邮箱登录）
 	var user *domain.User
 	var err error
 
 	// 尝试按用户名查找
-	user, err = s.userRepo.FindByUsername(req.Username)
+	user, err = s.userRepo.FindByUsername(ctx, req.Username)
 	if err != nil {
 		// 如果按用户名找不到，尝试按邮箱查找
-		user, err = s.userRepo.FindByEmail(req.Username)
+		user, err = s.userRepo.FindByEmail(ctx, req.Username)
 		if err != nil {
 			if _, verifyErr := password.VerifyPassword(req.Password, dummyPasswordHash); verifyErr != nil {
 				return nil, fmt.Errorf("failed to verify password: %w", verifyErr)
 			}
-			return nil, errors.New("invalid credentials")
+			return nil, ErrInvalidCredentials
 		}
 	}
 
 	// 检查用户状态
 	if !user.IsActive {
-		return nil, errors.New("account is inactive")
+		return nil, ErrAccountInactive
 	}
 
 	// 验证密码
@@ -97,7 +107,16 @@ func (s *userService) Login(req *domain.LoginRequest) (*domain.LoginResponse, er
 		return nil, fmt.Errorf("failed to verify password: %w", err)
 	}
 	if !valid {
-		return nil, errors.New("invalid credentials")
+		return nil, ErrInvalidCredentials
+	}
+
+	if user.TOTPEnabled {
+		if req.TOTPCode == "" {
+			return nil, ErrTOTPCodeRequired
+		}
+		if !totp.Validate(req.TOTPCode, user.TOTPSecret) {
+			return nil, ErrInvalidTOTPCode
+		}
 	}
 
 	// 生成JWT令牌
@@ -112,24 +131,24 @@ func (s *userService) Login(req *domain.LoginRequest) (*domain.LoginResponse, er
 	}, nil
 }
 
-func (s *userService) GetUserByID(id uint) (*domain.UserResponse, error) {
-	user, err := s.userRepo.FindByID(id)
+func (s *userService) GetUserByID(ctx context.Context, id uint) (*domain.UserResponse, error) {
+	user, err := s.userRepo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	return user.ToResponse(), nil
 }
 
-func (s *userService) GetUserByUsername(username string) (*domain.UserResponse, error) {
-	user, err := s.userRepo.FindByUsername(username)
+func (s *userService) GetUserByUsername(ctx context.Context, username string) (*domain.UserResponse, error) {
+	user, err := s.userRepo.FindByUsername(ctx, username)
 	if err != nil {
 		return nil, err
 	}
 	return user.ToResponse(), nil
 }
 
-func (s *userService) UpdateUser(id uint, req *domain.UpdateUserRequest) (*domain.UserResponse, error) {
-	user, err := s.userRepo.FindByID(id)
+func (s *userService) UpdateUser(ctx context.Context, id uint, req *domain.UpdateUserRequest) (*domain.UserResponse, error) {
+	user, err := s.userRepo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -154,19 +173,19 @@ func (s *userService) UpdateUser(id uint, req *domain.UpdateUserRequest) (*domai
 		user.Email = *req.Email
 	}
 
-	if err := s.userRepo.Update(user); err != nil {
+	if err := s.userRepo.Update(ctx, user); err != nil {
 		return nil, err
 	}
 
 	return user.ToResponse(), nil
 }
 
-func (s *userService) DeleteUser(id uint) error {
-	return s.userRepo.Delete(id)
+func (s *userService) DeleteUser(ctx context.Context, id uint) error {
+	return s.userRepo.Delete(ctx, id)
 }
 
-func (s *userService) ChangePassword(userID uint, oldPassword, newPassword string) error {
-	user, err := s.userRepo.FindByID(userID)
+func (s *userService) ChangePassword(ctx context.Context, userID uint, oldPassword, newPassword string) error {
+	user, err := s.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		return err
 	}
@@ -177,7 +196,7 @@ func (s *userService) ChangePassword(userID uint, oldPassword, newPassword strin
 		return fmt.Errorf("failed to verify password: %w", err)
 	}
 	if !valid {
-		return errors.New("old password is incorrect")
+		return ErrOldPasswordIncorrect
 	}
 
 	// 哈希新密码
@@ -187,20 +206,20 @@ func (s *userService) ChangePassword(userID uint, oldPassword, newPassword strin
 	}
 
 	user.Password = hashedPassword
-	return s.userRepo.Update(user)
+	return s.userRepo.Update(ctx, user)
 }
 
-func (s *userService) VerifyUser(id uint) error {
-	user, err := s.userRepo.FindByID(id)
+func (s *userService) VerifyUser(ctx context.Context, id uint) error {
+	user, err := s.userRepo.FindByID(ctx, id)
 	if err != nil {
 		return err
 	}
 
 	user.IsVerified = true
-	return s.userRepo.Update(user)
+	return s.userRepo.Update(ctx, user)
 }
 
-func (s *userService) ListUsers(page, pageSize int) ([]*domain.UserResponse, int64, error) {
+func (s *userService) ListUsers(ctx context.Context, page, pageSize int) ([]*domain.UserResponse, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -208,7 +227,7 @@ func (s *userService) ListUsers(page, pageSize int) ([]*domain.UserResponse, int
 		pageSize = 20
 	}
 
-	users, total, err := s.userRepo.List(page, pageSize)
+	users, total, err := s.userRepo.List(ctx, page, pageSize)
 	if err != nil {
 		return nil, 0, err
 	}

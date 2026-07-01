@@ -3,22 +3,30 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"fmt"
 
 	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/pquerna/otp/totp"
 )
 
-func (s *userService) UpdateUserStatus(id uint, isActive bool) error {
-	return s.userRepo.UpdateStatus(id, isActive)
+var (
+	ErrTOTPAlreadyEnabled = errors.New("totp is already enabled")
+	ErrTOTPNotSetUp       = errors.New("totp not set up yet, call setup first")
+	ErrTOTPNotEnabled     = errors.New("totp is not enabled")
+)
+
+func (s *userService) UpdateUserStatus(ctx context.Context, id uint, isActive bool) error {
+	return s.userRepo.UpdateStatus(ctx, id, isActive)
 }
 
-func (s *userService) UpdateUserRole(id uint, role string) error {
-	return s.userRepo.UpdateRole(id, role)
+func (s *userService) UpdateUserRole(ctx context.Context, id uint, role string) error {
+	return s.userRepo.UpdateRole(ctx, id, role)
 }
 
-func (s *userService) SearchUsers(query string, page, pageSize int) ([]*domain.UserResponse, int64, error) {
-	users, total, err := s.userRepo.Search(query, page, pageSize)
+func (s *userService) SearchUsers(ctx context.Context, query string, page, pageSize int) ([]*domain.UserResponse, int64, error) {
+	users, total, err := s.userRepo.Search(ctx, query, page, pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -31,18 +39,18 @@ func (s *userService) SearchUsers(query string, page, pageSize int) ([]*domain.U
 	return userResponses, total, nil
 }
 
-func (s *userService) CountAll() (int64, error) {
-	return s.userRepo.CountAll()
+func (s *userService) CountAll(ctx context.Context) (int64, error) {
+	return s.userRepo.CountAll(ctx)
 }
 
-func (s *userService) SetupTOTP(userID uint) (*domain.TOTPSetupResponse, error) {
-	user, err := s.userRepo.FindByID(userID)
+func (s *userService) SetupTOTP(ctx context.Context, userID uint) (*domain.TOTPSetupResponse, error) {
+	user, err := s.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
 	if user.TOTPEnabled {
-		return nil, fmt.Errorf("totp is already enabled")
+		return nil, ErrTOTPAlreadyEnabled
 	}
 
 	key, err := totp.Generate(totp.GenerateOpts{
@@ -53,7 +61,7 @@ func (s *userService) SetupTOTP(userID uint) (*domain.TOTPSetupResponse, error) 
 		return nil, fmt.Errorf("failed to generate totp key: %w", err)
 	}
 
-	if err := s.userRepo.SetTOTPSecret(userID, key.Secret()); err != nil {
+	if err := s.userRepo.SetTOTPSecret(ctx, userID, key.Secret()); err != nil {
 		return nil, fmt.Errorf("failed to save totp secret: %w", err)
 	}
 
@@ -63,45 +71,45 @@ func (s *userService) SetupTOTP(userID uint) (*domain.TOTPSetupResponse, error) 
 	}, nil
 }
 
-func (s *userService) EnableTOTP(userID uint, code string) error {
-	user, err := s.userRepo.FindByID(userID)
+func (s *userService) EnableTOTP(ctx context.Context, userID uint, code string) error {
+	user, err := s.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		return err
 	}
 
 	if user.TOTPEnabled {
-		return fmt.Errorf("totp is already enabled")
+		return ErrTOTPAlreadyEnabled
 	}
 
 	if user.TOTPSecret == "" {
-		return fmt.Errorf("totp not set up yet, call setup first")
+		return ErrTOTPNotSetUp
 	}
 
 	valid := totp.Validate(code, user.TOTPSecret)
 	if !valid {
-		return fmt.Errorf("invalid totp code")
+		return ErrInvalidTOTPCode
 	}
 
-	return s.userRepo.SetTOTPEnabled(userID, true)
+	return s.userRepo.SetTOTPEnabled(ctx, userID, true)
 }
 
-func (s *userService) DisableTOTP(userID uint, code string) error {
-	user, err := s.userRepo.FindByID(userID)
+func (s *userService) DisableTOTP(ctx context.Context, userID uint, code string) error {
+	user, err := s.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		return err
 	}
 
 	if !user.TOTPEnabled {
-		return fmt.Errorf("totp is not enabled")
+		return ErrTOTPNotEnabled
 	}
 
 	valid := totp.Validate(code, user.TOTPSecret)
 	if !valid {
-		return fmt.Errorf("invalid totp code")
+		return ErrInvalidTOTPCode
 	}
 
-	if err := s.userRepo.SetTOTPEnabled(userID, false); err != nil {
+	if err := s.userRepo.SetTOTPEnabled(ctx, userID, false); err != nil {
 		return err
 	}
-	return s.userRepo.SetTOTPSecret(userID, "")
+	return s.userRepo.SetTOTPSecret(ctx, userID, "")
 }

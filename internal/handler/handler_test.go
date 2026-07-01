@@ -12,9 +12,11 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/kyangconn/music-online-go/internal/pkg/database"
+	"github.com/pquerna/otp/totp"
 )
 
 func TestHealthEndpoint(t *testing.T) {
@@ -77,6 +79,59 @@ func TestRegisterAndLogin(t *testing.T) {
 	}
 }
 
+func TestLoginRequiresTOTPWhenEnabled(t *testing.T) {
+	username := "totpuser"
+	token := registerAndLogin(t, username)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/users/totp/setup", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("setup totp: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var setupResp struct {
+		Data struct {
+			Secret string `json:"secret"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &setupResp); err != nil {
+		t.Fatalf("setup response parse: %v", err)
+	}
+	code, err := totp.GenerateCode(setupResp.Data.Secret, time.Now())
+	if err != nil {
+		t.Fatalf("generate totp code: %v", err)
+	}
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("POST", "/api/v1/users/totp/enable", strings.NewReader(`{"code":"`+code+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("enable totp: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	loginBody := `{"username":"` + username + `","password":"password123"}`
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("POST", "/api/v1/users/login", strings.NewReader(loginBody))
+	req.Header.Set("Content-Type", "application/json")
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("login without totp: expected 401, got %d: %s", w.Code, w.Body.String())
+	}
+
+	loginBody = `{"username":"` + username + `","password":"password123","totp_code":"` + code + `"}`
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("POST", "/api/v1/users/login", strings.NewReader(loginBody))
+	req.Header.Set("Content-Type", "application/json")
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("login with totp: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestMusicTagSearchPublic(t *testing.T) {
 	body := `{"artist":"test","title":"song"}`
 	w := httptest.NewRecorder()
@@ -92,8 +147,12 @@ func TestMusicTagSearchPublic(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("invalid response: %v", err)
 	}
-	if _, ok := resp["tags"]; !ok {
-		t.Error("response should have 'tags' field")
+	data, ok := resp["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("response should have data object: %s", w.Body.String())
+	}
+	if _, ok := data["tags"]; !ok {
+		t.Error("response data should have 'tags' field")
 	}
 }
 

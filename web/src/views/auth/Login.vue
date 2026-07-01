@@ -1,26 +1,59 @@
 <script setup lang="ts">
+import axios from "axios";
 import type { FormInstance, FormRules } from "element-plus";
 import { ElMessage } from "element-plus";
 import { ref, reactive } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import type { LoginData } from "@/types/api";
 import { useUserStore } from "@/store/user";
 import request from "@/utils/request";
 
 const router = useRouter();
+const { t } = useI18n();
 const userStore = useUserStore();
 const formRef = ref<FormInstance>();
 const loading = ref(false);
+const totpRequired = ref(false);
 
 const loginForm = reactive({
   username: "",
   password: "",
+  totp_code: "",
 });
 
 const rules = reactive<FormRules>({
   username: [{ required: true, message: "Please input username", trigger: "blur" }],
   password: [{ required: true, message: "Please input password", trigger: "blur" }],
+  totp_code: [
+    {
+      validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+        if (totpRequired.value && !value) {
+          callback(new Error(t("auth.totp_code_required")));
+        } else if (value && !/^\d{6}$/.test(value)) {
+          callback(new Error(t("auth.totp_code_invalid")));
+        } else {
+          callback();
+        }
+      },
+      trigger: "blur",
+    },
+  ],
 });
+
+interface AuthErrorResponse {
+  error?: string;
+  message?: string;
+}
+
+const getAuthErrorMessage = (error: unknown) => {
+  if (axios.isAxiosError<AuthErrorResponse>(error)) {
+    const data = error.response?.data;
+    return data?.error || data?.message || error.message || "Login failed";
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return "Login failed";
+};
 
 const handleLogin = async (formEl: FormInstance | undefined) => {
   if (!formEl) return;
@@ -34,7 +67,12 @@ const handleLogin = async (formEl: FormInstance | undefined) => {
         ElMessage.success("Login successful");
         const redirect = router.currentRoute.value.query.redirect;
         router.push(typeof redirect === "string" ? redirect : "/");
-      } catch (_e) {
+      } catch (error) {
+        const message = getAuthErrorMessage(error);
+        if (message === "TOTP code required" || message === "Invalid TOTP code") {
+          totpRequired.value = true;
+        }
+        ElMessage.error(message);
       } finally {
         loading.value = false;
       }
@@ -64,6 +102,16 @@ const handleLogin = async (formEl: FormInstance | undefined) => {
             type="password"
             :placeholder="$t('auth.password_placeholder')"
             show-password
+            @keyup.enter="handleLogin(formRef)"
+          />
+        </el-form-item>
+
+        <el-form-item v-if="totpRequired" :label="$t('auth.totp_code_label')" prop="totp_code">
+          <el-input
+            v-model="loginForm.totp_code"
+            :placeholder="$t('auth.totp_code_placeholder')"
+            maxlength="6"
+            inputmode="numeric"
             @keyup.enter="handleLogin(formRef)"
           />
         </el-form-item>

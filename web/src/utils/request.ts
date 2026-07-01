@@ -33,17 +33,20 @@ service.interceptors.response.use(
       const data = error.response.data;
 
       if (status === 401) {
+        const currentPath = window.location.pathname;
+        const isAuthPage = currentPath === "/login" || currentPath === "/register";
         localStorage.removeItem("token");
         localStorage.removeItem("user");
 
-        if (data?.error?.includes("expired")) {
-          ElMessage.warning("Session expired, please login again");
-        } else {
-          ElMessage.warning("Please login to continue");
+        if (!isAuthPage) {
+          if (data?.error?.includes("expired")) {
+            ElMessage.warning("Session expired, please login again");
+          } else {
+            ElMessage.warning("Please login to continue");
+          }
         }
 
-        const currentPath = window.location.pathname;
-        if (currentPath !== "/login" && currentPath !== "/register") {
+        if (!isAuthPage) {
           const currentLocation = window.location.pathname + window.location.search + window.location.hash;
           window.location.href = `/login?redirect=${encodeURIComponent(currentLocation)}`;
         }

@@ -24,10 +24,10 @@
 ## P1：成品稳定性和维护性
 
 - [x] 增加分页参数校验：`page <= 0` 或异常 `page_size` 会传到 repository 计算 offset/limit，应该统一限制范围。
-- [ ] 统一 API 响应格式：用户/音乐接口使用 `{ code, message, data }`，标签接口大量直接返回裸对象或 `gin.H`；前后端类型会更难维护。
-- [ ] 修正标签搜索契约：路由是 `POST /music-tags/search`，handler 却用 `ShouldBindQuery`；决定用 GET query 还是 POST JSON，并同步测试。
-- [ ] 检查 TOTP 的产品语义：当前能启用/禁用 TOTP，但登录流程没有要求输入 TOTP code；如果要保留双因素，需要补完整登录校验，否则 UI 文案应降级。
-- [ ] 补管理员前端能力：后端已有用户列表、禁用/解禁、角色修改、删除音乐接口，但前端管理页目前主要是系统信息。
+- [x] 统一 API 响应格式：用户/音乐接口使用 `{ code, message, data }`，标签接口大量直接返回裸对象或 `gin.H`；前后端类型会更难维护。
+- [x] 修正标签搜索契约：路由是 `POST /music-tags/search`，handler 却用 `ShouldBindQuery`；决定用 GET query 还是 POST JSON，并同步测试。
+- [x] 检查 TOTP 的产品语义：当前能启用/禁用 TOTP，但登录流程没有要求输入 TOTP code；如果要保留双因素，需要补完整登录校验，否则 UI 文案应降级。
+- [x] 补管理员前端能力：后端已有用户列表、禁用/解禁、角色修改、删除音乐接口，但前端管理页目前主要是系统信息。
 - [x] 清理包管理器痕迹：仓库有 `web/package-lock.json`，但项目约束要求只用 pnpm；确认无用后删除并在 CI/文档里强调。
 - [x] 给 Makefile/README 对齐：README 写 `make lint` 是前端 ESLint，但 Makefile 实际会 `go fmt ./...`、`go vet ./...`、再跑前端 lint。
 

@@ -3,25 +3,40 @@
 package service
 
 import (
+	"context"
 	"strings"
 
 	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/kyangconn/music-online-go/internal/repository"
 )
 
-// MusicTagService 音乐标签服务
+// MusicTagService 音乐标签服务接口
 // 负责处理音乐标签相关的业务逻辑，包括创建、更新、搜索、匹配等操作
-type MusicTagService struct {
-	Repo repository.MusicTagRepository
+type MusicTagService interface {
+	Create(ctx context.Context, req *domain.CreateMusicTagRequest) (*domain.MusicTag, error)
+	GetByID(ctx context.Context, id uint) (*domain.MusicTagResponse, error)
+	GetByMusicBrainzID(ctx context.Context, mbid string) (*domain.MusicTagResponse, error)
+	Update(ctx context.Context, id uint, req *domain.UpdateMusicTagRequest) (*domain.MusicTag, error)
+	Delete(ctx context.Context, id uint) error
+	Search(ctx context.Context, params *domain.TagSearchParams) ([]*domain.MusicTagResponse, int64, error)
+	FindOrCreate(ctx context.Context, tag *domain.MusicTag) (*domain.MusicTag, error)
+	IncrementUseCount(ctx context.Context, id uint) error
+	CountAll(ctx context.Context) (int64, error)
+	MatchTags(ctx context.Context, req *domain.CreateMusicTagRequest) (*domain.MusicTag, bool, error)
+}
+
+// musicTagService 音乐标签服务实现
+type musicTagService struct {
+	repo repository.MusicTagRepository
 }
 
 // NewMusicTagService 创建新的音乐标签服务实例
-func NewMusicTagService(repo repository.MusicTagRepository) *MusicTagService {
-	return &MusicTagService{Repo: repo}
+func NewMusicTagService(repo repository.MusicTagRepository) MusicTagService {
+	return &musicTagService{repo: repo}
 }
 
 // Create 创建新的音乐标签
-func (s *MusicTagService) Create(req *domain.CreateMusicTagRequest) (*domain.MusicTag, error) {
+func (s *musicTagService) Create(ctx context.Context, req *domain.CreateMusicTagRequest) (*domain.MusicTag, error) {
 	// 将请求转换为领域模型
 	tag := s.convertCreateRequestToTag(req)
 
@@ -29,7 +44,7 @@ func (s *MusicTagService) Create(req *domain.CreateMusicTagRequest) (*domain.Mus
 	tag.SearchVector = s.generateSearchVector(tag)
 
 	// 检查标签是否已存在
-	existing, err := s.FindOrCreate(tag)
+	existing, err := s.FindOrCreate(ctx, tag)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +53,7 @@ func (s *MusicTagService) Create(req *domain.CreateMusicTagRequest) (*domain.Mus
 	}
 
 	// 创建新标签
-	if err := s.Repo.Create(tag); err != nil {
+	if err := s.repo.Create(ctx, tag); err != nil {
 		return nil, err
 	}
 
@@ -46,7 +61,7 @@ func (s *MusicTagService) Create(req *domain.CreateMusicTagRequest) (*domain.Mus
 }
 
 // convertCreateRequestToTag 将创建请求转换为音乐标签领域模型
-func (s *MusicTagService) convertCreateRequestToTag(req *domain.CreateMusicTagRequest) *domain.MusicTag {
+func (s *musicTagService) convertCreateRequestToTag(req *domain.CreateMusicTagRequest) *domain.MusicTag {
 	tag := &domain.MusicTag{
 		Artist:              normalizeString(req.Artist),
 		Title:               normalizeString(req.Title),
@@ -77,8 +92,8 @@ func (s *MusicTagService) convertCreateRequestToTag(req *domain.CreateMusicTagRe
 
 // GetByID 根据ID获取音乐标签
 // 按ID查询音乐标签，返回标签响应实体和错误信息
-func (s *MusicTagService) GetByID(id uint) (*domain.MusicTagResponse, error) {
-	tag, err := s.Repo.GetByID(id)
+func (s *musicTagService) GetByID(ctx context.Context, id uint) (*domain.MusicTagResponse, error) {
+	tag, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +101,8 @@ func (s *MusicTagService) GetByID(id uint) (*domain.MusicTagResponse, error) {
 }
 
 // GetByMusicBrainzID 根据MusicBrainz ID获取音乐标签
-func (s *MusicTagService) GetByMusicBrainzID(mbid string) (*domain.MusicTagResponse, error) {
-	tag, err := s.Repo.GetByMusicBrainzID(mbid)
+func (s *musicTagService) GetByMusicBrainzID(ctx context.Context, mbid string) (*domain.MusicTagResponse, error) {
+	tag, err := s.repo.GetByMusicBrainzID(ctx, mbid)
 	if err != nil {
 		return nil, err
 	}
@@ -96,8 +111,8 @@ func (s *MusicTagService) GetByMusicBrainzID(mbid string) (*domain.MusicTagRespo
 
 // Update 更新现有的音乐标签
 // 按ID查询音乐标签，更新标签字段，重新生成搜索向量，最后保存更新后的标签
-func (s *MusicTagService) Update(id uint, req *domain.UpdateMusicTagRequest) (*domain.MusicTag, error) {
-	existing, err := s.Repo.GetByID(id)
+func (s *musicTagService) Update(ctx context.Context, id uint, req *domain.UpdateMusicTagRequest) (*domain.MusicTag, error) {
+	existing, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +123,7 @@ func (s *MusicTagService) Update(id uint, req *domain.UpdateMusicTagRequest) (*d
 	// 重新生成搜索向量
 	existing.SearchVector = s.generateSearchVector(existing)
 
-	if err := s.Repo.Update(id, existing); err != nil {
+	if err := s.repo.Update(ctx, id, existing); err != nil {
 		return nil, err
 	}
 
@@ -116,7 +131,7 @@ func (s *MusicTagService) Update(id uint, req *domain.UpdateMusicTagRequest) (*d
 }
 
 // updateTagFromRequest 根据更新请求更新标签字段
-func (s *MusicTagService) updateTagFromRequest(tag *domain.MusicTag, req *domain.UpdateMusicTagRequest) {
+func (s *musicTagService) updateTagFromRequest(tag *domain.MusicTag, req *domain.UpdateMusicTagRequest) {
 	if req.Artist != nil {
 		tag.Artist = normalizeString(*req.Artist)
 	}
@@ -157,14 +172,14 @@ func (s *MusicTagService) updateTagFromRequest(tag *domain.MusicTag, req *domain
 
 // Delete 根据ID删除音乐标签
 // 删除指定ID的音乐标签，返回错误信息
-func (s *MusicTagService) Delete(id uint) error {
-	return s.Repo.Delete(id)
+func (s *musicTagService) Delete(ctx context.Context, id uint) error {
+	return s.repo.Delete(ctx, id)
 }
 
 // Search 根据搜索参数查找音乐标签
 // 根据传入的搜索参数查询音乐标签，返回标签响应列表、总数和错误信息
-func (s *MusicTagService) Search(params *domain.TagSearchParams) ([]*domain.MusicTagResponse, int64, error) {
-	tags, total, err := s.Repo.Search(params)
+func (s *musicTagService) Search(ctx context.Context, params *domain.TagSearchParams) ([]*domain.MusicTagResponse, int64, error) {
+	tags, total, err := s.repo.Search(ctx, params)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -179,9 +194,9 @@ func (s *MusicTagService) Search(params *domain.TagSearchParams) ([]*domain.Musi
 
 // FindOrCreate 查找现有标签或创建新标签
 // 按照以下顺序尝试匹配：精确匹配 -> MusicBrainz ID匹配 -> MusicBrainz艺术家ID匹配 -> 模糊匹配
-func (s *MusicTagService) FindOrCreate(tag *domain.MusicTag) (*domain.MusicTag, error) {
+func (s *musicTagService) FindOrCreate(ctx context.Context, tag *domain.MusicTag) (*domain.MusicTag, error) {
 	// 1. 尝试精确匹配（艺术家和标题）
-	exactMatch, err := s.Repo.GetByArtistAndTitle(tag.Artist, tag.Title)
+	exactMatch, err := s.repo.GetByArtistAndTitle(ctx, tag.Artist, tag.Title)
 	if err != nil {
 		return nil, err
 	}
@@ -191,14 +206,14 @@ func (s *MusicTagService) FindOrCreate(tag *domain.MusicTag) (*domain.MusicTag, 
 
 	// 2. 尝试MusicBrainz ID匹配
 	if tag.MusicBrainzID != "" {
-		if mbMatch, err := s.Repo.GetByMusicBrainzID(tag.MusicBrainzID); err == nil && mbMatch != nil {
+		if mbMatch, err := s.repo.GetByMusicBrainzID(ctx, tag.MusicBrainzID); err == nil && mbMatch != nil {
 			return mbMatch, nil
 		}
 	}
 
 	// 3. 尝试MusicBrainz艺术家ID匹配
 	if tag.MusicBrainzArtistID != "" {
-		if artistMatches, err := s.Repo.GetByMusicBrainzArtistID(tag.MusicBrainzArtistID); err == nil && len(artistMatches) > 0 {
+		if artistMatches, err := s.repo.GetByMusicBrainzArtistID(ctx, tag.MusicBrainzArtistID); err == nil && len(artistMatches) > 0 {
 			// 返回该艺术家使用次数最多的标签
 			bestMatch := artistMatches[0]
 			for _, match := range artistMatches {
@@ -211,7 +226,7 @@ func (s *MusicTagService) FindOrCreate(tag *domain.MusicTag) (*domain.MusicTag, 
 	}
 
 	// 4. 尝试模糊匹配
-	fuzzyMatch, _, err := s.Repo.FuzzySearch(tag)
+	fuzzyMatch, _, err := s.repo.FuzzySearch(ctx, tag)
 	if err != nil {
 		return nil, err
 	}
@@ -224,23 +239,23 @@ func (s *MusicTagService) FindOrCreate(tag *domain.MusicTag) (*domain.MusicTag, 
 }
 
 // IncrementUseCount 增加标签的使用计数
-func (s *MusicTagService) IncrementUseCount(id uint) error {
-	return s.Repo.IncrementUseCount(id)
+func (s *musicTagService) IncrementUseCount(ctx context.Context, id uint) error {
+	return s.repo.IncrementUseCount(ctx, id)
 }
 
 // CountAll 统计所有音乐标签数量
-func (s *MusicTagService) CountAll() (int64, error) {
-	return s.Repo.CountAll()
+func (s *musicTagService) CountAll(ctx context.Context) (int64, error) {
+	return s.repo.CountAll(ctx)
 }
 
 // MatchTags 尝试匹配传入的标签数据与现有标签
 // 根据艺术家和标题进行精确匹配，若未找到则尝试模糊匹配（相似度阈值0.7）
-func (s *MusicTagService) MatchTags(req *domain.CreateMusicTagRequest) (*domain.MusicTag, bool, error) {
+func (s *musicTagService) MatchTags(ctx context.Context, req *domain.CreateMusicTagRequest) (*domain.MusicTag, bool, error) {
 	// 将请求转换为标签领域模型
 	tag := s.convertCreateRequestToTag(req)
 
 	// 1. 尝试精确匹配
-	exactMatch, err := s.Repo.GetByArtistAndTitle(tag.Artist, tag.Title)
+	exactMatch, err := s.repo.GetByArtistAndTitle(ctx, tag.Artist, tag.Title)
 	if err != nil {
 		return nil, false, err
 	}
@@ -249,7 +264,7 @@ func (s *MusicTagService) MatchTags(req *domain.CreateMusicTagRequest) (*domain.
 	}
 
 	// 2. 尝试模糊匹配（相似度阈值0.7）
-	fuzzyMatch, score, err := s.Repo.FuzzySearch(tag)
+	fuzzyMatch, score, err := s.repo.FuzzySearch(ctx, tag)
 	if err != nil {
 		return nil, false, err
 	}
@@ -263,7 +278,7 @@ func (s *MusicTagService) MatchTags(req *domain.CreateMusicTagRequest) (*domain.
 
 // generateSearchVector 为模糊匹配创建搜索向量
 // 将标签的关键字段（艺术家、标题、专辑等）组合成一个搜索字符串
-func (s *MusicTagService) generateSearchVector(tag *domain.MusicTag) string {
+func (s *musicTagService) generateSearchVector(tag *domain.MusicTag) string {
 	var parts []string
 
 	if tag.Artist != "" {

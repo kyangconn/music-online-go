@@ -3,12 +3,14 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/kyangconn/music-online-go/internal/domain"
+	"github.com/kyangconn/music-online-go/internal/repository"
 	"github.com/kyangconn/music-online-go/internal/service"
 )
 
@@ -40,12 +42,12 @@ func (h *UserHandler) Register(c *gin.Context) {
 		return
 	}
 
-	user, err := h.userService.Register(&req)
+	user, err := h.userService.Register(c.Request.Context(), &req)
 	if err != nil {
-		switch err.Error() {
-		case "username already exists":
+		switch {
+		case errors.Is(err, repository.ErrUsernameExists):
 			Error(c, http.StatusConflict, "Username already exists")
-		case "email already exists":
+		case errors.Is(err, repository.ErrEmailExists):
 			Error(c, http.StatusConflict, "Email already exists")
 		default:
 			InternalServerError(c, "Failed to register user")
@@ -75,12 +77,16 @@ func (h *UserHandler) Login(c *gin.Context) {
 		return
 	}
 
-	response, err := h.userService.Login(&req)
+	response, err := h.userService.Login(c.Request.Context(), &req)
 	if err != nil {
-		switch err.Error() {
-		case "invalid credentials":
+		switch {
+		case errors.Is(err, service.ErrInvalidCredentials):
 			Unauthorized(c, "Invalid username or password")
-		case "account is inactive":
+		case errors.Is(err, service.ErrTOTPCodeRequired):
+			Unauthorized(c, "TOTP code required")
+		case errors.Is(err, service.ErrInvalidTOTPCode):
+			Unauthorized(c, "Invalid TOTP code")
+		case errors.Is(err, service.ErrAccountInactive):
 			Forbidden(c, "Account is inactive")
 		default:
 			InternalServerError(c, "Failed to login")
@@ -105,7 +111,7 @@ func (h *UserHandler) Login(c *gin.Context) {
 func (h *UserHandler) GetUserProfile(c *gin.Context) {
 	userID := c.GetUint("userID")
 
-	user, err := h.userService.GetUserByID(userID)
+	user, err := h.userService.GetUserByID(c.Request.Context(), userID)
 	if err != nil {
 		NotFound(c, "User not found")
 		return
@@ -133,7 +139,7 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 		return
 	}
 
-	user, err := h.userService.GetUserByID(uint(id))
+	user, err := h.userService.GetUserByID(c.Request.Context(), uint(id))
 	if err != nil {
 		NotFound(c, "User not found")
 		return
@@ -164,10 +170,10 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	user, err := h.userService.UpdateUser(userID, &req)
+	user, err := h.userService.UpdateUser(c.Request.Context(), userID, &req)
 	if err != nil {
-		switch err.Error() {
-		case "email already exists":
+		switch {
+		case errors.Is(err, repository.ErrEmailExists):
 			Error(c, http.StatusConflict, "Email already exists")
 		default:
 			InternalServerError(c, "Failed to update user")
@@ -192,7 +198,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 func (h *UserHandler) DeleteUser(c *gin.Context) {
 	userID := c.GetUint("userID")
 
-	if err := h.userService.DeleteUser(userID); err != nil {
+	if err := h.userService.DeleteUser(c.Request.Context(), userID); err != nil {
 		NotFound(c, "User not found")
 		return
 	}
@@ -221,9 +227,9 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if err := h.userService.ChangePassword(userID, req.OldPassword, req.NewPassword); err != nil {
-		switch err.Error() {
-		case "old password is incorrect":
+	if err := h.userService.ChangePassword(c.Request.Context(), userID, req.OldPassword, req.NewPassword); err != nil {
+		switch {
+		case errors.Is(err, service.ErrOldPasswordIncorrect):
 			Unauthorized(c, "Old password is incorrect")
 		default:
 			InternalServerError(c, "Failed to change password")
@@ -245,9 +251,9 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 func (h *UserHandler) SetupTOTP(c *gin.Context) {
 	userID := c.GetUint("userID")
 
-	resp, err := h.userService.SetupTOTP(userID)
+	resp, err := h.userService.SetupTOTP(c.Request.Context(), userID)
 	if err != nil {
-		if err.Error() == "totp is already enabled" {
+		if errors.Is(err, service.ErrTOTPAlreadyEnabled) {
 			Error(c, http.StatusConflict, "TOTP is already enabled")
 			return
 		}
@@ -276,13 +282,13 @@ func (h *UserHandler) EnableTOTP(c *gin.Context) {
 		return
 	}
 
-	if err := h.userService.EnableTOTP(userID, req.Code); err != nil {
-		switch err.Error() {
-		case "totp is already enabled":
+	if err := h.userService.EnableTOTP(c.Request.Context(), userID, req.Code); err != nil {
+		switch {
+		case errors.Is(err, service.ErrTOTPAlreadyEnabled):
 			Error(c, http.StatusConflict, "TOTP is already enabled")
-		case "totp not set up yet, call setup first":
+		case errors.Is(err, service.ErrTOTPNotSetUp):
 			BadRequest(c, "TOTP not set up yet")
-		case "invalid totp code":
+		case errors.Is(err, service.ErrInvalidTOTPCode):
 			Unauthorized(c, "Invalid TOTP code")
 		default:
 			InternalServerError(c, "Failed to enable TOTP")
@@ -311,11 +317,11 @@ func (h *UserHandler) DisableTOTP(c *gin.Context) {
 		return
 	}
 
-	if err := h.userService.DisableTOTP(userID, req.Code); err != nil {
-		switch err.Error() {
-		case "totp is not enabled":
+	if err := h.userService.DisableTOTP(c.Request.Context(), userID, req.Code); err != nil {
+		switch {
+		case errors.Is(err, service.ErrTOTPNotEnabled):
 			BadRequest(c, "TOTP is not enabled")
-		case "invalid totp code":
+		case errors.Is(err, service.ErrInvalidTOTPCode):
 			Unauthorized(c, "Invalid TOTP code")
 		default:
 			InternalServerError(c, "Failed to disable TOTP")
@@ -341,7 +347,7 @@ func (h *UserHandler) DisableTOTP(c *gin.Context) {
 func (h *UserHandler) ListUsers(c *gin.Context) {
 	page, pageSize := parsePagination(c, 20)
 
-	users, total, err := h.userService.ListUsers(page, pageSize)
+	users, total, err := h.userService.ListUsers(c.Request.Context(), page, pageSize)
 	if err != nil {
 		InternalServerError(c, "Failed to list users")
 		return

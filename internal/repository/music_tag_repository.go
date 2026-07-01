@@ -3,6 +3,7 @@
 package repository
 
 import (
+	"context"
 	"strings"
 
 	"github.com/kyangconn/music-online-go/internal/domain"
@@ -16,29 +17,29 @@ type musicTagRepository struct {
 // MusicTagRepository 音乐标签仓库接口
 type MusicTagRepository interface {
 	// Create 创建新的音乐标签
-	Create(tag *domain.MusicTag) error
+	Create(ctx context.Context, tag *domain.MusicTag) error
 	// GetByID 根据ID获取音乐标签
-	GetByID(id uint) (*domain.MusicTag, error)
+	GetByID(ctx context.Context, id uint) (*domain.MusicTag, error)
 	// GetByMusicBrainzID 根据MusicBrainz ID获取音乐标签
-	GetByMusicBrainzID(musicBrainzID string) (*domain.MusicTag, error)
+	GetByMusicBrainzID(ctx context.Context, musicBrainzID string) (*domain.MusicTag, error)
 	// GetByMusicBrainzArtistID 根据MusicBrainz艺术家ID获取音乐标签列表
-	GetByMusicBrainzArtistID(artistID string) ([]*domain.MusicTag, error)
+	GetByMusicBrainzArtistID(ctx context.Context, artistID string) ([]*domain.MusicTag, error)
 	// GetByArtistAndTitle 根据艺术家和标题获取音乐标签
-	GetByArtistAndTitle(artist, title string) (*domain.MusicTag, error)
+	GetByArtistAndTitle(ctx context.Context, artist, title string) (*domain.MusicTag, error)
 	// Update 更新音乐标签
-	Update(id uint, tag *domain.MusicTag) error
+	Update(ctx context.Context, id uint, tag *domain.MusicTag) error
 	// Delete 删除音乐标签
-	Delete(id uint) error
+	Delete(ctx context.Context, id uint) error
 	// Search 根据搜索参数查询音乐标签
-	Search(params *domain.TagSearchParams) ([]*domain.MusicTag, int64, error)
+	Search(ctx context.Context, params *domain.TagSearchParams) ([]*domain.MusicTag, int64, error)
 	// FindOrCreate 查找或创建音乐标签
-	FindOrCreate(tag *domain.MusicTag) (*domain.MusicTag, error)
+	FindOrCreate(ctx context.Context, tag *domain.MusicTag) (*domain.MusicTag, error)
 	// IncrementUseCount 增加音乐标签的使用次数
-	IncrementUseCount(id uint) error
+	IncrementUseCount(ctx context.Context, id uint) error
 	// FuzzySearch 对音乐标签进行模糊匹配
-	FuzzySearch(tag *domain.MusicTag) (*domain.MusicTag, float64, error)
+	FuzzySearch(ctx context.Context, tag *domain.MusicTag) (*domain.MusicTag, float64, error)
 	// CountAll 统计所有音乐标签数量
-	CountAll() (int64, error)
+	CountAll(ctx context.Context) (int64, error)
 }
 
 // NewMusicTagRepository 创建音乐标签仓库实例
@@ -47,45 +48,45 @@ func NewMusicTagRepository(db *gorm.DB) MusicTagRepository {
 }
 
 // Create 创建新的音乐标签
-func (r *musicTagRepository) Create(tag *domain.MusicTag) error {
-	return r.db.Create(tag).Error
+func (r *musicTagRepository) Create(ctx context.Context, tag *domain.MusicTag) error {
+	return r.db.WithContext(ctx).Create(tag).Error
 }
 
 // CountAll 统计所有音乐标签数量
-func (r *musicTagRepository) CountAll() (int64, error) {
+func (r *musicTagRepository) CountAll(ctx context.Context) (int64, error) {
 	var count int64
-	err := r.db.Model(&domain.MusicTag{}).Count(&count).Error
+	err := r.db.WithContext(ctx).Model(&domain.MusicTag{}).Count(&count).Error
 	return count, err
 }
 
 // GetByID 根据ID获取音乐标签
 // 按ID查询音乐标签，返回标签实体和错误信息
-func (r *musicTagRepository) GetByID(id uint) (*domain.MusicTag, error) {
-	return r.getSingleTag("id = ?", id)
+func (r *musicTagRepository) GetByID(ctx context.Context, id uint) (*domain.MusicTag, error) {
+	return r.getSingleTag(ctx, "id = ?", id)
 }
 
 // GetByMusicBrainzID 根据MusicBrainz ID获取音乐标签
 // 按MusicBrainz ID查询音乐标签，返回标签实体和错误信息
-func (r *musicTagRepository) GetByMusicBrainzID(musicBrainzID string) (*domain.MusicTag, error) {
-	return r.getSingleTag("music_brainz_id = ?", musicBrainzID)
+func (r *musicTagRepository) GetByMusicBrainzID(ctx context.Context, musicBrainzID string) (*domain.MusicTag, error) {
+	return r.getSingleTag(ctx, "music_brainz_id = ?", musicBrainzID)
 }
 
 // GetByMusicBrainzArtistID 根据MusicBrainz艺术家ID获取音乐标签列表
 // 按MusicBrainz艺术家ID查询音乐标签列表，返回标签实体列表和错误信息
-func (r *musicTagRepository) GetByMusicBrainzArtistID(artistID string) ([]*domain.MusicTag, error) {
-	return r.getMultipleTags("music_brainz_artist_id = ?", artistID)
+func (r *musicTagRepository) GetByMusicBrainzArtistID(ctx context.Context, artistID string) ([]*domain.MusicTag, error) {
+	return r.getMultipleTags(ctx, "music_brainz_artist_id = ?", artistID)
 }
 
 // GetByArtistAndTitle 根据艺术家和标题获取音乐标签
 // 按艺术家和标题查询音乐标签，返回标签实体和错误信息
-func (r *musicTagRepository) GetByArtistAndTitle(artist, title string) (*domain.MusicTag, error) {
-	return r.getSingleTag("artist = ? AND title = ?", strings.ToLower(artist), strings.ToLower(title))
+func (r *musicTagRepository) GetByArtistAndTitle(ctx context.Context, artist, title string) (*domain.MusicTag, error) {
+	return r.getSingleTag(ctx, "artist = ? AND title = ?", strings.ToLower(artist), strings.ToLower(title))
 }
 
 // getSingleTag 通用单条记录查询函数
-func (r *musicTagRepository) getSingleTag(condition string, args ...interface{}) (*domain.MusicTag, error) {
+func (r *musicTagRepository) getSingleTag(ctx context.Context, condition string, args ...interface{}) (*domain.MusicTag, error) {
 	var tag domain.MusicTag
-	err := r.db.Where(condition, args...).First(&tag).Error
+	err := r.db.WithContext(ctx).Where(condition, args...).First(&tag).Error
 	if err != nil {
 		return nil, err
 	}
@@ -93,9 +94,9 @@ func (r *musicTagRepository) getSingleTag(condition string, args ...interface{})
 }
 
 // getMultipleTags 通用多条记录查询函数
-func (r *musicTagRepository) getMultipleTags(condition string, args ...interface{}) ([]*domain.MusicTag, error) {
+func (r *musicTagRepository) getMultipleTags(ctx context.Context, condition string, args ...interface{}) ([]*domain.MusicTag, error) {
 	var tags []*domain.MusicTag
-	err := r.db.Where(condition, args...).Find(&tags).Error
+	err := r.db.WithContext(ctx).Where(condition, args...).Find(&tags).Error
 	if err != nil {
 		return nil, err
 	}
@@ -103,21 +104,21 @@ func (r *musicTagRepository) getMultipleTags(condition string, args ...interface
 }
 
 // Update 更新音乐标签
-func (r *musicTagRepository) Update(_ uint, tag *domain.MusicTag) error {
-	return r.db.Save(tag).Error
+func (r *musicTagRepository) Update(ctx context.Context, _ uint, tag *domain.MusicTag) error {
+	return r.db.WithContext(ctx).Save(tag).Error
 }
 
 // Delete 删除音乐标签
-func (r *musicTagRepository) Delete(id uint) error {
-	return r.db.Delete(&domain.MusicTag{}, id).Error
+func (r *musicTagRepository) Delete(ctx context.Context, id uint) error {
+	return r.db.WithContext(ctx).Delete(&domain.MusicTag{}, id).Error
 }
 
 // Search 根据搜索参数查询音乐标签
-func (r *musicTagRepository) Search(params *domain.TagSearchParams) ([]*domain.MusicTag, int64, error) {
+func (r *musicTagRepository) Search(ctx context.Context, params *domain.TagSearchParams) ([]*domain.MusicTag, int64, error) {
 	var tags []*domain.MusicTag
 	var total int64
 
-	query := r.db.Model(&domain.MusicTag{})
+	query := r.db.WithContext(ctx).Model(&domain.MusicTag{})
 
 	// 构建搜索条件
 	query = r.buildSearchConditions(query, params)
@@ -200,9 +201,9 @@ func (r *musicTagRepository) buildSearchConditions(query *gorm.DB, params *domai
 }
 
 // FindOrCreate 查找或创建音乐标签
-func (r *musicTagRepository) FindOrCreate(tag *domain.MusicTag) (*domain.MusicTag, error) {
+func (r *musicTagRepository) FindOrCreate(ctx context.Context, tag *domain.MusicTag) (*domain.MusicTag, error) {
 	// 尝试精确匹配艺术家和标题
-	exactMatch, err := r.GetByArtistAndTitle(tag.Artist, tag.Title)
+	exactMatch, err := r.GetByArtistAndTitle(ctx, tag.Artist, tag.Title)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +212,7 @@ func (r *musicTagRepository) FindOrCreate(tag *domain.MusicTag) (*domain.MusicTa
 	}
 
 	// 尝试模糊匹配
-	fuzzyMatch, _, err := r.FuzzySearch(tag)
+	fuzzyMatch, _, err := r.FuzzySearch(ctx, tag)
 	if err != nil {
 		return nil, err
 	}
@@ -223,12 +224,12 @@ func (r *musicTagRepository) FindOrCreate(tag *domain.MusicTag) (*domain.MusicTa
 }
 
 // IncrementUseCount 增加音乐标签的使用次数
-func (r *musicTagRepository) IncrementUseCount(id uint) error {
-	return r.db.Model(&domain.MusicTag{}).Where("id = ?", id).UpdateColumn("use_count", gorm.Expr("use_count + 1")).Error
+func (r *musicTagRepository) IncrementUseCount(ctx context.Context, id uint) error {
+	return r.db.WithContext(ctx).Model(&domain.MusicTag{}).Where("id = ?", id).UpdateColumn("use_count", gorm.Expr("use_count + 1")).Error
 }
 
 // FuzzySearch 对音乐标签进行模糊匹配
-func (r *musicTagRepository) FuzzySearch(tag *domain.MusicTag) (*domain.MusicTag, float64, error) {
+func (r *musicTagRepository) FuzzySearch(ctx context.Context, tag *domain.MusicTag) (*domain.MusicTag, float64, error) {
 	// 构建查询条件
 	conditions, params := r.buildFuzzySearchConditions(tag)
 	if len(conditions) == 0 {
@@ -236,7 +237,7 @@ func (r *musicTagRepository) FuzzySearch(tag *domain.MusicTag) (*domain.MusicTag
 	}
 
 	// 执行查询
-	candidates, err := r.executeFuzzySearchQuery(conditions, params)
+	candidates, err := r.executeFuzzySearchQuery(ctx, conditions, params)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -274,9 +275,9 @@ func (r *musicTagRepository) buildFuzzySearchConditions(tag *domain.MusicTag) ([
 }
 
 // executeFuzzySearchQuery 执行模糊搜索查询
-func (r *musicTagRepository) executeFuzzySearchQuery(conditions []string, params []interface{}) ([]*domain.MusicTag, error) {
+func (r *musicTagRepository) executeFuzzySearchQuery(ctx context.Context, conditions []string, params []interface{}) ([]*domain.MusicTag, error) {
 	var candidates []*domain.MusicTag
-	query := r.db.Model(&domain.MusicTag{})
+	query := r.db.WithContext(ctx).Model(&domain.MusicTag{})
 
 	query = query.Where(strings.Join(conditions, " AND "), params...)
 	query = query.Order("use_count DESC").Limit(10)

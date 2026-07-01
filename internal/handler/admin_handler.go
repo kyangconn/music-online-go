@@ -3,6 +3,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/kyangconn/music-online-go/internal/config"
 	"github.com/kyangconn/music-online-go/internal/pkg/database"
+	"github.com/kyangconn/music-online-go/internal/repository"
 	"github.com/kyangconn/music-online-go/internal/service"
 	"github.com/kyangconn/music-online-go/internal/version"
 )
@@ -24,10 +26,10 @@ var startTime = time.Now()
 type AdminHandler struct {
 	userService     service.UserService
 	musicService    service.MusicService
-	musicTagService *service.MusicTagService
+	musicTagService service.MusicTagService
 }
 
-func NewAdminHandler(userService service.UserService, musicService service.MusicService, musicTagService *service.MusicTagService) *AdminHandler {
+func NewAdminHandler(userService service.UserService, musicService service.MusicService, musicTagService service.MusicTagService) *AdminHandler {
 	return &AdminHandler{
 		userService:     userService,
 		musicService:    musicService,
@@ -103,6 +105,8 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 		gcCPUFrac = float64(mem.PauseTotalNs) / float64(time.Since(startTime).Nanoseconds()) * 100
 	}
 
+	ctx := c.Request.Context()
+
 	info := SystemInfoResponse{
 		Host:       host,
 		ServerMode: config.AppConfig.Server.Mode,
@@ -144,15 +148,15 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 		DBName:         config.AppConfig.Database.Name,
 	}
 
-	if total, err := h.userService.CountAll(); err == nil {
+	if total, err := h.userService.CountAll(ctx); err == nil {
 		info.TotalUsers = total
 	}
 
-	if _, total, err := h.musicService.Search("", 1, 1, nil); err == nil {
+	if _, total, err := h.musicService.Search(ctx, "", 1, 1, nil); err == nil {
 		info.TotalMusic = total
 	}
 
-	if total, err := h.musicTagService.CountAll(); err == nil {
+	if total, err := h.musicTagService.CountAll(ctx); err == nil {
 		info.TotalMusicTags = total
 	}
 
@@ -195,7 +199,7 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 	query := c.Query("q")
 	page, pageSize := parsePagination(c, 10)
 
-	users, total, err := h.userService.SearchUsers(query, page, pageSize)
+	users, total, err := h.userService.SearchUsers(c.Request.Context(), query, page, pageSize)
 	if err != nil {
 		InternalServerError(c, "Failed to fetch users")
 		return
@@ -236,7 +240,7 @@ func (h *AdminHandler) UpdateUserStatus(c *gin.Context) {
 		return
 	}
 
-	if err := h.userService.UpdateUserStatus(uint(id), req.IsActive); err != nil {
+	if err := h.userService.UpdateUserStatus(c.Request.Context(), uint(id), req.IsActive); err != nil {
 		InternalServerError(c, "Failed to update user status")
 		return
 	}
@@ -271,7 +275,7 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 		return
 	}
 
-	if err := h.userService.UpdateUserRole(uint(id), req.Role); err != nil {
+	if err := h.userService.UpdateUserRole(c.Request.Context(), uint(id), req.Role); err != nil {
 		InternalServerError(c, "Failed to update user role")
 		return
 	}
@@ -295,8 +299,8 @@ func (h *AdminHandler) DeleteMusic(c *gin.Context) {
 		return
 	}
 
-	if err := h.musicService.AdminDelete(uint(id)); err != nil {
-		if err.Error() == "music not found" {
+	if err := h.musicService.AdminDelete(c.Request.Context(), uint(id)); err != nil {
+		if errors.Is(err, repository.ErrMusicNotFound) {
 			NotFound(c, "Music not found")
 		} else {
 			InternalServerError(c, "Failed to delete music")

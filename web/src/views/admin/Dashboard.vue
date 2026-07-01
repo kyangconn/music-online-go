@@ -6,9 +6,11 @@ import { useRouter } from "vue-router";
 import type { SystemInfoData } from "@/types/api";
 import DashboardOverview from "@/components/admin/DashboardOverview.vue";
 import DatabaseInfo from "@/components/admin/DatabaseInfo.vue";
+import MusicManagement from "@/components/admin/MusicManagement.vue";
 import MusicInfo from "@/components/admin/MusicInfo.vue";
 import RuntimeInfo from "@/components/admin/RuntimeInfo.vue";
 import ServerInfo from "@/components/admin/ServerInfo.vue";
+import UserManagement from "@/components/admin/UserManagement.vue";
 import SideNavLayout, { type TabItem } from "@/layout/SideNavLayout.vue";
 import request from "@/utils/request";
 
@@ -26,6 +28,8 @@ const tabs = computed<TabItem[]>(() => [
   { id: "runtime", label: t("admin.runtime") },
   { id: "database", label: t("admin.database") },
   { id: "music", label: t("admin.music") },
+  { id: "user-management", label: t("admin.user_management") },
+  { id: "music-management", label: t("admin.music_management") },
 ]);
 
 /** 获取系统信息 */
@@ -75,6 +79,14 @@ onMounted(fetchInfo);
 
     <template #music>
       <MusicInfo :loading="loading" :info="info!" />
+    </template>
+
+    <template #user-management>
+      <UserManagement />
+    </template>
+
+    <template #music-management>
+      <MusicManagement />
     </template>
   </SideNavLayout>
 </template>
