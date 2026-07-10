@@ -107,10 +107,13 @@ func registerUserRoutes(api *gin.RouterGroup, userHandler *handler.UserHandler, 
 
 // registerMusicRoutes 注册音乐相关路由
 func registerMusicRoutes(api *gin.RouterGroup, musicHandler *handler.MusicHandler) {
+	api.GET("/upload-policy", musicHandler.UploadPolicy)
+
 	musicPublic := api.Group("/musics")
 	musicPublic.Use(middleware.OptionalAuthMiddleware())
 	{
 		musicPublic.GET("", musicHandler.Search)
+		musicPublic.GET("/filters", musicHandler.FilterOptions)
 		musicPublic.GET("/:id", musicHandler.GetByID)
 	}
 
@@ -124,6 +127,7 @@ func registerMusicRoutes(api *gin.RouterGroup, musicHandler *handler.MusicHandle
 	musicProtected.Use(middleware.AuthMiddleware())
 	{
 		musicProtected.POST("", musicHandler.Create)
+		musicProtected.POST("/duplicate-check", musicHandler.CheckDuplicates)
 		musicProtected.POST("/:id/upload", musicHandler.UploadFile)
 		musicProtected.PUT("/:id", musicHandler.Update)
 		musicProtected.DELETE("/:id", musicHandler.Delete)

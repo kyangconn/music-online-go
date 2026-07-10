@@ -3,11 +3,13 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/kyangconn/music-online-go/internal/domain"
+	"github.com/kyangconn/music-online-go/internal/repository"
 	"github.com/kyangconn/music-online-go/internal/service"
 )
 
@@ -57,7 +59,11 @@ func (h *MusicTagHandler) GetMusicTag(c *gin.Context) {
 
 	tag, err := h.service.GetByID(c.Request.Context(), id)
 	if err != nil {
-		NotFound(c, "Tag not found")
+		if errors.Is(err, repository.ErrMusicTagNotFound) {
+			NotFound(c, "Tag not found")
+			return
+		}
+		InternalServerError(c, err.Error())
 		return
 	}
 
@@ -202,7 +208,11 @@ func (h *MusicTagHandler) LookupByMBID(c *gin.Context) {
 
 	tag, err := h.service.GetByMusicBrainzID(c.Request.Context(), mbid)
 	if err != nil {
-		NotFound(c, "Tag not found")
+		if errors.Is(err, repository.ErrMusicTagNotFound) {
+			NotFound(c, "Tag not found")
+			return
+		}
+		InternalServerError(c, err.Error())
 		return
 	}
 

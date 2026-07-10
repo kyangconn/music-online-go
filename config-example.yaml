@@ -4,6 +4,8 @@ server:
   read_timeout: 30
   write_timeout: 30
   upload_dir: "uploads"
+  max_audio_size_mb: 200
+  max_cover_size_mb: 10
 
 database:
   type: "sqlite"
@@ -18,6 +20,15 @@ database:
 jwt:
   secret: "your-secret-key-change-in-production"
   expire_hour: 24
+
+admin:
+  bootstrap:
+    enabled: false
+    username: ""
+    email: ""
+    password: ""
+    full_name: "Administrator"
+    reset_password: false
 
 security:
   password_salt: "user-management-salt"

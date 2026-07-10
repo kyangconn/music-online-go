@@ -1,0 +1,19 @@
+{
+  "play": "播放",
+  "pause": "暂停",
+  "previous": "上一首",
+  "next": "下一首",
+  "queue": "播放队列",
+  "queue_count": "播放队列，共 {count} 首",
+  "close": "关闭播放器",
+  "volume": "音量",
+  "mute": "静音",
+  "unmute": "取消静音",
+  "seek": "播放进度",
+  "now_playing": "正在播放",
+  "playback_failed": "无法播放此音频",
+  "recent": "最近播放",
+  "continue_at": "继续自 {time}",
+  "continue_playing": "继续播放",
+  "clear_recent": "清空最近播放"
+}

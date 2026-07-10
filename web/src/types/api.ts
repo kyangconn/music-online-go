@@ -55,6 +55,11 @@ export interface Music {
   id: number;
   title: string;
   artist: string;
+  album: string;
+  year: number;
+  track_number: number;
+  genre: string;
+  duration: number;
   album_id: number | null;
   intro: string;
   img: string;
@@ -72,6 +77,11 @@ export interface Music {
 export interface CreateMusicRequest {
   title: string;
   artist: string;
+  album?: string;
+  year?: number;
+  track_number?: number;
+  genre?: string;
+  duration?: number;
   intro?: string;
   img?: string;
   path?: string;
@@ -81,6 +91,43 @@ export interface CreateMusicRequest {
 }
 
 export type CreateMusicData = Music;
+
+export interface UpdateMusicRequest {
+  title?: string;
+  artist?: string;
+  album?: string;
+  year?: number;
+  track_number?: number;
+  genre?: string;
+  duration?: number;
+  intro?: string;
+  type?: MusicType;
+  issuing_date?: string;
+  album_id?: number | null;
+}
+
+export interface MusicFilterOptions {
+  artists: string[];
+  years: number[];
+  types: MusicType[];
+}
+
+export interface MusicMetadataData {
+  title: string;
+  artist: string;
+  album: string;
+  year: number;
+  track_number: number;
+  genre: string;
+  duration: number;
+}
+
+export interface MusicDuplicateCheckData {
+  exact_match?: Music;
+  metadata_matches: Music[];
+  suggested_metadata: MusicMetadataData;
+  enrichment?: UpdateMusicRequest;
+}
 
 // ---- TOTP 相关 ----
 
@@ -158,4 +205,10 @@ export interface ScannedFileItem {
   type: string;
   metadata: MusicMetadataFields | null;
   loading: boolean;
+  hash?: string;
+  duplicateOf?: string;
+  exactMatch?: Music;
+  metadataMatches?: Music[];
+  enrichment?: UpdateMusicRequest;
+  processingError?: boolean;
 }

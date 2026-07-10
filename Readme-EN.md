@@ -47,6 +47,7 @@ Full-stack music management platform — Go backend + Vue 3 frontend, compiled i
 ```bash
 # 1. Copy and edit config file
 cp config-example.yaml config.yaml
+# Optional: enable admin.bootstrap in config.yaml to create the first admin
 
 # 2. Build (frontend + backend)
 make build
@@ -105,6 +106,8 @@ docker run --rm -p 8080:8080 -v "$PWD/data:/data" music-online-go
 
 Multi-stage: Node build → Go build → Alpine runtime. The image does not bake in `config.yaml`; provide configuration at runtime through `/data/config.yaml`, environment variables, or CLI flags. Container defaults store data in `/data/music.db` and `/data/uploads`, so mount `/data` for persistence.
 
+PWA installation and the offline app shell work directly on `localhost`. When accessing a self-hosted instance from another device, expose it through an HTTPS reverse proxy; plain LAN HTTP addresses do not enable these secure-context capabilities.
+
 ## Configuration
 
 Configuration uses [Viper](https://github.com/spf13/viper) with three-layer overrides: **YAML file → env vars → CLI
@@ -155,6 +158,16 @@ Dedicated environment variables:
 | `XDG_CONFIG_HOME` | XDG base directory for user-level config search                            |
 | `HOSTNAME`        | Hostname shown in admin panel (fallback)                                   |
 
+The first admin can also be bootstrapped entirely from environment variables:
+
+```bash
+ADMIN_BOOTSTRAP_ENABLED=true \
+ADMIN_BOOTSTRAP_USERNAME=admin \
+ADMIN_BOOTSTRAP_EMAIL=admin@example.com \
+ADMIN_BOOTSTRAP_PASSWORD='change-me-please' \
+./music-server
+```
+
 ### Complete YAML Reference
 
 See [config-example.yaml](./config-example.yaml).
@@ -169,8 +182,12 @@ See [config-example.yaml](./config-example.yaml).
 | `server.write_timeout` | int    | `30`        | HTTP write timeout (seconds)        |
 | `server.upload_dir`    | string | `"uploads"` | Upload file storage directory       |
 | `server.log_file`      | string | `""`        | Log file path (empty = stdout only) |
+| `server.max_audio_size_mb` | int | `200`       | Maximum size per audio file (MB)    |
+| `server.max_cover_size_mb` | int | `10`        | Maximum size per cover image (MB)   |
 
 `server.upload_dir` may be absolute or relative. Relative paths are resolved from the server process working directory. Local `make dev-be` writes to `uploads/` under the repo root by default; Docker defaults to `SERVER_UPLOAD_DIR=/data/uploads` inside the mounted volume.
+
+Uploads are validated by size, extension, request MIME, and file header signature. The frontend also pre-checks files to avoid wasted uploads, but backend validation is the security boundary.
 
 #### database
 
@@ -205,6 +222,21 @@ DATABASE_TYPE=postgres DATABASE_HOST=localhost DATABASE_PORT=5432 DATABASE_USER=
 | `jwt.secret`      | string | —       | JWT signing key (must be changed in production) |
 | `jwt.expire_hour` | int    | `24`    | JWT expiration time (hours)                     |
 
+#### admin.bootstrap
+
+First-admin bootstrap is explicit opt-in. By default, no admin account is created. When enabled, the app runs it after database migration: it creates the configured username if missing, or promotes and activates the existing username as admin.
+
+| Key                              | Type    | Default           | Description                                                        |
+|----------------------------------|---------|-------------------|--------------------------------------------------------------------|
+| `admin.bootstrap.enabled`        | bool    | `false`           | Enable startup admin bootstrap                                     |
+| `admin.bootstrap.username`       | string  | —                 | Admin username                                                     |
+| `admin.bootstrap.email`          | string  | —                 | Email used when creating a new admin                               |
+| `admin.bootstrap.password`       | string  | —                 | Admin password, at least 8 characters; never printed to logs       |
+| `admin.bootstrap.full_name`      | string  | `"Administrator"` | Full name used for new admins or blank existing names              |
+| `admin.bootstrap.reset_password` | bool    | `false`           | Reset password for an existing username using the configured value |
+
+After the admin exists, disable `admin.bootstrap.enabled` and restart. If it remains enabled, the app only keeps that username as an active admin and does not create duplicates. In production, do not commit admin passwords; prefer env vars or deployment-only config.
+
 #### security
 
 | Key                      | Type   | Default | Description                   |
@@ -223,6 +255,30 @@ prints a warning — the program continues to run.
 # stdout + file
 ./music-server --log-file /var/log/music.log
 ```
+
+## Backup & Restore
+
+For a SQLite single-node deployment, back up three things: `config.yaml`, the SQLite database file (`music.db` by default, or `database.path`), and the upload directory (`uploads/` by default, or `server.upload_dir`). Stop the service first when possible, or at least make sure no upload is running.
+
+```bash
+# Example: archive data from a current-directory deployment
+tar -czf music-online-backup.tgz config.yaml music.db uploads/
+```
+
+To restore, stop the service, put those files/directories back at the same paths, then start the app. Docker deployments usually only need the mounted `data/` directory:
+
+```bash
+tar -czf music-online-data.tgz data/
+```
+
+For PostgreSQL deployments, back up both the database and uploaded files:
+
+```bash
+pg_dump "$DATABASE_URL" > music-online.sql
+tar -czf music-online-files.tgz config.yaml uploads/
+```
+
+Restore PostgreSQL by importing the SQL dump, then restoring the upload directory and config file.
 
 ## License
 

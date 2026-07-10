@@ -61,5 +61,6 @@
   "delete_music": "Delete Music",
   "delete_music_confirm": "Delete \"{title}\"?",
   "music_deleted": "Music deleted",
-  "music_delete_failed": "Failed to delete music"
+  "music_delete_failed": "Failed to delete music",
+  "load_system_info_failed": "Failed to load system info"
 }

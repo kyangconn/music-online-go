@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/kyangconn/music-online-go/internal/domain"
@@ -194,10 +195,11 @@ func (s *musicTagService) Search(ctx context.Context, params *domain.TagSearchPa
 
 // FindOrCreate 查找现有标签或创建新标签
 // 按照以下顺序尝试匹配：精确匹配 -> MusicBrainz ID匹配 -> MusicBrainz艺术家ID匹配 -> 模糊匹配
+// 注意：「未找到」(ErrMusicTagNotFound) 属于正常分支，应继续尝试下一个策略，只有真实 DB 错误才向上传播。
 func (s *musicTagService) FindOrCreate(ctx context.Context, tag *domain.MusicTag) (*domain.MusicTag, error) {
 	// 1. 尝试精确匹配（艺术家和标题）
 	exactMatch, err := s.repo.GetByArtistAndTitle(ctx, tag.Artist, tag.Title)
-	if err != nil {
+	if err != nil && !errors.Is(err, repository.ErrMusicTagNotFound) {
 		return nil, err
 	}
 	if exactMatch != nil {
@@ -256,7 +258,7 @@ func (s *musicTagService) MatchTags(ctx context.Context, req *domain.CreateMusic
 
 	// 1. 尝试精确匹配
 	exactMatch, err := s.repo.GetByArtistAndTitle(ctx, tag.Artist, tag.Title)
-	if err != nil {
+	if err != nil && !errors.Is(err, repository.ErrMusicTagNotFound) {
 		return nil, false, err
 	}
 	if exactMatch != nil {

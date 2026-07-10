@@ -61,5 +61,6 @@
   "delete_music": "删除音乐",
   "delete_music_confirm": "确定删除 \"{title}\" 吗？",
   "music_deleted": "音乐已删除",
-  "music_delete_failed": "音乐删除失败"
+  "music_delete_failed": "音乐删除失败",
+  "load_system_info_failed": "加载系统信息失败"
 }

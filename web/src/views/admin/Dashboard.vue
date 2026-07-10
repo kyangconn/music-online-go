@@ -1,23 +1,25 @@
 <script setup lang="ts">
-import { ElMessage } from "element-plus";
 import { ref, onMounted, computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import type { SystemInfoData } from "@/types/api";
 import DashboardOverview from "@/components/admin/DashboardOverview.vue";
 import DatabaseInfo from "@/components/admin/DatabaseInfo.vue";
-import MusicManagement from "@/components/admin/MusicManagement.vue";
 import MusicInfo from "@/components/admin/MusicInfo.vue";
+import MusicManagement from "@/components/admin/MusicManagement.vue";
 import RuntimeInfo from "@/components/admin/RuntimeInfo.vue";
 import ServerInfo from "@/components/admin/ServerInfo.vue";
 import UserManagement from "@/components/admin/UserManagement.vue";
+import { useApiError } from "@/composables/useApiError";
 import SideNavLayout, { type TabItem } from "@/layout/SideNavLayout.vue";
 import request from "@/utils/request";
 
 const router = useRouter();
 const { t } = useI18n();
+const { handleError } = useApiError();
 
 const loading = ref(false);
+const error = ref(false);
 const info = ref<SystemInfoData | null>(null);
 const title = computed(() => t("admin.dashboard"));
 const activeTab = ref("dashboard");
@@ -35,11 +37,13 @@ const tabs = computed<TabItem[]>(() => [
 /** 获取系统信息 */
 const fetchInfo = async () => {
   loading.value = true;
+  error.value = false;
   try {
     const res = await request.get<SystemInfoData>("/users/admin/system-info");
     info.value = res.data;
-  } catch (_e) {
-    ElMessage.error("Failed to load system info");
+  } catch (e) {
+    error.value = true;
+    handleError(e, t("admin.load_system_info_failed"));
   } finally {
     loading.value = false;
   }
@@ -62,23 +66,23 @@ onMounted(fetchInfo);
     @back="goBack"
   >
     <template #dashboard>
-      <DashboardOverview :loading="loading" :info="info!" />
+      <DashboardOverview :loading="loading" :info="info" :error="error" @retry="fetchInfo" />
     </template>
 
     <template #server>
-      <ServerInfo :loading="loading" :info="info!" />
+      <ServerInfo :loading="loading" :info="info" :error="error" @retry="fetchInfo" />
     </template>
 
     <template #runtime>
-      <RuntimeInfo :loading="loading" :info="info!" />
+      <RuntimeInfo :loading="loading" :info="info" :error="error" @retry="fetchInfo" />
     </template>
 
     <template #database>
-      <DatabaseInfo :loading="loading" :info="info!" />
+      <DatabaseInfo :loading="loading" :info="info" :error="error" @retry="fetchInfo" />
     </template>
 
     <template #music>
-      <MusicInfo :loading="loading" :info="info!" />
+      <MusicInfo :loading="loading" :info="info" :error="error" @retry="fetchInfo" />
     </template>
 
     <template #user-management>
@@ -90,15 +94,3 @@ onMounted(fetchInfo);
     </template>
   </SideNavLayout>
 </template>
-
-<style scoped lang="scss">
-.admin-dashboard {
-  :deep(.doc-section) {
-    width: 100%;
-  }
-
-  :deep(.doc-section .kv-list) {
-    max-width: none;
-  }
-}
-</style>

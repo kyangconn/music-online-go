@@ -1,44 +1,28 @@
 <script setup lang="ts">
 import { Delete, Search, View } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
-import type { Music, PaginatedData } from "@/types/api";
+import type { Music } from "@/types/api";
 import MusicCover from "@/components/music/MusicCover.vue";
+import { useApiError } from "@/composables/useApiError";
+import { usePaginatedFetch } from "@/composables/usePaginatedFetch";
 import request from "@/utils/request";
 
 const router = useRouter();
 const { t } = useI18n();
-const loading = ref(false);
-const musics = ref<Music[]>([]);
+const { handleError } = useApiError();
 const query = ref("");
-const currentPage = ref(1);
-const pageSize = ref(10);
-const total = ref(0);
 
-const fetchMusics = async () => {
-  loading.value = true;
-  try {
-    const res = await request.get<PaginatedData<Music>>("/musics", {
-      params: {
-        q: query.value,
-        page: currentPage.value,
-        page_size: pageSize.value,
-      },
-    });
-    musics.value = res.data.items || [];
-    total.value = res.data.total;
-  } catch (_e) {
-    ElMessage.error(t("admin.load_music_failed"));
-  } finally {
-    loading.value = false;
-  }
-};
+const { items: musics, loading, total, currentPage, pageSize, fetch: fetchMusics, resetAndFetch } =
+  usePaginatedFetch<Music>("/musics", {
+    errorMessageKey: "admin.load_music_failed",
+    extraParams: computed(() => ({ q: query.value })),
+  });
 
 const handleSearch = () => {
-  currentPage.value = 1;
-  fetchMusics();
+  resetAndFetch();
 };
 
 const deleteMusic = async (music: Music) => {
@@ -56,7 +40,7 @@ const deleteMusic = async (music: Music) => {
     ElMessage.success(t("admin.music_deleted"));
     fetchMusics();
   } catch (error) {
-    if (error !== "cancel") ElMessage.error(t("admin.music_delete_failed"));
+    if (error !== "cancel") handleError(error, t("admin.music_delete_failed"));
   }
 };
 

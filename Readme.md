@@ -47,6 +47,7 @@
 ```bash
 # 1. 复制并编辑配置文件
 cp config-example.yaml config.yaml
+# 可选：在 config.yaml 里启用 admin.bootstrap 创建首个管理员
 
 # 2. 构建（前端 + 后端）
 make build
@@ -105,6 +106,8 @@ docker run --rm -p 8080:8080 -v "$PWD/data:/data" music-online-go
 
 多阶段构建：前端 node → 编译 → Go 编译 → Alpine 运行镜像。镜像不内置 `config.yaml`；运行时通过 `/data/config.yaml`、环境变量或命令行参数提供配置。默认容器数据路径为 `/data/music.db` 和 `/data/uploads`，因此应挂载 `/data` 保持数据持久化。
 
+PWA 安装和离线应用壳在 `localhost` 可直接使用；从其他设备访问自部署实例时，需要通过 HTTPS 反向代理暴露服务，普通局域网 HTTP 地址不会启用这些安全上下文能力。
+
 ## 配置
 
 程序使用 [Viper](https://github.com/spf13/viper) 加载配置，支持 **YAML 文件 + 环境变量 + 命令行参数** 三层覆盖。
@@ -154,6 +157,16 @@ SERVER_PORT=8080 DATABASE_TYPE=sqlite DATABASE_PATH=/data/music.db ./music-serve
 | `XDG_CONFIG_HOME` | XDG 基础目录，用于搜索用户级配置                                           |
 | `HOSTNAME`        | Admin 面板中显示的 host 名（fallback）                                |
 
+首个管理员也可以完全用环境变量初始化：
+
+```bash
+ADMIN_BOOTSTRAP_ENABLED=true \
+ADMIN_BOOTSTRAP_USERNAME=admin \
+ADMIN_BOOTSTRAP_EMAIL=admin@example.com \
+ADMIN_BOOTSTRAP_PASSWORD='change-me-please' \
+./music-server
+```
+
 ### 完整 YAML 字段
 
 参考 [config-example.yaml](./config-example.yaml)。
@@ -168,8 +181,12 @@ SERVER_PORT=8080 DATABASE_TYPE=sqlite DATABASE_PATH=/data/music.db ./music-serve
 | `server.write_timeout` | int    | `30`        | HTTP 写超时（秒）              |
 | `server.upload_dir`    | string | `"uploads"` | 上传文件存储目录                 |
 | `server.log_file`      | string | `""`        | 日志文件路径（空表示仅 stdout）      |
+| `server.max_audio_size_mb` | int | `200`       | 单个音频文件最大大小（MB）          |
+| `server.max_cover_size_mb` | int | `10`        | 单个封面图片最大大小（MB）          |
 
 `server.upload_dir` 支持绝对路径或相对路径；相对路径按服务进程的当前工作目录解析。本地 `make dev-be` 默认会写到仓库根目录下的 `uploads/`，Docker 默认通过 `SERVER_UPLOAD_DIR=/data/uploads` 写入挂载卷。
+
+上传会同时校验大小、扩展名、请求 MIME 和文件头签名。前端也会做预检以减少无效上传，但后端校验才是最终安全边界。
 
 #### database
 
@@ -204,6 +221,21 @@ DATABASE_TYPE=postgres DATABASE_HOST=localhost DATABASE_PORT=5432 DATABASE_USER=
 | `jwt.secret`      | string | -    | JWT 签名密钥（生产环境必须修改） |
 | `jwt.expire_hour` | int    | `24` | JWT 过期时间（小时）       |
 
+#### admin.bootstrap
+
+首个管理员初始化是显式 opt-in：默认不创建任何管理员。启用后，程序会在数据库迁移后确保指定用户是可用的管理员；如果用户名不存在则创建，如果用户名已存在则提升为 admin 并激活账号。
+
+| 字段                                      | 类型     | 默认值               | 说明                                  |
+|-----------------------------------------|--------|-------------------|-------------------------------------|
+| `admin.bootstrap.enabled`               | bool   | `false`           | 是否启用启动时管理员初始化                     |
+| `admin.bootstrap.username`              | string | -                 | 管理员用户名                              |
+| `admin.bootstrap.email`                 | string | -                 | 创建新管理员时使用的邮箱                       |
+| `admin.bootstrap.password`              | string | -                 | 创建管理员密码，至少 8 位；不会写入日志             |
+| `admin.bootstrap.full_name`             | string | `"Administrator"` | 创建新管理员或补全空姓名时使用                    |
+| `admin.bootstrap.reset_password`        | bool   | `false`           | 用户名已存在时，是否用配置中的 password 重置密码      |
+
+初始化完成后，建议关闭 `admin.bootstrap.enabled` 并重启；如果保留启用状态，程序也只会确保该用户仍是 admin，不会重复创建账号。生产环境不要把管理员密码提交到仓库，优先用环境变量或只读部署配置提供。
+
 #### security
 
 | 字段                       | 类型     | 默认值 | 说明         |
@@ -221,6 +253,30 @@ DATABASE_TYPE=postgres DATABASE_HOST=localhost DATABASE_PORT=5432 DATABASE_USER=
 # stdout + 文件
 ./music-server --log-file /var/log/music.log
 ```
+
+## 备份与恢复
+
+SQLite 单机部署只需要备份三类内容：`config.yaml`、SQLite 数据库文件（默认 `music.db` 或 `database.path` 指向的文件）、上传目录（默认 `uploads/` 或 `server.upload_dir`）。备份前最好停止服务，或至少确保没有上传正在进行。
+
+```bash
+# 示例：把当前目录部署的数据打包
+tar -czf music-online-backup.tgz config.yaml music.db uploads/
+```
+
+恢复时停止服务，把这三类内容放回原路径，再启动程序。Docker 部署通常只需要备份挂载的 `data/` 目录：
+
+```bash
+tar -czf music-online-data.tgz data/
+```
+
+PostgreSQL 部署需要同时备份数据库和上传目录：
+
+```bash
+pg_dump "$DATABASE_URL" > music-online.sql
+tar -czf music-online-files.tgz config.yaml uploads/
+```
+
+恢复 PostgreSQL 时先导入 SQL，再放回上传目录和配置文件。
 
 ## License
 

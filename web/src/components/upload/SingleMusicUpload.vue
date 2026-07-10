@@ -1,64 +1,63 @@
 <script setup lang="ts">
-import axios, { type AxiosProgressEvent } from "axios";
-import type { UploadInstance, UploadFile } from "element-plus";
-import { Close, UploadFilled, PictureFilled, Headset, QuestionFilled } from "@element-plus/icons-vue";
-import { ElMessage } from "element-plus";
-import { ref, reactive } from "vue";
+import { Headset, PictureFilled, QuestionFilled } from "@element-plus/icons-vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import type { UploadFile, UploadInstance } from "element-plus";
+import { onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
-import type { CreateMusicData, CreateMusicRequest, MusicMetadataFields } from "@/types/api";
-import request from "@/utils/request";
-import { loadCachedMeta, saveCachedMeta, removeCachedMeta, parseAudioFile, formatFileSize } from "@/utils/upload";
+import FileCard from "@/components/upload/FileCard.vue";
+import { useAudioMetadata } from "@/composables/useAudioMetadata";
+import { useAudioPreprocessor } from "@/composables/useAudioPreprocessor";
+import { useApiError } from "@/composables/useApiError";
+import { useMusicDuplicates } from "@/composables/useMusicDuplicates";
+import { useMusicUpload } from "@/composables/useMusicUpload";
+import { useUploadDraft } from "@/composables/useUploadDraft";
+import { useUploadPolicy } from "@/composables/useUploadPolicy";
+import type { MusicDuplicateCheckData } from "@/types/api";
+import { applyMetadataSuggestion, getUploadValidationMessage, validateUploadFile } from "@/utils/upload";
 
 const router = useRouter();
-useI18n();
+const { t } = useI18n();
+const { getErrorMessage } = useApiError();
 
-const loading = ref(false);
 const coverFile = ref<File | null>(null);
 const audioFile = ref<File | null>(null);
-const uploadPercent = ref(0);
 const coverUploadRef = ref<UploadInstance>();
 const audioUploadRef = ref<UploadInstance>();
+const description = ref("");
+const audioHash = ref("");
 
-const form = reactive({
-  title: "",
-  artist: "",
-  album: "",
-  year: "",
-  track: "",
-  genre: "",
-  duration: "",
-  description: "",
-});
+const { form, touched, applyMeta, resetForm, clearCache } = useAudioMetadata();
+const { preprocess } = useAudioPreprocessor();
+const { checking, checkDuplicate, enrichExactMatch } = useMusicDuplicates();
+const { clearDraft } = useUploadDraft(form, touched, description);
+const { loading, uploadPercent, uploadOne } = useMusicUpload();
+const { policy, loadPolicy } = useUploadPolicy();
 
-const touched = reactive({
-  title: false,
-  artist: false,
-  album: false,
-  year: false,
-  track: false,
-  genre: false,
-});
-
-/** 将解析的元数据填入表单 */
-const applyMetaToForm = (meta: MusicMetadataFields) => {
-  if (!touched.title && meta.title) form.title = meta.title;
-  if (!touched.artist && meta.artist) form.artist = meta.artist;
-  if (!touched.album && meta.album) form.album = meta.album;
-  if (!touched.year && meta.year) form.year = meta.year;
-  if (!touched.track && meta.track) form.track = meta.track;
-  if (!touched.genre && meta.genre) form.genre = meta.genre;
-  if (meta.duration) form.duration = meta.duration;
+const acceptFile = (file: File | undefined, kind: "audio" | "cover") => {
+  if (!file) return null;
+  const validation = validateUploadFile(file, kind, policy.value);
+  if (!validation.valid) {
+    ElMessage.error(getUploadValidationMessage(file, kind, validation, t));
+    return null;
+  }
+  return file;
 };
+
+onMounted(() => {
+  void loadPolicy();
+});
 
 /** 封面文件选择回调 */
 const handleCoverChange = (file: UploadFile) => {
-  coverFile.value = file?.raw || null;
+  const raw = acceptFile(file?.raw || undefined, "cover");
+  coverFile.value = raw;
+  if (!raw) coverUploadRef.value?.clearFiles();
 };
 
 const handleCoverExceed = (files: UploadFile[]) => {
   coverUploadRef.value?.clearFiles();
-  const raw = files?.[0]?.raw as File | undefined;
+  const raw = acceptFile(files?.[0]?.raw as File | undefined, "cover");
   if (raw) coverFile.value = raw;
 };
 
@@ -75,49 +74,27 @@ const selectCover = () => {
 
 /** 音频文件选择回调，自动解析标签 */
 const handleAudioChange = async (file: UploadFile) => {
-  audioFile.value = file?.raw || null;
-  if (!audioFile.value) return;
-
-  const cached = loadCachedMeta(audioFile.value);
-  if (cached) {
-    applyMetaToForm(cached);
+  audioFile.value = acceptFile(file?.raw || undefined, "audio");
+  if (!audioFile.value) {
+    audioUploadRef.value?.clearFiles();
     return;
   }
-
-  try {
-    const meta = await parseAudioFile(audioFile.value);
-    saveCachedMeta(audioFile.value, meta);
-    applyMetaToForm(meta);
-  } catch (_e) {
-    ElMessage.warning("Failed to read audio tags");
-  }
+  await preprocessAudio(audioFile.value);
 };
 
 /** 音频文件超限处理 */
 const handleAudioExceed = async (files: UploadFile[]) => {
   audioUploadRef.value?.clearFiles();
-  const raw = files?.[0]?.raw as File | undefined;
+  const raw = acceptFile(files?.[0]?.raw as File | undefined, "audio");
   if (!raw) return;
   audioFile.value = raw;
-
-  const cached = loadCachedMeta(raw);
-  if (cached) {
-    applyMetaToForm(cached);
-    return;
-  }
-
-  try {
-    const meta = await parseAudioFile(raw);
-    saveCachedMeta(raw, meta);
-    applyMetaToForm(meta);
-  } catch (_e) {
-    ElMessage.warning("Failed to read audio tags");
-  }
+  await preprocessAudio(raw);
 };
 
 /** 移除音频 */
 const removeAudio = () => {
   audioFile.value = null;
+  audioHash.value = "";
   audioUploadRef.value?.clearFiles();
 };
 
@@ -126,29 +103,29 @@ const selectAudio = () => {
   input?.click();
 };
 
-interface UploadErrorResponse {
-  error?: string;
-  message?: string;
-}
-
-const getUploadErrorMessage = (error: unknown) => {
-  if (axios.isAxiosError<UploadErrorResponse>(error)) {
-    const data = error.response?.data;
-    return data?.error || data?.message || error.message || "Upload failed";
+const preprocessAudio = async (file: File) => {
+  audioHash.value = "";
+  try {
+    const result = await preprocess(file);
+    audioHash.value = result.hash;
+    applyMeta(result.metadata);
+    return true;
+  } catch {
+    ElMessage.warning(t("add.read_tags_failed"));
+    return false;
   }
-  if (error instanceof Error && error.message) return error.message;
-  return "Upload failed";
 };
 
-const resetTouched = () => {
-  Object.assign(touched, {
-    title: false,
-    artist: false,
-    album: false,
-    year: false,
-    track: false,
-    genre: false,
-  });
+const resetUploadForm = () => {
+  if (audioFile.value) clearCache(audioFile.value);
+  coverFile.value = null;
+  audioFile.value = null;
+  audioHash.value = "";
+  coverUploadRef.value?.clearFiles();
+  audioUploadRef.value?.clearFiles();
+  description.value = "";
+  resetForm();
+  clearDraft();
 };
 
 /** 提交音乐创建并上传文件 */
@@ -156,63 +133,53 @@ const handleSubmit = async () => {
   const title = form.title.trim();
   const artist = form.artist.trim();
   if (!title || !artist) {
-    ElMessage.error("Title and artist are required");
+    ElMessage.error(t("add.title_artist_required"));
     return;
   }
-  loading.value = true;
-  uploadPercent.value = audioFile.value || coverFile.value ? 1 : 0;
+  let duplicateResult: MusicDuplicateCheckData;
   try {
-    const payload: CreateMusicRequest = {
-      title,
-      artist,
-      intro: form.description.trim(),
-      type: "single",
-    };
-    const res = await request.post<CreateMusicData>("/musics", payload);
-    const musicId = res.data?.id;
-    if (!musicId) {
-      ElMessage.error("Failed to create music record");
-      return;
-    }
-
-    if (audioFile.value || coverFile.value) {
-      const fd = new FormData();
-      if (audioFile.value) fd.append("file", audioFile.value);
-      if (coverFile.value) fd.append("cover", coverFile.value);
-      await request.post(`/musics/${musicId}/upload`, fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-        onUploadProgress: (event: AxiosProgressEvent) => {
-          if (!event.total) return;
-          uploadPercent.value = Math.max(1, Math.round((event.loaded / event.total) * 100));
-        },
-      });
-      uploadPercent.value = 100;
-    }
-
-    if (audioFile.value) removeCachedMeta(audioFile.value);
-    ElMessage.success("Music uploaded successfully");
-    coverFile.value = null;
-    audioFile.value = null;
-    coverUploadRef.value?.clearFiles();
-    audioUploadRef.value?.clearFiles();
-    Object.assign(form, {
-      title: "",
-      artist: "",
-      album: "",
-      year: "",
-      track: "",
-      genre: "",
-      duration: "",
-      description: "",
-    });
-    resetTouched();
+    duplicateResult = await checkDuplicate(form, audioHash.value);
+    applyMetadataSuggestion(form, duplicateResult.suggested_metadata);
   } catch (error) {
-    ElMessage.error(getUploadErrorMessage(error));
-  } finally {
-    loading.value = false;
-    setTimeout(() => {
-      uploadPercent.value = 0;
-    }, 800);
+    ElMessage.error(getErrorMessage(error, t("add.duplicate_check_failed")));
+    return;
+  }
+
+  if (duplicateResult.exact_match) {
+    try {
+      const enriched = await enrichExactMatch(duplicateResult);
+      ElMessage.success(enriched ? t("add.duplicate_enriched") : t("add.exact_duplicate_skipped"));
+      const existingID = duplicateResult.exact_match.id;
+      resetUploadForm();
+      void router.push(`/music/${existingID}`);
+    } catch (error) {
+      ElMessage.error(getErrorMessage(error, t("add.duplicate_enrich_failed")));
+    }
+    return;
+  }
+
+  if (duplicateResult.metadata_matches.length > 0) {
+    const confirmed = await ElMessageBox.confirm(
+      t("add.possible_duplicate_confirm", { count: duplicateResult.metadata_matches.length }),
+      t("add.possible_duplicate_title"),
+      { type: "warning", confirmButtonText: t("add.upload_anyway"), cancelButtonText: t("common.cancel") },
+    )
+      .then(() => true)
+      .catch(() => false);
+    if (!confirmed) return;
+  }
+
+  const result = await uploadOne({
+    title,
+    artist,
+    intro: description.value.trim(),
+    metadata: form,
+    audio: audioFile.value,
+    cover: coverFile.value,
+  });
+  if (result.success) {
+    ElMessage.success(t("add.upload_success"));
+    resetUploadForm();
   }
 };
 </script>
@@ -220,18 +187,7 @@ const handleSubmit = async () => {
 <template>
   <div class="single-upload">
     <div class="file-cards">
-      <div class="file-card" :class="{ filled: coverFile }" role="button" tabindex="0" @click="selectCover" @keydown.enter.prevent="selectCover">
-        <div class="file-card-body">
-          <el-icon :size="28"><PictureFilled /></el-icon>
-          <div class="file-card-info">
-            <p class="file-card-label">{{ $t("add.cover") }}</p>
-            <p class="file-card-name">{{ coverFile ? coverFile.name : $t("common.not_selected") }}</p>
-            <p v-if="coverFile" class="file-card-size">{{ formatFileSize(coverFile.size) }}</p>
-          </div>
-        </div>
-        <button v-if="coverFile" class="dismiss-btn" @click.stop="removeCover" :aria-label="$t('common.delete')">
-          <el-icon :size="14"><Close /></el-icon>
-        </button>
+      <FileCard :file="coverFile" :label="$t('add.cover')" :icon="PictureFilled" @select="selectCover" @remove="removeCover">
         <el-upload
           class="card-upload-input"
           ref="coverUploadRef"
@@ -244,21 +200,9 @@ const handleSubmit = async () => {
         >
           <span class="upload-input-trigger" />
         </el-upload>
-        <el-icon v-if="!coverFile" class="card-upload-icon" :size="20"><UploadFilled /></el-icon>
-      </div>
+      </FileCard>
 
-      <div class="file-card" :class="{ filled: audioFile }" role="button" tabindex="0" @click="selectAudio" @keydown.enter.prevent="selectAudio">
-        <div class="file-card-body">
-          <el-icon :size="28"><Headset /></el-icon>
-          <div class="file-card-info">
-            <p class="file-card-label">{{ $t("add.audio") }}</p>
-            <p class="file-card-name">{{ audioFile ? audioFile.name : $t("common.not_selected") }}</p>
-            <p v-if="audioFile" class="file-card-size">{{ formatFileSize(audioFile.size) }}</p>
-          </div>
-        </div>
-        <button v-if="audioFile" class="dismiss-btn" @click.stop="removeAudio" :aria-label="$t('common.delete')">
-          <el-icon :size="14"><Close /></el-icon>
-        </button>
+      <FileCard :file="audioFile" :label="$t('add.audio')" :icon="Headset" @select="selectAudio" @remove="removeAudio">
         <el-upload
           class="card-upload-input"
           ref="audioUploadRef"
@@ -271,8 +215,7 @@ const handleSubmit = async () => {
         >
           <span class="upload-input-trigger" />
         </el-upload>
-        <el-icon v-if="!audioFile" class="card-upload-icon" :size="20"><UploadFilled /></el-icon>
-      </div>
+      </FileCard>
     </div>
 
     <el-form class="upload-form" label-position="top" :model="form">
@@ -324,13 +267,13 @@ const handleSubmit = async () => {
         </el-col>
         <el-col :span="18">
           <el-form-item :label="$t('add.music_description')">
-            <el-input type="textarea" v-model="form.description" :rows="2" />
+            <el-input type="textarea" v-model="description" :rows="2" />
           </el-form-item>
         </el-col>
       </el-row>
 
       <el-form-item>
-        <el-button type="primary" :loading="loading" size="large" @click="handleSubmit">
+        <el-button type="primary" :loading="loading || checking" size="large" @click="handleSubmit">
           {{ $t("common.upload") }}
         </el-button>
         <el-button size="large" @click="router.back()">{{ $t("common.cancel") }}</el-button>
@@ -355,91 +298,7 @@ const handleSubmit = async () => {
   padding: 2px;
 }
 
-.file-card {
-  flex: 1;
-  position: relative;
-  min-height: 88px;
-  border: 2px dashed var(--border-color);
-  border-radius: $radius-xl;
-  padding: $spacing-lg;
-  @include inline-flex;
-  transition:
-    border-color $transition-base,
-    background $transition-base;
-  background: var(--bg-white);
-
-  &.filled {
-    border-style: solid;
-    border-color: var(--accent-color);
-    background: color-mix(in srgb, var(--accent-color) 4%, var(--bg-white));
-  }
-  &:hover {
-    border-color: var(--accent-color);
-  }
-}
-
-.file-card-body {
-  @include inline-flex($spacing-md);
-  flex: 1;
-  color: var(--text-secondary);
-  min-width: 0;
-  padding-right: $spacing-3xl;
-}
-
-.file-card.filled .file-card-body {
-  color: var(--text-primary);
-}
-
-.file-card-info {
-  min-width: 0;
-}
-
-.file-card-label {
-  font-size: 0.8rem;
-  font-weight: $fw-semibold;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-light);
-  margin: 0 0 $spacing-xs;
-}
-
-.file-card-name {
-  margin: 0;
-  font-size: $fs-base;
-  @include text-ellipsis;
-}
-
-.file-card-size {
-  margin: $spacing-xs 0 0;
-  font-size: $fs-xs;
-  color: var(--text-light);
-}
-
-.dismiss-btn {
-  position: absolute;
-  top: $spacing-sm;
-  right: $spacing-sm;
-  width: $spacing-2xl;
-  height: $spacing-2xl;
-  border-radius: $radius-round;
-  border: 2px solid var(--bg-white);
-  background: $color-danger;
-  color: #fff;
-  cursor: pointer;
-  @include flex-center;
-  padding: 0;
-  transition:
-    transform 0.15s,
-    box-shadow 0.15s;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-  z-index: 3;
-
-  &:hover {
-    transform: scale(1.15);
-    box-shadow: 0 4px 12px rgba($color-danger, 0.4);
-  }
-}
-
+/* el-upload 作为覆盖在 FileCard 上的透明输入层 */
 .card-upload-input {
   position: absolute;
   inset: 0;
@@ -457,21 +316,6 @@ const handleSubmit = async () => {
   display: block;
   width: 100%;
   height: 100%;
-}
-
-.card-upload-icon {
-  position: absolute;
-  top: 50%;
-  right: $spacing-lg;
-  transform: translateY(-50%);
-  color: var(--text-light);
-  transition: color $transition-base;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.file-card:hover .card-upload-icon {
-  color: var(--accent-color);
 }
 
 .upload-form {

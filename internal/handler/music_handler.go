@@ -4,6 +4,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"mime"
 	"net/http"
 	"os"
@@ -19,11 +20,15 @@ import (
 
 // MusicHandler handles HTTP requests related to music operations.
 type MusicHandler struct {
-	musicService service.MusicService
+	service service.MusicService
 }
 
 func NewMusicHandler(musicService service.MusicService) *MusicHandler {
-	return &MusicHandler{musicService: musicService}
+	return &MusicHandler{service: musicService}
+}
+
+func (h *MusicHandler) UploadPolicy(c *gin.Context) {
+	Success(c, service.CurrentUploadPolicy())
 }
 
 // Create godoc
@@ -43,7 +48,7 @@ func (h *MusicHandler) Create(c *gin.Context) {
 	}
 
 	userID := c.GetUint("userID")
-	music, err := h.musicService.Create(c.Request.Context(), userID, &req)
+	music, err := h.service.Create(c.Request.Context(), userID, &req)
 	if err != nil {
 		InternalServerError(c, "Failed to create music")
 		return
@@ -78,8 +83,20 @@ func (h *MusicHandler) UploadFile(c *gin.Context) {
 		return
 	}
 
-	music, err := h.musicService.UploadFiles(c.Request.Context(), uint(id), audioFile, coverFile)
+	music, err := h.service.UploadFiles(c.Request.Context(), c.GetUint("userID"), c.GetString("role"), uint(id), audioFile, coverFile)
 	if err != nil {
+		if errors.Is(err, service.ErrForbidden) {
+			Forbidden(c, "You can only upload files for your own music")
+			return
+		}
+		if errors.Is(err, repository.ErrMusicNotFound) {
+			NotFound(c, "Music not found")
+			return
+		}
+		if errors.Is(err, service.ErrInvalidMediaFile) {
+			BadRequest(c, err.Error())
+			return
+		}
 		InternalServerError(c, "Failed to upload files")
 		return
 	}
@@ -103,7 +120,7 @@ func (h *MusicHandler) GetByID(c *gin.Context) {
 	}
 
 	currentUserID := h.getUserID(c)
-	music, err := h.musicService.GetByID(c.Request.Context(), uint(id), currentUserID)
+	music, err := h.service.GetByID(c.Request.Context(), uint(id), currentUserID)
 	if err != nil {
 		NotFound(c, "Music not found")
 		return
@@ -123,11 +140,19 @@ func (h *MusicHandler) GetByID(c *gin.Context) {
 // @Success 200 {object} Response "搜索成功"
 // @Router /api/v1/musics [get]
 func (h *MusicHandler) Search(c *gin.Context) {
-	query := c.Query("q")
-	page, pageSize := parsePagination(c, 10)
+	params, err := parseMusicSearchParams(c)
+	if err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
 
 	currentUserID := h.getUserID(c)
-	musics, total, err := h.musicService.Search(c.Request.Context(), query, page, pageSize, currentUserID)
+	if params.LikedOnly && currentUserID == nil {
+		Unauthorized(c, "Login is required to filter liked music")
+		return
+	}
+	params.LikedByUserID = currentUserID
+	musics, total, err := h.service.Search(c.Request.Context(), params, currentUserID)
 	if err != nil {
 		InternalServerError(c, "Failed to search music")
 		return
@@ -136,9 +161,38 @@ func (h *MusicHandler) Search(c *gin.Context) {
 	Success(c, gin.H{
 		"items": musics,
 		"total": total,
-		"page":  page,
-		"size":  pageSize,
+		"page":  params.Page,
+		"size":  params.PageSize,
 	})
+}
+
+func (h *MusicHandler) FilterOptions(c *gin.Context) {
+	options, err := h.service.ListFilterOptions(c.Request.Context())
+	if err != nil {
+		InternalServerError(c, "Failed to load music filter options")
+		return
+	}
+	Success(c, options)
+}
+
+func (h *MusicHandler) CheckDuplicates(c *gin.Context) {
+	var req domain.MusicDuplicateCheckRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, "Invalid duplicate check parameters")
+		return
+	}
+
+	result, err := h.service.CheckDuplicates(
+		c.Request.Context(),
+		c.GetUint("userID"),
+		c.GetString("role"),
+		&req,
+	)
+	if err != nil {
+		InternalServerError(c, "Failed to check duplicate music")
+		return
+	}
+	Success(c, result)
 }
 
 // Update godoc
@@ -164,7 +218,7 @@ func (h *MusicHandler) Update(c *gin.Context) {
 		return
 	}
 
-	music, err := h.musicService.Update(c.Request.Context(), c.GetUint("userID"), c.GetString("role"), uint(id), &req)
+	music, err := h.service.Update(c.Request.Context(), c.GetUint("userID"), c.GetString("role"), uint(id), &req)
 	if err != nil {
 		if errors.Is(err, service.ErrForbidden) {
 			Forbidden(c, "You can only update your own music")
@@ -193,7 +247,7 @@ func (h *MusicHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.musicService.Delete(c.Request.Context(), c.GetUint("userID"), c.GetString("role"), uint(id)); err != nil {
+	if err := h.service.Delete(c.Request.Context(), c.GetUint("userID"), c.GetString("role"), uint(id)); err != nil {
 		if errors.Is(err, service.ErrForbidden) {
 			Forbidden(c, "You can only delete your own music")
 			return
@@ -222,7 +276,7 @@ func (h *MusicHandler) Like(c *gin.Context) {
 	}
 
 	userID := c.GetUint("userID")
-	if err := h.musicService.Like(c.Request.Context(), userID, uint(id)); err != nil {
+	if err := h.service.Like(c.Request.Context(), userID, uint(id)); err != nil {
 		if errors.Is(err, repository.ErrMusicNotFound) {
 			NotFound(c, "Music not found")
 			return
@@ -251,7 +305,7 @@ func (h *MusicHandler) Unlike(c *gin.Context) {
 	}
 
 	userID := c.GetUint("userID")
-	if err := h.musicService.Unlike(c.Request.Context(), userID, uint(id)); err != nil {
+	if err := h.service.Unlike(c.Request.Context(), userID, uint(id)); err != nil {
 		InternalServerError(c, "Failed to unlike music")
 		return
 	}
@@ -279,7 +333,7 @@ func (h *MusicHandler) ListUserMusic(c *gin.Context) {
 	page, pageSize := parsePagination(c, 10)
 
 	currentUserID := h.getUserID(c)
-	musics, total, err := h.musicService.ListByUserID(c.Request.Context(), uint(userID), page, pageSize, currentUserID)
+	musics, total, err := h.service.ListByUserID(c.Request.Context(), uint(userID), page, pageSize, currentUserID)
 	if err != nil {
 		InternalServerError(c, "Failed to list user music")
 		return
@@ -313,7 +367,7 @@ func (h *MusicHandler) ListUserLikedMusic(c *gin.Context) {
 	page, pageSize := parsePagination(c, 10)
 
 	currentUserID := h.getUserID(c)
-	musics, total, err := h.musicService.ListLikedByUserID(c.Request.Context(), uint(userID), page, pageSize, currentUserID)
+	musics, total, err := h.service.ListLikedByUserID(c.Request.Context(), uint(userID), page, pageSize, currentUserID)
 	if err != nil {
 		InternalServerError(c, "Failed to list liked music")
 		return
@@ -343,7 +397,7 @@ func (h *MusicHandler) Stream(c *gin.Context) {
 		return
 	}
 
-	audioPath, err := h.musicService.GetAudioPath(c.Request.Context(), uint(id))
+	audioPath, err := h.service.GetAudioPath(c.Request.Context(), uint(id))
 	if err != nil {
 		NotFound(c, "No audio file available")
 		return
@@ -359,13 +413,49 @@ func (h *MusicHandler) Cover(c *gin.Context) {
 		return
 	}
 
-	coverPath, err := h.musicService.GetCoverPath(c.Request.Context(), uint(id))
+	coverPath, err := h.service.GetCoverPath(c.Request.Context(), uint(id))
 	if err != nil {
 		NotFound(c, "No cover file available")
 		return
 	}
 
 	h.serveMediaFile(c, coverPath, "Cover file not found on disk")
+}
+
+func parseMusicSearchParams(c *gin.Context) (*domain.MusicSearchParams, error) {
+	page, pageSize := parsePagination(c, 10)
+	params := &domain.MusicSearchParams{
+		Query:    c.Query("q"),
+		Artist:   c.Query("artist"),
+		Page:     page,
+		PageSize: pageSize,
+	}
+
+	if rawYear := c.Query("year"); rawYear != "" {
+		year, err := strconv.Atoi(rawYear)
+		if err != nil || year < 1000 || year > 9999 {
+			return nil, fmt.Errorf("invalid year filter")
+		}
+		params.Year = &year
+	}
+
+	if rawType := c.Query("type"); rawType != "" {
+		musicType := domain.MusicType(rawType)
+		if musicType != domain.MusicTypeSingle && musicType != domain.MusicTypeAlbum {
+			return nil, fmt.Errorf("invalid music type filter")
+		}
+		params.Type = &musicType
+	}
+
+	if rawLiked := c.Query("liked"); rawLiked != "" {
+		liked, err := strconv.ParseBool(rawLiked)
+		if err != nil {
+			return nil, fmt.Errorf("invalid liked filter")
+		}
+		params.LikedOnly = liked
+	}
+
+	return params, nil
 }
 
 func (h *MusicHandler) serveMediaFile(c *gin.Context, mediaPath string, missingMessage string) {

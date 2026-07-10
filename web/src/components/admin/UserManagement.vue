@@ -1,58 +1,35 @@
 <script setup lang="ts">
 import { Search, Refresh } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import type { UserInfo } from "@/types/api";
+import { useApiError } from "@/composables/useApiError";
+import { usePaginatedFetch } from "@/composables/usePaginatedFetch";
 import { useUserStore } from "@/store/user";
 import request from "@/utils/request";
 
-interface UserListData {
-  items: UserInfo[];
-  total: number;
-  page: number;
-  size: number;
-}
-
 const { t } = useI18n();
 const userStore = useUserStore();
-const loading = ref(false);
-const users = ref<UserInfo[]>([]);
+const { handleError } = useApiError();
 const query = ref("");
-const currentPage = ref(1);
-const pageSize = ref(10);
-const total = ref(0);
 
-const fetchUsers = async () => {
-  loading.value = true;
-  try {
-    const res = await request.get<UserListData>("/users/admin/users", {
-      params: {
-        q: query.value,
-        page: currentPage.value,
-        page_size: pageSize.value,
-      },
-    });
-    users.value = res.data.items || [];
-    total.value = res.data.total;
-  } catch (_e) {
-    ElMessage.error(t("admin.load_users_failed"));
-  } finally {
-    loading.value = false;
-  }
-};
+const { items: users, loading, total, currentPage, pageSize, fetch: fetchUsers, resetAndFetch } =
+  usePaginatedFetch<UserInfo>("/users/admin/users", {
+    errorMessageKey: "admin.load_users_failed",
+    extraParams: computed(() => ({ q: query.value })),
+  });
 
 const handleSearch = () => {
-  currentPage.value = 1;
-  fetchUsers();
+  resetAndFetch();
 };
 
 const updateUserStatus = async (user: UserInfo) => {
   try {
     await request.put(`/users/admin/users/${user.id}/status`, { is_active: user.is_active });
     ElMessage.success(t("admin.user_updated"));
-  } catch (_e) {
-    ElMessage.error(t("admin.user_update_failed"));
+  } catch (e) {
+    handleError(e, t("admin.user_update_failed"));
     fetchUsers();
   }
 };
@@ -61,8 +38,8 @@ const updateUserRole = async (user: UserInfo) => {
   try {
     await request.put(`/users/admin/users/${user.id}/role`, { role: user.role });
     ElMessage.success(t("admin.user_updated"));
-  } catch (_e) {
-    ElMessage.error(t("admin.user_update_failed"));
+  } catch (e) {
+    handleError(e, t("admin.user_update_failed"));
     fetchUsers();
   }
 };

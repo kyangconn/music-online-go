@@ -1,58 +1,103 @@
 <script setup lang="ts">
-import { ArrowLeft, VideoPlay, StarFilled } from "@element-plus/icons-vue";
+import { ArrowLeft, RefreshLeft, StarFilled, VideoPause, VideoPlay } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
-import { ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
-import type { Music, PaginatedData } from "@/types/api";
+import type { Music, MusicFilterOptions, MusicType } from "@/types/api";
 import MusicCover from "@/components/music/MusicCover.vue";
+import RecentPlayback from "@/components/player/RecentPlayback.vue";
+import { usePaginatedFetch } from "@/composables/usePaginatedFetch";
+import { usePlayerStore } from "@/store/player";
+import { useUserStore } from "@/store/user";
 import request from "@/utils/request";
 
 const route = useRoute();
 const router = useRouter();
-const musicList = ref<Music[]>([]);
-const loading = ref(false);
+const { t } = useI18n();
+const playerStore = usePlayerStore();
+const userStore = useUserStore();
 const searchQuery = ref("");
-const total = ref(0);
-const currentPage = ref(1);
-const pageSize = ref(12);
+const artistFilter = ref("");
+const yearFilter = ref<number>();
+const typeFilter = ref<MusicType>();
+const likedFilter = ref(false);
+const filterOptions = ref<MusicFilterOptions>({ artists: [], years: [], types: [] });
 
-const fetchMusic = async () => {
-  loading.value = true;
-  try {
-    const params = {
-      q: searchQuery.value,
-      page: currentPage.value,
-      page_size: pageSize.value,
-    };
-    const res = await request.get<PaginatedData<Music>>("/musics", { params });
-    musicList.value = res.data.items || [];
-    total.value = res.data.total;
-  } catch (error) {
-    console.error(error);
-    ElMessage.error("Failed to load music list");
-  } finally {
-    loading.value = false;
-  }
-};
+const queryString = (value: unknown) => (typeof value === "string" ? value : "");
+const activeFilterCount = computed(
+  () => Number(Boolean(artistFilter.value)) + Number(Boolean(yearFilter.value)) + Number(Boolean(typeFilter.value)) + Number(likedFilter.value),
+);
+
+const requestParams = computed(() => ({
+  q: searchQuery.value || undefined,
+  artist: artistFilter.value || undefined,
+  year: yearFilter.value,
+  type: typeFilter.value,
+  liked: likedFilter.value || undefined,
+}));
+
+const { items: musicList, loading, total, currentPage, pageSize, resetAndFetch, goToPage } =
+  usePaginatedFetch<Music>("/musics", {
+    initialPageSize: 12,
+    errorMessageKey: "common.load_failed",
+    extraParams: requestParams,
+  });
 
 watch(
-  () => route.query.q,
-  (newQ) => {
-    searchQuery.value = (newQ as string) || "";
-    currentPage.value = 1;
-    fetchMusic();
+  () => route.query,
+  (query) => {
+    searchQuery.value = queryString(query.q);
+    artistFilter.value = queryString(query.artist);
+    const parsedYear = Number.parseInt(queryString(query.year), 10);
+    yearFilter.value = Number.isFinite(parsedYear) && parsedYear > 0 ? parsedYear : undefined;
+    const routeType = queryString(query.type);
+    typeFilter.value = routeType === "single" || routeType === "album" ? routeType : undefined;
+    likedFilter.value = userStore.isLoggedIn && queryString(query.liked) === "true";
+    resetAndFetch();
   },
   { immediate: true },
 );
 
-const handlePageChange = (page: number) => {
-  currentPage.value = page;
-  fetchMusic();
+const buildRouteQuery = () => ({
+  ...(searchQuery.value ? { q: searchQuery.value } : {}),
+  ...(artistFilter.value ? { artist: artistFilter.value } : {}),
+  ...(yearFilter.value ? { year: String(yearFilter.value) } : {}),
+  ...(typeFilter.value ? { type: typeFilter.value } : {}),
+  ...(likedFilter.value ? { liked: "true" } : {}),
+});
+
+const applyFilters = () => {
+  void router.push({ name: "Home", query: buildRouteQuery() });
+};
+
+const resetFilters = () => {
+  artistFilter.value = "";
+  yearFilter.value = undefined;
+  typeFilter.value = undefined;
+  likedFilter.value = false;
+  applyFilters();
 };
 
 const clearSearch = () => {
-  router.push({ path: "/" });
+  searchQuery.value = "";
+  applyFilters();
 };
+
+const handlePlayback = (music: Music) => {
+  void playerStore.toggleTrack(music, musicList.value);
+};
+
+const loadFilterOptions = async () => {
+  try {
+    const response = await request.get<MusicFilterOptions>("/musics/filters");
+    filterOptions.value = response.data;
+  } catch {
+    ElMessage.error(t("music.filter_options_failed"));
+  }
+};
+
+onMounted(() => void loadFilterOptions());
 </script>
 
 <template>
@@ -62,6 +107,8 @@ const clearSearch = () => {
       <p>{{ $t("nav.discover_desc") }}</p>
     </div>
 
+    <RecentPlayback />
+
     <div class="music-section">
       <div class="section-heading">
         <h2 v-if="searchQuery">{{ $t("common.search_results_for", { query: searchQuery }) }}</h2>
@@ -69,6 +116,46 @@ const clearSearch = () => {
         <el-button v-if="searchQuery" plain :icon="ArrowLeft" @click="clearSearch">
           {{ $t("common.back") }}
         </el-button>
+      </div>
+
+      <div class="filter-bar">
+        <el-select
+          v-model="artistFilter"
+          class="filter-control artist-filter"
+          :placeholder="$t('music.filter_artist')"
+          clearable
+          filterable
+          allow-create
+          default-first-option
+          @change="applyFilters"
+        >
+          <el-option v-for="artist in filterOptions.artists" :key="artist" :label="artist" :value="artist" />
+        </el-select>
+        <el-select
+          v-model="yearFilter"
+          class="filter-control"
+          :placeholder="$t('music.filter_year')"
+          clearable
+          @change="applyFilters"
+        >
+          <el-option v-for="year in filterOptions.years" :key="year" :label="String(year)" :value="year" />
+        </el-select>
+        <el-select
+          v-model="typeFilter"
+          class="filter-control"
+          :placeholder="$t('music.filter_type')"
+          clearable
+          @change="applyFilters"
+        >
+          <el-option :label="$t('common.single')" value="single" />
+          <el-option :label="$t('common.album')" value="album" />
+        </el-select>
+        <el-checkbox v-if="userStore.isLoggedIn" v-model="likedFilter" @change="applyFilters">
+          {{ $t("music.liked_only") }}
+        </el-checkbox>
+        <el-tooltip v-if="activeFilterCount" :content="$t('music.reset_filters')" placement="top">
+          <el-button circle plain :icon="RefreshLeft" :aria-label="$t('music.reset_filters')" @click="resetFilters" />
+        </el-tooltip>
       </div>
 
       <div v-if="loading" class="loading-container">
@@ -84,19 +171,42 @@ const clearSearch = () => {
           v-for="music in musicList"
           :key="music.id"
           class="music-card"
-          :body-style="{ padding: '0px' }"
           shadow="hover"
         >
           <div class="cover-image">
-            <MusicCover :src="music.img || music.cover_url" />
-            <div class="play-overlay">
-              <router-link :to="`/music/${music.id}`">
-                <el-button type="primary" circle :icon="VideoPlay" size="large" />
-              </router-link>
+            <router-link class="cover-link" :to="`/music/${music.id}`">
+              <MusicCover :src="music.img || music.cover_url" />
+            </router-link>
+            <div v-if="music.path" class="play-overlay">
+              <el-tooltip
+                :content="
+                  playerStore.currentTrack?.id === music.id && playerStore.isPlaying
+                    ? $t('player.pause')
+                    : $t('player.play')
+                "
+                placement="top"
+              >
+                <el-button
+                  type="primary"
+                  circle
+                  :icon="
+                    playerStore.currentTrack?.id === music.id && playerStore.isPlaying ? VideoPause : VideoPlay
+                  "
+                  :aria-label="
+                    playerStore.currentTrack?.id === music.id && playerStore.isPlaying
+                      ? $t('player.pause')
+                      : $t('player.play')
+                  "
+                  size="large"
+                  @click="handlePlayback(music)"
+                />
+              </el-tooltip>
             </div>
           </div>
           <div class="music-info">
-            <h3 class="music-title" :title="music.title">{{ music.title }}</h3>
+            <h3 class="music-title" :title="music.title">
+              <router-link :to="`/music/${music.id}`">{{ music.title }}</router-link>
+            </h3>
             <p class="music-artist">{{ music.artist }}</p>
             <div class="music-meta">
               <el-icon class="like-icon"><StarFilled /></el-icon>
@@ -113,7 +223,7 @@ const clearSearch = () => {
           :total="total"
           :page-size="pageSize"
           v-model:current-page="currentPage"
-          @current-change="handlePageChange"
+          @current-change="goToPage"
         />
       </div>
     </div>
@@ -140,10 +250,18 @@ const clearSearch = () => {
   }
 }
 
+.music-grid-tight {
+  container: music-grid / inline-size;
+}
+
 .music-card {
   transition: transform $transition-slow;
   border: none;
   background: var(--bg-white);
+
+  :deep(.el-card__body) {
+    padding: 0;
+  }
 
   &:hover {
     transform: translateY(-5px);
@@ -160,6 +278,24 @@ const clearSearch = () => {
   }
 }
 
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-lg;
+  padding-bottom: $spacing-md;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.filter-control {
+  width: 140px;
+}
+
+.artist-filter {
+  width: 200px;
+}
+
 .cover-image {
   @include aspect-ratio;
   :deep(.music-cover) {
@@ -167,11 +303,21 @@ const clearSearch = () => {
   }
 }
 
+.cover-link {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 .play-overlay {
   @include overlay-hover;
 }
 
 .music-card:hover .play-overlay {
+  opacity: 1;
+}
+
+.music-card:focus-within .play-overlay {
   opacity: 1;
 }
 
@@ -184,6 +330,11 @@ const clearSearch = () => {
   font-size: $fs-md;
   @include text-ellipsis;
   color: var(--text-dark);
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 }
 
 .music-artist {
@@ -204,14 +355,73 @@ const clearSearch = () => {
 }
 
 .pagination-container {
-@include flex-center;
+  @include flex-center;
   margin-top: 2rem;
+}
+
+@supports (grid-template-rows: subgrid) {
+  .music-card {
+    display: grid;
+    grid-row: span 4;
+    grid-template-rows: subgrid;
+    overflow: hidden;
+
+    :deep(.el-card__body) {
+      display: contents;
+    }
+  }
+
+  .music-info {
+    display: contents;
+  }
+
+  .music-title {
+    margin: $spacing-md $spacing-md 5px;
+  }
+
+  .music-artist {
+    margin: 0 $spacing-md;
+  }
+
+  .music-meta {
+    margin: 6px $spacing-md $spacing-md;
+  }
+}
+
+@container music-grid (max-width: 520px) {
+  .music-title {
+    margin-right: $spacing-sm;
+    margin-left: $spacing-sm;
+    font-size: $fs-sm;
+  }
+
+  .music-artist,
+  .music-meta {
+    margin-right: $spacing-sm;
+    margin-left: $spacing-sm;
+  }
+}
+
+@media (hover: none) {
+  .play-overlay {
+    align-items: flex-end;
+    justify-content: flex-end;
+    box-sizing: border-box;
+    padding: $spacing-sm;
+    background: transparent;
+    opacity: 1;
+  }
 }
 
 @include mobile {
   .section-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .filter-control,
+  .artist-filter {
+    width: 100%;
   }
 }
 </style>

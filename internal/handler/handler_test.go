@@ -4,7 +4,9 @@ package handler_test
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +19,14 @@ import (
 	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/kyangconn/music-online-go/internal/pkg/database"
 	"github.com/pquerna/otp/totp"
+)
+
+var (
+	validAudioBytes = append([]byte("ID3\x04\x00\x00\x00\x00\x00\x10"), []byte("fake audio bytes")...)
+	validCoverBytes = append([]byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+		0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+	}, []byte("fake cover bytes")...)
 )
 
 func TestHealthEndpoint(t *testing.T) {
@@ -168,6 +178,34 @@ func TestCreateMusicTagAuthRequired(t *testing.T) {
 	}
 }
 
+func TestUploadPolicy(t *testing.T) {
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/upload-policy", nil)
+	testRouter.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload policy: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Data struct {
+			MaxAudioSizeBytes int64    `json:"max_audio_size_bytes"`
+			MaxCoverSizeBytes int64    `json:"max_cover_size_bytes"`
+			AudioExtensions   []string `json:"audio_extensions"`
+			CoverExtensions   []string `json:"cover_extensions"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("upload policy response parse: %v", err)
+	}
+	if resp.Data.MaxAudioSizeBytes <= 0 || resp.Data.MaxCoverSizeBytes <= 0 {
+		t.Fatalf("upload policy should include positive size limits: %+v", resp.Data)
+	}
+	if len(resp.Data.AudioExtensions) == 0 || len(resp.Data.CoverExtensions) == 0 {
+		t.Fatalf("upload policy should include supported extensions: %+v", resp.Data)
+	}
+}
+
 func TestCreateMusicDefaultsToSingle(t *testing.T) {
 	token := registerAndLogin(t, "defaulttypeuser")
 
@@ -238,6 +276,10 @@ func TestUploadAndStreamMusic(t *testing.T) {
 	if !strings.HasSuffix(coverPath, "/"+strconv.Itoa(int(musicID))+"/cover.png") {
 		t.Fatalf("stored cover path = %q, want uploads/<id>/cover.png", stored.Img)
 	}
+	expectedHash := fmt.Sprintf("%x", sha256.Sum256(validAudioBytes))
+	if stored.FileHash != expectedHash {
+		t.Fatalf("stored file hash = %q, want %q", stored.FileHash, expectedHash)
+	}
 
 	w = httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", expectedStreamPath, nil)
@@ -245,7 +287,7 @@ func TestUploadAndStreamMusic(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("stream: expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	if w.Body.String() != "fake audio bytes" {
+	if !bytes.Equal(w.Body.Bytes(), validAudioBytes) {
 		t.Fatalf("stream body = %q", w.Body.String())
 	}
 
@@ -279,6 +321,11 @@ func TestMusicUpdateDeleteRequiresOwner(t *testing.T) {
 		t.Fatalf("other user delete: expected 403, got %d: %s", w.Code, w.Body.String())
 	}
 
+	w = uploadMusicFiles(t, otherToken, musicID)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("other user upload: expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+
 	w = httptest.NewRecorder()
 	req, _ = http.NewRequest("PUT", "/api/v1/musics/"+strconv.Itoa(int(musicID)), strings.NewReader(`{"title":"Updated"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -294,6 +341,140 @@ func TestMusicUpdateDeleteRequiresOwner(t *testing.T) {
 	testRouter.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("owner delete: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUploadRejectsInvalidMediaFiles(t *testing.T) {
+	token := registerAndLogin(t, "invalidmediauser")
+	musicID := createMusic(t, token, "Invalid Media Song")
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	audioPart, err := writer.CreateFormFile("file", "not-a-song.mp3")
+	if err != nil {
+		t.Fatalf("create invalid audio multipart: %v", err)
+	}
+	if _, err := audioPart.Write([]byte("this is not audio")); err != nil {
+		t.Fatalf("write invalid audio multipart: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/musics/"+strconv.Itoa(int(musicID))+"/upload", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+token)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid audio upload: expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestMusicSearchFiltersAndOptions(t *testing.T) {
+	token := registerAndLogin(t, "filteruser")
+
+	createMusicFromJSON(t, token, `{"title":"Filter Single","artist":"Filter Artist","year":2020,"type":"single"}`)
+	likedID := createMusicFromJSON(t, token, `{"title":"Filter Album","artist":"Filter Artist","year":2021,"type":"album"}`)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/musics/"+strconv.Itoa(int(likedID))+"/like", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("like filtered music: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("GET", "/api/v1/musics?artist=Filter%20Artist&year=2021&type=album&liked=true&page_size=20", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("filtered music search: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var searchResp struct {
+		Data struct {
+			Items []domain.MusicResponse `json:"items"`
+			Total int64                  `json:"total"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &searchResp); err != nil {
+		t.Fatalf("filtered music response parse: %v", err)
+	}
+	if searchResp.Data.Total != 1 || len(searchResp.Data.Items) != 1 || searchResp.Data.Items[0].ID != likedID {
+		t.Fatalf("unexpected filtered music response: %+v", searchResp.Data)
+	}
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("GET", "/api/v1/musics/filters", nil)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("music filter options: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var optionsResp struct {
+		Data domain.MusicFilterOptions `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &optionsResp); err != nil {
+		t.Fatalf("music filter options parse: %v", err)
+	}
+	if !containsString(optionsResp.Data.Artists, "Filter Artist") || !containsInt(optionsResp.Data.Years, 2021) {
+		t.Fatalf("filter options missing created values: %+v", optionsResp.Data)
+	}
+}
+
+func TestDuplicateCheckSuggestsAndEnrichesMetadata(t *testing.T) {
+	token := registerAndLogin(t, "duplicateuser")
+	fullID := createMusicFromJSON(t, token, `{"title":"Rich Duplicate","artist":"Duplicate Artist","album":"Rich Album","year":2022,"track_number":3,"genre":"Rock","duration":245}`)
+	fullAudio := append(append([]byte{}, validAudioBytes...), []byte("rich-duplicate")...)
+	w := uploadMusicAudio(t, token, fullID, fullAudio)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload rich duplicate source: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	fullHash := fmt.Sprintf("%x", sha256.Sum256(fullAudio))
+
+	w = duplicateCheck(t, token, fmt.Sprintf(`{"file_hash":%q,"title":"Rich Duplicate","artist":"Duplicate Artist"}`, fullHash))
+	if w.Code != http.StatusOK {
+		t.Fatalf("exact duplicate check: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var exactResp struct {
+		Data domain.MusicDuplicateCheckResponse `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &exactResp); err != nil {
+		t.Fatalf("exact duplicate response parse: %v", err)
+	}
+	if exactResp.Data.ExactMatch == nil || exactResp.Data.ExactMatch.ID != fullID {
+		t.Fatalf("exact duplicate match = %+v, want music %d", exactResp.Data.ExactMatch, fullID)
+	}
+	if exactResp.Data.SuggestedMetadata.Album != "Rich Album" || exactResp.Data.SuggestedMetadata.Year != 2022 {
+		t.Fatalf("suggested metadata should use richer existing record: %+v", exactResp.Data.SuggestedMetadata)
+	}
+
+	incompleteID := createMusicFromJSON(t, token, `{"title":"Incomplete Duplicate","artist":"Duplicate Artist"}`)
+	incompleteAudio := append(append([]byte{}, validAudioBytes...), []byte("incomplete-duplicate")...)
+	w = uploadMusicAudio(t, token, incompleteID, incompleteAudio)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload incomplete duplicate source: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	incompleteHash := fmt.Sprintf("%x", sha256.Sum256(incompleteAudio))
+	w = duplicateCheck(t, token, fmt.Sprintf(`{"file_hash":%q,"title":"Incomplete Duplicate","artist":"Duplicate Artist","album":"Recovered Album","year":2023,"genre":"Jazz"}`, incompleteHash))
+	if w.Code != http.StatusOK {
+		t.Fatalf("enrichment duplicate check: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var enrichmentResp struct {
+		Data struct {
+			ExactMatch *domain.MusicResponse      `json:"exact_match"`
+			Enrichment *domain.UpdateMusicRequest `json:"enrichment"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &enrichmentResp); err != nil {
+		t.Fatalf("enrichment duplicate response parse: %v", err)
+	}
+	if enrichmentResp.Data.ExactMatch == nil || enrichmentResp.Data.ExactMatch.ID != incompleteID || enrichmentResp.Data.Enrichment == nil {
+		t.Fatalf("expected exact match with enrichment: %+v", enrichmentResp.Data)
+	}
+	if enrichmentResp.Data.Enrichment.Album == nil || *enrichmentResp.Data.Enrichment.Album != "Recovered Album" {
+		t.Fatalf("album enrichment missing: %+v", enrichmentResp.Data.Enrichment)
 	}
 }
 
@@ -359,6 +540,77 @@ func createMusic(t *testing.T, token string, title string) uint {
 	return resp.Data.ID
 }
 
+func createMusicFromJSON(t *testing.T, token string, body string) uint {
+	t.Helper()
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/musics", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create music from JSON: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Data struct {
+			ID uint `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("create music response parse: %v", err)
+	}
+	return resp.Data.ID
+}
+
+func duplicateCheck(t *testing.T, token string, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/musics/duplicate-check", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	testRouter.ServeHTTP(w, req)
+	return w
+}
+
+func uploadMusicAudio(t *testing.T, token string, musicID uint, audio []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "song.mp3")
+	if err != nil {
+		t.Fatalf("create audio multipart: %v", err)
+	}
+	if _, err := part.Write(audio); err != nil {
+		t.Fatalf("write audio multipart: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close audio multipart: %v", err)
+	}
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/musics/"+strconv.Itoa(int(musicID))+"/upload", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+token)
+	testRouter.ServeHTTP(w, req)
+	return w
+}
+
+func containsString(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func containsInt(values []int, expected int) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
 func uploadMusicFiles(t *testing.T, token string, musicID uint) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -369,7 +621,7 @@ func uploadMusicFiles(t *testing.T, token string, musicID uint) *httptest.Respon
 	if err != nil {
 		t.Fatalf("create audio multipart: %v", err)
 	}
-	if _, err := audioPart.Write([]byte("fake audio bytes")); err != nil {
+	if _, err := audioPart.Write(validAudioBytes); err != nil {
 		t.Fatalf("write audio multipart: %v", err)
 	}
 
@@ -377,7 +629,7 @@ func uploadMusicFiles(t *testing.T, token string, musicID uint) *httptest.Respon
 	if err != nil {
 		t.Fatalf("create cover multipart: %v", err)
 	}
-	if _, err := coverPart.Write([]byte("fake cover bytes")); err != nil {
+	if _, err := coverPart.Write(validCoverBytes); err != nil {
 		t.Fatalf("write cover multipart: %v", err)
 	}
 

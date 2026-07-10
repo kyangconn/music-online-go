@@ -15,5 +15,9 @@ declare module "*.vue" {
 declare global {
   interface Window {
     Buffer: typeof Buffer;
+    showDirectoryPicker?: (options?: {
+      id?: string;
+      mode?: "read" | "readwrite";
+    }) => Promise<FileSystemDirectoryHandle>;
   }
 }

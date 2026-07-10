@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import type { SystemInfoData } from "@/types/api";
+import InfoErrorState from "@/components/common/InfoErrorState.vue";
 
 defineProps<{
   loading: boolean;
-  info: SystemInfoData;
+  info: SystemInfoData | null;
+  error: boolean;
+}>();
+
+defineEmits<{
+  retry: [];
 }>();
 </script>
 
@@ -11,7 +17,8 @@ defineProps<{
   <div v-if="loading" class="loading-wrap">
     <el-skeleton :rows="4" animated />
   </div>
-  <div v-else-if="info" class="card-grid">
+  <InfoErrorState v-else-if="error || !info" @retry="$emit('retry')" />
+  <div v-else class="card-grid">
     <el-card class="card card-hover" shadow="hover">
       <template #header
         ><div class="card-header">

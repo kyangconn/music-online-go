@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/kyangconn/music-online-go/internal/config"
+	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/kyangconn/music-online-go/internal/pkg/database"
 	"github.com/kyangconn/music-online-go/internal/repository"
 	"github.com/kyangconn/music-online-go/internal/service"
@@ -152,7 +153,7 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 		info.TotalUsers = total
 	}
 
-	if _, total, err := h.musicService.Search(ctx, "", 1, 1, nil); err == nil {
+	if _, total, err := h.musicService.Search(ctx, &domain.MusicSearchParams{Page: 1, PageSize: 1}, nil); err == nil {
 		info.TotalMusic = total
 	}
 

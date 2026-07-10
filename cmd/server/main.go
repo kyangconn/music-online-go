@@ -45,6 +45,9 @@ func main() {
 	if err := database.AutoMigrate(); err != nil {
 		pklog.Fatalf("Failed to migrate database: %v", err)
 	}
+	if err := bootstrapAdmin(context.Background()); err != nil {
+		pklog.Fatalf("Failed to bootstrap admin user: %v", err)
+	}
 	defer func() {
 		if err := database.Close(); err != nil {
 			pklog.Errorf("Failed to close database: %v", err)
@@ -91,6 +94,32 @@ func initDependencies() *router.Handlers {
 		MusicTag: handler.NewMusicTagHandler(musicTagService),
 		Admin:    handler.NewAdminHandler(userService, musicService, musicTagService),
 	}
+}
+
+func bootstrapAdmin(ctx context.Context) error {
+	cfg := config.AppConfig.AdminBootstrap
+	if !cfg.Enabled {
+		return nil
+	}
+
+	userRepo := repository.NewUserRepository(database.DB)
+	userService := service.NewUserService(userRepo)
+	user, created, err := userService.BootstrapAdmin(ctx, service.BootstrapAdminRequest{
+		Username:      cfg.Username,
+		Email:         cfg.Email,
+		Password:      cfg.Password,
+		FullName:      cfg.FullName,
+		ResetPassword: cfg.ResetPassword,
+	})
+	if err != nil {
+		return err
+	}
+	if created {
+		pklog.Infof("Bootstrap admin user created: %s", user.Username)
+	} else {
+		pklog.Infof("Bootstrap admin user ensured: %s", user.Username)
+	}
+	return nil
 }
 
 func configureStaticAssets(r *gin.Engine) {

@@ -4,10 +4,12 @@ import { ElMessage } from "element-plus";
 import { ref, reactive } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import { useApiError } from "@/composables/useApiError";
 import request from "@/utils/request";
 
 const router = useRouter();
 const { t } = useI18n();
+const { getErrorMessage } = useApiError();
 const formRef = ref<FormInstance>();
 const loading = ref(false);
 
@@ -21,29 +23,29 @@ const registerForm = reactive({
 
 const validatePass2 = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
   if (value === "") {
-    callback(new Error("Please input the password again"));
+    callback(new Error(t("auth.confirm_password_required")));
   } else if (value !== registerForm.password) {
-    callback(new Error("Two inputs don't match!"));
+    callback(new Error(t("auth.passwords_not_match")));
   } else {
     callback();
   }
 };
 
 const rules = reactive<FormRules>({
-  username: [{ required: true, message: "Please input username", trigger: "blur" }],
+  username: [{ required: true, message: t("auth.username_required"), trigger: "blur" }],
   email: [
-    { required: true, message: "Please input email", trigger: "blur" },
-    { type: "email", message: "Please input correct email address", trigger: "blur" },
+    { required: true, message: t("auth.email_required"), trigger: "blur" },
+    { type: "email", message: t("auth.email_invalid"), trigger: "blur" },
   ],
   password: [
-    { required: true, message: "Please input password", trigger: "blur" },
+    { required: true, message: t("auth.password_required"), trigger: "blur" },
     { min: 8, message: t("auth.password_min_length"), trigger: "blur" },
   ],
   confirmPassword: [
-    { required: true, message: "Please confirm your password", trigger: "blur" },
+    { required: true, message: t("auth.confirm_password_required"), trigger: "blur" },
     { validator: validatePass2, trigger: "blur" },
   ],
-  full_name: [{ required: true, message: "Please input full name", trigger: "blur" }],
+  full_name: [{ required: true, message: t("auth.full_name_required"), trigger: "blur" }],
 });
 
 const handleRegister = async (formEl: FormInstance | undefined) => {
@@ -54,9 +56,10 @@ const handleRegister = async (formEl: FormInstance | undefined) => {
       try {
         const { confirmPassword: _confirmPw, ...data } = registerForm;
         await request.post("/users/register", data);
-        ElMessage.success("Registration successful! Please login.");
+        ElMessage.success(t("auth.register_success"));
         router.push("/login");
-      } catch (_e) {
+      } catch (error) {
+        ElMessage.error(getErrorMessage(error, t("auth.register_failed")));
       } finally {
         loading.value = false;
       }

@@ -92,10 +92,12 @@ func TestMain(m *testing.M) {
 	musicPublic.Use(middleware.OptionalAuthMiddleware())
 	{
 		musicPublic.GET("", musicHandler.Search)
+		musicPublic.GET("/filters", musicHandler.FilterOptions)
 		musicPublic.GET("/:id", musicHandler.GetByID)
 		musicPublic.GET("/:id/stream", musicHandler.Stream)
 		musicPublic.GET("/:id/cover", musicHandler.Cover)
 	}
+	api.GET("/upload-policy", musicHandler.UploadPolicy)
 	api.GET("/users/:id/musics", middleware.OptionalAuthMiddleware(), musicHandler.ListUserMusic)
 	api.GET("/users/:id/likes", middleware.OptionalAuthMiddleware(), musicHandler.ListUserLikedMusic)
 
@@ -103,6 +105,7 @@ func TestMain(m *testing.M) {
 	musicProtected.Use(middleware.AuthMiddleware())
 	{
 		musicProtected.POST("", musicHandler.Create)
+		musicProtected.POST("/duplicate-check", musicHandler.CheckDuplicates)
 		musicProtected.POST("/:id/upload", musicHandler.UploadFile)
 		musicProtected.PUT("/:id", musicHandler.Update)
 		musicProtected.DELETE("/:id", musicHandler.Delete)

@@ -35,5 +35,19 @@
   "likes": "Likes",
   "no_audio_available": "No audio file available",
   "uploaded_musics": "Uploaded Musics",
-  "no_uploaded_musics": "No uploaded musics"
+  "no_uploaded_musics": "No uploaded musics",
+  "operation_failed": "Operation failed",
+  "load_failed": "Failed to load data",
+  "retry": "Retry",
+  "load_failed_desc": "Unable to load this section. Please try again.",
+  "please_login_first": "Please login first",
+  "session_expired": "Session expired, please login again",
+  "please_login_to_continue": "Please login to continue",
+  "login_successful": "Login successful",
+  "liked": "Liked",
+  "unliked": "Unliked",
+  "app_name": "Music Online",
+  "install_app": "Install Music Online",
+  "page_load_failed": "Page resources failed to load. Please retry.",
+  "copyright": "© {year} Music Online"
 }

@@ -13,6 +13,7 @@ type MusicType string
 
 const (
 	MusicTypeSingle MusicType = "single"
+	MusicTypeAlbum  MusicType = "album"
 )
 
 type Music struct {
@@ -23,9 +24,15 @@ type Music struct {
 
 	Title       string    `json:"title" gorm:"size:255;not null;index"`
 	Artist      string    `json:"artist" gorm:"size:255;not null;index"`
+	Album       string    `json:"album" gorm:"size:255;index"`
+	Year        int       `json:"year" gorm:"index"`
+	TrackNumber int       `json:"track_number"`
+	Genre       string    `json:"genre" gorm:"size:100;index"`
+	Duration    int       `json:"duration"`
 	Intro       string    `json:"intro" gorm:"type:text"`
 	Img         string    `json:"img" gorm:"size:500"`
 	Path        string    `json:"path" gorm:"size:500"`
+	FileHash    string    `json:"file_hash" gorm:"size:64;index"`
 	Type        MusicType `json:"type" gorm:"size:20;default:'single'"`
 	IssuingDate time.Time `json:"issuing_date"`
 
@@ -61,6 +68,11 @@ func (*UserMusicLike) TableName() string {
 type CreateMusicRequest struct {
 	Title       string    `json:"title" binding:"required"`
 	Artist      string    `json:"artist" binding:"required"`
+	Album       string    `json:"album"`
+	Year        int       `json:"year" binding:"omitempty,min=1000,max=9999"`
+	TrackNumber int       `json:"track_number" binding:"omitempty,min=0"`
+	Genre       string    `json:"genre"`
+	Duration    int       `json:"duration" binding:"omitempty,min=0"`
 	Intro       string    `json:"intro"`
 	Img         string    `json:"img"`
 	Path        string    `json:"path"`
@@ -72,6 +84,11 @@ type CreateMusicRequest struct {
 type UpdateMusicRequest struct {
 	Title       *string    `json:"title"`
 	Artist      *string    `json:"artist"`
+	Album       *string    `json:"album"`
+	Year        *int       `json:"year" binding:"omitempty,min=1000,max=9999"`
+	TrackNumber *int       `json:"track_number" binding:"omitempty,min=0"`
+	Genre       *string    `json:"genre"`
+	Duration    *int       `json:"duration" binding:"omitempty,min=0"`
 	Intro       *string    `json:"intro"`
 	Img         *string    `json:"img"`
 	Path        *string    `json:"path"`
@@ -86,6 +103,11 @@ type MusicResponse struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 	Title       string    `json:"title"`
 	Artist      string    `json:"artist"`
+	Album       string    `json:"album"`
+	Year        int       `json:"year"`
+	TrackNumber int       `json:"track_number"`
+	Genre       string    `json:"genre"`
+	Duration    int       `json:"duration"`
 	Intro       string    `json:"intro"`
 	Img         string    `json:"img"`
 	Path        string    `json:"path"`
@@ -107,6 +129,11 @@ func (m *Music) ToResponse() *MusicResponse {
 		UpdatedAt:   m.UpdatedAt,
 		Title:       m.Title,
 		Artist:      m.Artist,
+		Album:       m.Album,
+		Year:        m.Year,
+		TrackNumber: m.TrackNumber,
+		Genre:       m.Genre,
+		Duration:    m.Duration,
 		Intro:       m.Intro,
 		Img:         m.Img,
 		Path:        m.Path,
@@ -126,4 +153,61 @@ func (m *Music) ToResponse() *MusicResponse {
 	}
 
 	return resp
+}
+
+type MusicSearchParams struct {
+	Query         string
+	Artist        string
+	Year          *int
+	Type          *MusicType
+	LikedOnly     bool
+	LikedByUserID *uint
+	Page          int
+	PageSize      int
+}
+
+type MusicFilterOptions struct {
+	Artists []string    `json:"artists"`
+	Years   []int       `json:"years"`
+	Types   []MusicType `json:"types"`
+}
+
+type MusicMetadata struct {
+	Title       string `json:"title"`
+	Artist      string `json:"artist"`
+	Album       string `json:"album"`
+	Year        int    `json:"year"`
+	TrackNumber int    `json:"track_number"`
+	Genre       string `json:"genre"`
+	Duration    int    `json:"duration"`
+}
+
+type MusicDuplicateCheckRequest struct {
+	FileHash    string `json:"file_hash" binding:"omitempty,len=64,hexadecimal"`
+	Title       string `json:"title" binding:"required"`
+	Artist      string `json:"artist" binding:"required"`
+	Album       string `json:"album"`
+	Year        int    `json:"year" binding:"omitempty,min=1000,max=9999"`
+	TrackNumber int    `json:"track_number" binding:"omitempty,min=0"`
+	Genre       string `json:"genre"`
+	Duration    int    `json:"duration" binding:"omitempty,min=0"`
+}
+
+func (r *MusicDuplicateCheckRequest) Metadata() MusicMetadata {
+	return MusicMetadata{
+		Title:       r.Title,
+		Artist:      r.Artist,
+		Album:       r.Album,
+		Year:        r.Year,
+		TrackNumber: r.TrackNumber,
+		Genre:       r.Genre,
+		Duration:    r.Duration,
+	}
+}
+
+type MusicDuplicateCheckResponse struct {
+	ExactMatch        *MusicResponse      `json:"exact_match,omitempty"`
+	MetadataMatches   []*MusicResponse    `json:"metadata_matches"`
+	SuggestedMetadata MusicMetadata       `json:"suggested_metadata"`
+	Enrichment        *UpdateMusicRequest `json:"enrichment,omitempty"`
 }

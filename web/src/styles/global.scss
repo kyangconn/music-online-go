@@ -37,6 +37,28 @@ body {
   color: var(--text-primary);
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root) {
+    animation: page-fade-out 140ms ease-in both;
+  }
+
+  ::view-transition-new(root) {
+    animation: page-fade-in 180ms ease-out both;
+  }
+}
+
+@keyframes page-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
 .el-header {
   background-color: var(--primary-color) !important;
   color: white;

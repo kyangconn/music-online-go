@@ -1,36 +1,32 @@
 <script setup lang="ts">
-import { Plus } from "@element-plus/icons-vue";
-import { ElMessage } from "element-plus";
-import { ref, onMounted } from "vue";
+import { Edit, Plus, VideoPause, VideoPlay } from "@element-plus/icons-vue";
+import { onMounted } from "vue";
 import { useRouter } from "vue-router";
-import type { Music, PaginatedData } from "@/types/api";
+import type { Music } from "@/types/api";
 import MusicCover from "@/components/music/MusicCover.vue";
+import { usePaginatedFetch } from "@/composables/usePaginatedFetch";
+import { usePlayerStore } from "@/store/player";
 import { useUserStore } from "@/store/user";
-import request from "@/utils/request";
 
 const router = useRouter();
 const userStore = useUserStore();
-const loading = ref(true);
-const musicList = ref<Music[]>([]);
-
-const fetchUserMusics = async () => {
-  loading.value = true;
-  try {
-    const userId = userStore.user?.id;
-    const res = await request.get<PaginatedData<Music>>(`/users/${userId}/musics`);
-    musicList.value = res.data.items || [];
-  } catch (_e) {
-    ElMessage.error("Failed to load user musics");
-  } finally {
-    loading.value = false;
-  }
-};
+const playerStore = usePlayerStore();
+const { items: musicList, loading, fetch } = usePaginatedFetch<Music>("", {
+  errorMessageKey: "common.load_failed",
+});
 
 const goUpload = () => {
   router.push("/music/add");
 };
 
-onMounted(fetchUserMusics);
+const handlePlayback = (music: Music) => {
+  void playerStore.toggleTrack(music, musicList.value);
+};
+
+onMounted(() => {
+  const userId = userStore.user?.id;
+  if (userId) fetch(`/users/${userId}/musics`);
+});
 </script>
 
 <template>
@@ -59,9 +55,35 @@ onMounted(fetchUserMusics);
             <h4 class="title">{{ m.title }}</h4>
             <p class="artist">{{ m.artist }}</p>
             <p class="likes">{{ $t("common.likes") }}: {{ m.like_count ?? 0 }}</p>
-            <router-link :to="`/music/${m.id}`">
-              <el-button size="small" type="primary">{{ $t("common.view") }}</el-button>
-            </router-link>
+            <div class="card-actions">
+              <el-tooltip
+                v-if="m.path"
+                :content="
+                  playerStore.currentTrack?.id === m.id && playerStore.isPlaying
+                    ? $t('player.pause')
+                    : $t('player.play')
+                "
+                placement="top"
+              >
+                <el-button
+                  circle
+                  size="small"
+                  :icon="playerStore.currentTrack?.id === m.id && playerStore.isPlaying ? VideoPause : VideoPlay"
+                  :aria-label="
+                    playerStore.currentTrack?.id === m.id && playerStore.isPlaying
+                      ? $t('player.pause')
+                      : $t('player.play')
+                  "
+                  @click="handlePlayback(m)"
+                />
+              </el-tooltip>
+              <router-link :to="`/music/${m.id}`">
+                <el-button size="small" type="primary">{{ $t("common.view") }}</el-button>
+              </router-link>
+              <el-button size="small" :icon="Edit" @click="router.push(`/music/${m.id}/edit`)">
+                {{ $t("common.edit") }}
+              </el-button>
+            </div>
           </div>
         </el-card>
       </div>
@@ -93,8 +115,16 @@ onMounted(fetchUserMusics);
   gap: $spacing-lg;
 }
 .music-card {
-  display: flex;
-  gap: $spacing-md;
+  container: profile-music-card / inline-size;
+
+  :deep(.el-card__body) {
+    display: grid;
+    grid-template-columns: 80px minmax(0, 1fr);
+    align-items: start;
+    gap: $spacing-md;
+    width: 100%;
+    box-sizing: border-box;
+  }
 }
 .cover {
   width: 80px;
@@ -103,8 +133,13 @@ onMounted(fetchUserMusics);
   overflow: hidden;
 }
 .meta {
+  min-width: 0;
+
   .title {
     margin: 0 0 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .artist {
     margin: 0 0 10px;
@@ -115,6 +150,28 @@ onMounted(fetchUserMusics);
     color: var(--text-light);
     font-size: $fs-sm;
   }
+}
+
+@container profile-music-card (max-width: 280px) {
+  .music-card :deep(.el-card__body) {
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: $spacing-sm;
+    padding: $spacing-sm;
+  }
+
+  .cover {
+    width: 64px;
+    height: 64px;
+  }
+
+  .card-actions {
+    gap: $spacing-xs;
+  }
+}
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-xs;
 }
 .empty {
   margin-top: $spacing-md;

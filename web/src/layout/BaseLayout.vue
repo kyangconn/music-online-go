@@ -1,40 +1,56 @@
 <script setup lang="ts">
-import { Search, Moon, Sunny, Headset } from "@element-plus/icons-vue";
-import { ref, computed } from "vue";
-import { useRouter, useRoute } from "vue-router";
+import { Download, Headset, Moon, Search, Sunny } from "@element-plus/icons-vue";
+import type { InputInstance } from "element-plus";
+import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
+import { useRoute, useRouter } from "vue-router";
+import GlobalPlayer from "@/components/player/GlobalPlayer.vue";
+import { useKeyboardShortcuts } from "@/composables/useKeyboardShortcuts";
+import { usePwaInstall } from "@/composables/usePwaInstall";
+import { usePlayerStore } from "@/store/player";
 import { useThemeStore } from "@/store/theme";
 import { useUserStore } from "@/store/user";
 
 const router = useRouter();
 const route = useRoute();
+const { t } = useI18n();
 const userStore = useUserStore();
 const themeStore = useThemeStore();
+const playerStore = usePlayerStore();
+const { canInstall, install } = usePwaInstall();
 
 const searchQuery = ref("");
+const searchInputRef = ref<InputInstance>();
 const handleSearch = () => {
   if (searchQuery.value) {
     router.push({ name: "Home", query: { q: searchQuery.value } });
   }
 };
 const hideSearch = computed(() => route.name === "Login" || route.name === "Register");
+const copyright = computed(() => t("common.copyright", { year: new Date().getFullYear() }));
 
 const handleLogout = () => {
   userStore.logout();
   router.push("/");
 };
+
+useKeyboardShortcuts({
+  focusSearch: () => searchInputRef.value?.focus(),
+});
 </script>
 
 <template>
-  <el-container>
+  <el-container class="app-shell" :class="{ 'has-player': playerStore.hasTrack }">
     <el-header>
       <div class="header-content container">
-        <div class="logo" @click="router.push('/')">
+        <button class="logo" type="button" :aria-label="$t('common.app_name')" @click="router.push('/')">
           <el-icon :size="22"><Headset /></el-icon>
-          Music Online
-        </div>
+          <span class="logo-label">{{ $t("common.app_name") }}</span>
+        </button>
 
         <div class="search-bar" v-if="!hideSearch">
           <el-input
+            ref="searchInputRef"
             v-model="searchQuery"
             :placeholder="$t('common.search')"
             class="header-search"
@@ -44,6 +60,9 @@ const handleLogout = () => {
         </div>
 
         <div class="user-actions">
+          <el-tooltip v-if="canInstall" :content="$t('common.install_app')" placement="bottom">
+            <el-button circle :icon="Download" :aria-label="$t('common.install_app')" @click="install" />
+          </el-tooltip>
           <el-button circle @click="themeStore.toggleDarkMode" :icon="themeStore.isDark ? Sunny : Moon" />
           <template v-if="userStore.isLoggedIn">
             <el-dropdown>
@@ -79,7 +98,7 @@ const handleLogout = () => {
 
     <el-footer>
       <div class="footer-content container">
-        <span class="footer-left"> © 2026 Music Online </span>
+        <span class="footer-left"> {{ copyright }} </span>
         <span class="footer-right">
           <a href="#" target="_blank" rel="noopener">{{ $t("base.license") }}</a>
           <span class="dot">·</span>
@@ -89,22 +108,44 @@ const handleLogout = () => {
         </span>
       </div>
     </el-footer>
+
+    <GlobalPlayer />
   </el-container>
 </template>
 
 <style scoped lang="scss">
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-shell.has-player {
+  padding-bottom: 96px;
+}
+
 .header-content {
   @include flex-between;
   height: 100%;
 }
 
 .logo {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-xs;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
   font-size: $fs-2xl;
+  font-family: inherit;
   font-weight: $fw-bold;
+  line-height: 1;
   cursor: pointer;
   color: #fff;
-  @include text-ellipsis;
   max-width: 250px;
+}
+
+.logo-label {
+  @include text-ellipsis;
 }
 
 .search-bar {
@@ -139,8 +180,10 @@ const handleLogout = () => {
 
 @include mobile-xs {
   .logo {
-    max-width: 100px;
-    font-size: $fs-md;
+    max-width: none;
+  }
+  .logo-label {
+    display: none;
   }
   .search-bar {
     display: none;

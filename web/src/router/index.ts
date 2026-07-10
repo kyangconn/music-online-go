@@ -3,7 +3,10 @@
  * 定义所有页面路由、权限控制和路由守卫
  */
 
+import { ElMessage } from "element-plus";
+import { nextTick } from "vue";
 import { createRouter, createWebHistory } from "vue-router";
+import i18n from "@/i18n";
 import BaseLayout from "@/layout/BaseLayout.vue";
 import { useUserStore } from "@/store/user";
 import Home from "@/views/Home.vue";
@@ -25,40 +28,46 @@ const routes = [
       {
         path: "/login",
         name: "Login",
-        component: () => import("@/views/auth/Login.vue").catch(() => Home),
+        component: () => import("@/views/auth/Login.vue"),
       },
       {
         path: "/register",
         name: "Register",
-        component: () => import("@/views/auth/Register.vue").catch(() => Home),
+        component: () => import("@/views/auth/Register.vue"),
       },
       {
         path: "/profile",
         name: "Profile",
-        component: () => import("@/views/user/Profile.vue").catch(() => Home),
+        component: () => import("@/views/user/Profile.vue"),
         meta: { requiresAuth: true },
       },
       {
         path: "/settings",
         name: "Settings",
-        component: () => import("@/views/user/Settings.vue").catch(() => Home),
+        component: () => import("@/views/user/Settings.vue"),
         meta: { requiresAuth: true },
       },
       {
         path: "/music/:id",
         name: "MusicDetail",
-        component: () => import("@/views/music/Detail.vue").catch(() => Home),
+        component: () => import("@/views/music/Detail.vue"),
+      },
+      {
+        path: "/music/:id/edit",
+        name: "MusicEdit",
+        component: () => import("@/views/music/Edit.vue"),
+        meta: { requiresAuth: true },
       },
       {
         path: "/music/add",
         name: "MusicAdd",
-        component: () => import("@/views/music/Add.vue").catch(() => Home),
+        component: () => import("@/views/music/Add.vue"),
         meta: { requiresAuth: true },
       },
       {
         path: "/admin",
         name: "Admin",
-        component: () => import("@/views/admin/Dashboard.vue").catch(() => Home),
+        component: () => import("@/views/admin/Dashboard.vue"),
         meta: { requiresAdmin: true },
       },
     ],
@@ -72,16 +81,64 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
+  scrollBehavior(_to, _from, savedPosition) {
+    return savedPosition ?? { top: 0 };
+  },
+});
+
+let finishViewTransition: (() => void) | null = null;
+let activeViewTransition: ViewTransition | null = null;
+
+router.beforeResolve((to, from) => {
+  const startViewTransition = document.startViewTransition?.bind(document);
+  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (
+    !startViewTransition ||
+    prefersReducedMotion ||
+    from.matched.length === 0 ||
+    to.fullPath === from.fullPath ||
+    activeViewTransition
+  ) {
+    return true;
+  }
+
+  return new Promise<boolean>((resolveNavigation) => {
+    const transition = startViewTransition(
+      () =>
+        new Promise<void>((resolveTransition) => {
+          finishViewTransition = resolveTransition;
+          resolveNavigation(true);
+        }),
+    );
+    activeViewTransition = transition;
+    const clearTransition = () => {
+      if (activeViewTransition === transition) activeViewTransition = null;
+    };
+    void transition.finished.then(clearTransition, clearTransition);
+  });
+});
+
+router.afterEach(async () => {
+  const finish = finishViewTransition;
+  if (!finish) return;
+  await nextTick();
+  if (finishViewTransition === finish) finishViewTransition = null;
+  finish();
+});
+
+router.onError((error) => {
+  finishViewTransition?.();
+  finishViewTransition = null;
+  console.error("Route navigation failed", error);
+  ElMessage.error(i18n.global.t("common.page_load_failed"));
 });
 
 /**
  * 全局路由守卫
  * 在每次路由跳转前执行，用于权限控制和访问限制
  * @param to - 目标路由
- * @param _from - 来源路由
- * @param next - 路由跳转函数
  */
-router.beforeEach((to, _from, next) => {
+router.beforeEach((to) => {
   const userStore = useUserStore();
   const requiresAuth = Boolean(to.meta.requiresAuth || to.meta.requiresAdmin);
   const redirect = { path: "/login", query: { redirect: to.fullPath } };
@@ -89,16 +146,13 @@ router.beforeEach((to, _from, next) => {
   // 检查是否需要认证
   if (requiresAuth && (!userStore.isLoggedIn || isTokenExpired(userStore.token))) {
     userStore.logout();
-    next(redirect);
+    return redirect;
   }
   // 检查是否需要管理员权限
-  else if (to.meta.requiresAdmin && !userStore.isAdmin) {
-    next("/");
+  if (to.meta.requiresAdmin && !userStore.isAdmin) {
+    return "/";
   }
-  // 允许访问
-  else {
-    next();
-  }
+  return true;
 });
 
 const isTokenExpired = (token: string) => {

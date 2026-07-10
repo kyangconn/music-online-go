@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { ref, watch, onMounted } from "vue";
+import { ref } from "vue";
 
 /**
  * 主题状态管理存储
@@ -10,6 +10,8 @@ export const useThemeStore = defineStore("theme", () => {
   const isDark = ref(false);
   /** 是否自动同步系统主题 */
   const autoSync = ref(true);
+  let mediaQuery: MediaQueryList | null = null;
+  let initialized = false;
 
   /**
    * 设置深色模式
@@ -26,7 +28,7 @@ export const useThemeStore = defineStore("theme", () => {
         localStorage.setItem("theme", "light");
       }
     } catch (error) {
-      console.error("设置主题失败:", error);
+      console.error("Failed to set theme:", error);
       // 即使存储失败，也应用主题到DOM，但可能无法持久化
     }
   };
@@ -40,7 +42,7 @@ export const useThemeStore = defineStore("theme", () => {
     try {
       localStorage.setItem("auto-sync-theme", String(value));
     } catch (error) {
-      console.error("保存自动同步设置失败:", error);
+      console.error("Failed to save auto theme sync setting:", error);
     }
     if (value) {
       applySystemTheme();
@@ -62,20 +64,35 @@ export const useThemeStore = defineStore("theme", () => {
    */
   const applySystemTheme = () => {
     try {
-      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-      setDarkMode(mediaQuery.matches);
+      const query = getMediaQuery();
+      setDarkMode(query.matches);
     } catch (error) {
-      console.error("获取系统主题失败:", error);
+      console.error("Failed to read system theme:", error);
       // 默认使用浅色模式
       setDarkMode(false);
     }
+  };
+
+  const handleSystemThemeChange = (event: MediaQueryListEvent) => {
+    if (autoSync.value) {
+      setDarkMode(event.matches);
+    }
+  };
+
+  const getMediaQuery = () => {
+    if (!mediaQuery) {
+      mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    }
+    return mediaQuery;
   };
 
   /**
    * 初始化主题设置
    * 从本地存储加载保存的主题设置
    */
-  onMounted(() => {
+  const init = () => {
+    if (initialized) return;
+    initialized = true;
     try {
       const savedTheme = localStorage.getItem("theme");
       const savedAutoSync = localStorage.getItem("auto-sync-theme");
@@ -87,36 +104,23 @@ export const useThemeStore = defineStore("theme", () => {
       } else {
         setDarkMode(savedTheme === "dark");
       }
+
+      getMediaQuery().addEventListener("change", handleSystemThemeChange);
     } catch (error) {
-      console.error("初始化主题设置失败:", error);
+      console.error("Failed to initialize theme setting:", error);
       // 使用默认设置
       setDarkMode(false);
     }
-  });
+  };
 
   /**
-   * 监听自动同步设置变化
-   * 当启用自动同步时，立即应用系统主题
+   * 清理系统主题监听器
+   * 在根组件卸载时调用，避免开发热更新或测试环境残留监听器
    */
-  watch(autoSync, (newValue) => {
-    if (newValue) {
-      applySystemTheme();
-    }
-  });
+  const cleanup = () => {
+    mediaQuery?.removeEventListener("change", handleSystemThemeChange);
+    initialized = false;
+  };
 
-  /**
-   * 监听系统主题变化
-   * 当系统主题变化且启用了自动同步时，更新应用主题
-   */
-  try {
-    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
-      if (autoSync.value) {
-        setDarkMode(e.matches);
-      }
-    });
-  } catch (error) {
-    console.error("监听系统主题变化失败:", error);
-  }
-
-  return { isDark, autoSync, setAutoSync, setDarkMode, toggleDarkMode, applySystemTheme };
+  return { isDark, autoSync, setAutoSync, setDarkMode, toggleDarkMode, applySystemTheme, init, cleanup };
 });

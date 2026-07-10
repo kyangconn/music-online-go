@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import type { SystemInfoData } from "@/types/api";
+import InfoErrorState from "@/components/common/InfoErrorState.vue";
 
 defineProps<{
   loading: boolean;
-  info: SystemInfoData;
+  info: SystemInfoData | null;
+  error: boolean;
+}>();
+
+defineEmits<{
+  retry: [];
 }>();
 </script>
 
@@ -11,7 +17,8 @@ defineProps<{
   <div v-if="loading" class="loading-wrap">
     <el-skeleton :rows="3" animated />
   </div>
-  <div v-else-if="info" class="doc-section">
+  <InfoErrorState v-else-if="error || !info" @retry="$emit('retry')" />
+  <div v-else class="doc-section admin-info-section">
     <h3>{{ $t("admin.database") }}</h3>
     <div class="kv-list">
       <div class="kv-row">

@@ -20,6 +20,7 @@ var (
 	ErrTOTPCodeRequired     = errors.New("totp code required")
 	ErrInvalidTOTPCode      = errors.New("invalid totp code")
 	ErrOldPasswordIncorrect = errors.New("old password is incorrect")
+	ErrBootstrapAdminConfig = errors.New("bootstrap admin config is incomplete")
 )
 
 // UserService defines user business logic operations.
@@ -42,10 +43,19 @@ type UserService interface {
 	SetupTOTP(ctx context.Context, userID uint) (*domain.TOTPSetupResponse, error)
 	EnableTOTP(ctx context.Context, userID uint, code string) error
 	DisableTOTP(ctx context.Context, userID uint, code string) error
+	BootstrapAdmin(ctx context.Context, req BootstrapAdminRequest) (*domain.UserResponse, bool, error)
 }
 
 type userService struct {
 	userRepo repository.UserRepository
+}
+
+type BootstrapAdminRequest struct {
+	Username      string
+	Email         string
+	Password      string
+	FullName      string
+	ResetPassword bool
 }
 
 // dummyPasswordHash keeps failed login timing closer when the account does not exist.
@@ -76,6 +86,73 @@ func (s *userService) Register(ctx context.Context, req *domain.RegisterRequest)
 	}
 
 	return user.ToResponse(), nil
+}
+
+func (s *userService) BootstrapAdmin(ctx context.Context, req BootstrapAdminRequest) (*domain.UserResponse, bool, error) {
+	if req.Username == "" || req.Email == "" || len(req.Password) < 8 {
+		return nil, false, ErrBootstrapAdminConfig
+	}
+	if req.FullName == "" {
+		req.FullName = "Administrator"
+	}
+
+	existing, err := s.userRepo.FindByUsername(ctx, req.Username)
+	if err != nil {
+		if !errors.Is(err, repository.ErrUserNotFound) {
+			return nil, false, err
+		}
+
+		hashedPassword, hashErr := password.HashPassword(req.Password)
+		if hashErr != nil {
+			return nil, false, fmt.Errorf("failed to hash bootstrap admin password: %w", hashErr)
+		}
+		user := &domain.User{
+			Username:   req.Username,
+			Email:      req.Email,
+			Password:   hashedPassword,
+			FullName:   req.FullName,
+			Role:       "admin",
+			IsActive:   true,
+			IsVerified: true,
+		}
+		if createErr := s.userRepo.Create(ctx, user); createErr != nil {
+			return nil, false, createErr
+		}
+		return user.ToResponse(), true, nil
+	}
+
+	changed := false
+	if existing.Role != "admin" {
+		existing.Role = "admin"
+		changed = true
+	}
+	if !existing.IsActive {
+		existing.IsActive = true
+		changed = true
+	}
+	if !existing.IsVerified {
+		existing.IsVerified = true
+		changed = true
+	}
+	if existing.FullName == "" {
+		existing.FullName = req.FullName
+		changed = true
+	}
+	if req.ResetPassword {
+		hashedPassword, hashErr := password.HashPassword(req.Password)
+		if hashErr != nil {
+			return nil, false, fmt.Errorf("failed to hash bootstrap admin password: %w", hashErr)
+		}
+		existing.Password = hashedPassword
+		changed = true
+	}
+
+	if changed {
+		if err := s.userRepo.Update(ctx, existing); err != nil {
+			return nil, false, err
+		}
+	}
+	return existing.ToResponse(), false, nil
 }
 
 func (s *userService) Login(ctx context.Context, req *domain.LoginRequest) (*domain.LoginResponse, error) {

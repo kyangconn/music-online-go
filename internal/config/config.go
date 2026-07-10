@@ -13,18 +13,21 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	JWT      JWTConfig
+	Server         ServerConfig
+	Database       DatabaseConfig
+	JWT            JWTConfig
+	AdminBootstrap AdminBootstrapConfig
 }
 
 type ServerConfig struct {
-	Port         string
-	Mode         string
-	ReadTimeout  int
-	WriteTimeout int
-	UploadDir    string
-	LogFile      string
+	Port           string
+	Mode           string
+	ReadTimeout    int
+	WriteTimeout   int
+	UploadDir      string
+	LogFile        string
+	MaxAudioSizeMB int
+	MaxCoverSizeMB int
 }
 
 type DatabaseConfig struct {
@@ -41,6 +44,15 @@ type DatabaseConfig struct {
 type JWTConfig struct {
 	Secret     string
 	ExpireHour int
+}
+
+type AdminBootstrapConfig struct {
+	Enabled       bool
+	Username      string
+	Email         string
+	Password      string
+	FullName      string
+	ResetPassword bool
 }
 
 type SecurityConfig struct {
@@ -68,10 +80,15 @@ func LoadConfig() error {
 	viper.SetDefault("server.write_timeout", 30)
 	viper.SetDefault("server.upload_dir", "uploads")
 	viper.SetDefault("server.log_file", "")
+	viper.SetDefault("server.max_audio_size_mb", 200)
+	viper.SetDefault("server.max_cover_size_mb", 10)
 	viper.SetDefault("database.type", "sqlite")
 	viper.SetDefault("database.path", "music.db")
 	viper.SetDefault("database.sslmode", "disable")
 	viper.SetDefault("jwt.expire_hour", 24)
+	viper.SetDefault("admin.bootstrap.enabled", false)
+	viper.SetDefault("admin.bootstrap.full_name", "Administrator")
+	viper.SetDefault("admin.bootstrap.reset_password", false)
 
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -90,12 +107,14 @@ func LoadConfig() error {
 
 	AppConfig = &Config{
 		Server: ServerConfig{
-			Port:         viper.GetString("server.port"),
-			Mode:         viper.GetString("server.mode"),
-			ReadTimeout:  viper.GetInt("server.read_timeout"),
-			WriteTimeout: viper.GetInt("server.write_timeout"),
-			UploadDir:    viper.GetString("server.upload_dir"),
-			LogFile:      logFile,
+			Port:           viper.GetString("server.port"),
+			Mode:           viper.GetString("server.mode"),
+			ReadTimeout:    viper.GetInt("server.read_timeout"),
+			WriteTimeout:   viper.GetInt("server.write_timeout"),
+			UploadDir:      viper.GetString("server.upload_dir"),
+			LogFile:        logFile,
+			MaxAudioSizeMB: viper.GetInt("server.max_audio_size_mb"),
+			MaxCoverSizeMB: viper.GetInt("server.max_cover_size_mb"),
 		},
 		Database: DatabaseConfig{
 			Type:     viper.GetString("database.type"),
@@ -110,6 +129,14 @@ func LoadConfig() error {
 		JWT: JWTConfig{
 			Secret:     viper.GetString("jwt.secret"),
 			ExpireHour: viper.GetInt("jwt.expire_hour"),
+		},
+		AdminBootstrap: AdminBootstrapConfig{
+			Enabled:       viper.GetBool("admin.bootstrap.enabled"),
+			Username:      viper.GetString("admin.bootstrap.username"),
+			Email:         viper.GetString("admin.bootstrap.email"),
+			Password:      viper.GetString("admin.bootstrap.password"),
+			FullName:      viper.GetString("admin.bootstrap.full_name"),
+			ResetPassword: viper.GetBool("admin.bootstrap.reset_password"),
 		},
 	}
 	pklog.Infof("Loaded config file: %s", viper.ConfigFileUsed())

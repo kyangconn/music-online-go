@@ -1,0 +1,19 @@
+{
+  "play": "Play",
+  "pause": "Pause",
+  "previous": "Previous track",
+  "next": "Next track",
+  "queue": "Play queue",
+  "queue_count": "Play queue, {count} tracks",
+  "close": "Close player",
+  "volume": "Volume",
+  "mute": "Mute",
+  "unmute": "Unmute",
+  "seek": "Playback position",
+  "now_playing": "Now playing",
+  "playback_failed": "Unable to play this audio",
+  "recent": "Recently Played",
+  "continue_at": "Resume at {time}",
+  "continue_playing": "Continue playing",
+  "clear_recent": "Clear recent history"
+}

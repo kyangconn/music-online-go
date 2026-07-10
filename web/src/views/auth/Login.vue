@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import axios from "axios";
 import type { FormInstance, FormRules } from "element-plus";
 import { ElMessage } from "element-plus";
 import { ref, reactive } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import type { LoginData } from "@/types/api";
+import { useApiError } from "@/composables/useApiError";
 import { useUserStore } from "@/store/user";
 import request from "@/utils/request";
 
 const router = useRouter();
 const { t } = useI18n();
+const { getErrorMessage } = useApiError();
 const userStore = useUserStore();
 const formRef = ref<FormInstance>();
 const loading = ref(false);
@@ -23,8 +24,8 @@ const loginForm = reactive({
 });
 
 const rules = reactive<FormRules>({
-  username: [{ required: true, message: "Please input username", trigger: "blur" }],
-  password: [{ required: true, message: "Please input password", trigger: "blur" }],
+  username: [{ required: true, message: t("auth.username_input"), trigger: "blur" }],
+  password: [{ required: true, message: t("auth.password_input"), trigger: "blur" }],
   totp_code: [
     {
       validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
@@ -41,20 +42,6 @@ const rules = reactive<FormRules>({
   ],
 });
 
-interface AuthErrorResponse {
-  error?: string;
-  message?: string;
-}
-
-const getAuthErrorMessage = (error: unknown) => {
-  if (axios.isAxiosError<AuthErrorResponse>(error)) {
-    const data = error.response?.data;
-    return data?.error || data?.message || error.message || "Login failed";
-  }
-  if (error instanceof Error && error.message) return error.message;
-  return "Login failed";
-};
-
 const handleLogin = async (formEl: FormInstance | undefined) => {
   if (!formEl) return;
   await formEl.validate(async (valid) => {
@@ -64,11 +51,11 @@ const handleLogin = async (formEl: FormInstance | undefined) => {
         const res = await request.post<LoginData>("/users/login", loginForm);
         userStore.setToken(res.data.token);
         userStore.setUser(res.data.user);
-        ElMessage.success("Login successful");
+        ElMessage.success(t("common.login_successful"));
         const redirect = router.currentRoute.value.query.redirect;
         router.push(typeof redirect === "string" ? redirect : "/");
       } catch (error) {
-        const message = getAuthErrorMessage(error);
+        const message = getErrorMessage(error, t("auth.login_failed"));
         if (message === "TOTP code required" || message === "Invalid TOTP code") {
           totpRequired.value = true;
         }

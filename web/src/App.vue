@@ -1,5 +1,16 @@
 <script setup lang="ts">
-// App.vue 作为根组件，只需要渲染 RouterView 即可
+import { onMounted, onUnmounted } from "vue";
+import { useThemeStore } from "@/store/theme";
+
+const themeStore = useThemeStore();
+
+onMounted(() => {
+  themeStore.init();
+});
+
+onUnmounted(() => {
+  themeStore.cleanup();
+});
 </script>
 
 <template>

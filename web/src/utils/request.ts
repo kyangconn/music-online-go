@@ -1,6 +1,7 @@
 import axios, { type AxiosRequestConfig } from "axios";
 import { ElMessage } from "element-plus";
 import type { ApiResponse } from "@/types/api";
+import i18n from "@/i18n";
 
 const service = axios.create({
   baseURL: "/api/v1",
@@ -40,9 +41,9 @@ service.interceptors.response.use(
 
         if (!isAuthPage) {
           if (data?.error?.includes("expired")) {
-            ElMessage.warning("Session expired, please login again");
+            ElMessage.warning(i18n.global.t("common.session_expired"));
           } else {
-            ElMessage.warning("Please login to continue");
+            ElMessage.warning(i18n.global.t("common.please_login_to_continue"));
           }
         }
 

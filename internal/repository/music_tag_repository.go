@@ -4,10 +4,16 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/kyangconn/music-online-go/internal/domain"
 	"gorm.io/gorm"
+)
+
+var (
+	// ErrMusicTagNotFound 表示未找到音乐标签
+	ErrMusicTagNotFound = errors.New("music tag not found")
 )
 
 type musicTagRepository struct {
@@ -84,10 +90,15 @@ func (r *musicTagRepository) GetByArtistAndTitle(ctx context.Context, artist, ti
 }
 
 // getSingleTag 通用单条记录查询函数
+// 区分「未找到」与「DB 错误」：gorm.ErrRecordNotFound 转为 ErrMusicTagNotFound，
+// 让上层 handler 能用 errors.Is 精确分流，避免把真实 DB 错误误判为 404。
 func (r *musicTagRepository) getSingleTag(ctx context.Context, condition string, args ...interface{}) (*domain.MusicTag, error) {
 	var tag domain.MusicTag
 	err := r.db.WithContext(ctx).Where(condition, args...).First(&tag).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrMusicTagNotFound
+		}
 		return nil, err
 	}
 	return &tag, nil
@@ -204,7 +215,7 @@ func (r *musicTagRepository) buildSearchConditions(query *gorm.DB, params *domai
 func (r *musicTagRepository) FindOrCreate(ctx context.Context, tag *domain.MusicTag) (*domain.MusicTag, error) {
 	// 尝试精确匹配艺术家和标题
 	exactMatch, err := r.GetByArtistAndTitle(ctx, tag.Artist, tag.Title)
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrMusicTagNotFound) {
 		return nil, err
 	}
 	if exactMatch != nil {
