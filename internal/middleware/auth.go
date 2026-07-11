@@ -7,12 +7,14 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
+	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/kyangconn/music-online-go/internal/handler"
 	"github.com/kyangconn/music-online-go/internal/pkg/jwt"
 )
 
-func AuthMiddleware() gin.HandlerFunc {
+func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -43,6 +45,14 @@ func AuthMiddleware() gin.HandlerFunc {
 		c.Set("userID", claims.UserID)
 		c.Set("username", claims.Username)
 		c.Set("role", claims.Role)
+
+		// P0: verify account is still active so disabled users' existing JWTs are invalidated
+		var user domain.User
+		if err := db.Select("is_active").First(&user, claims.UserID).Error; err != nil || !user.IsActive {
+			handler.Unauthorized(c, "Account is disabled or not found")
+			c.Abort()
+			return
+		}
 
 		c.Next()
 	}

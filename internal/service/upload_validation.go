@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/kyangconn/music-online-go/internal/config"
+	pklog "github.com/kyangconn/music-online-go/internal/pkg/log"
 )
 
 const (
@@ -175,7 +177,11 @@ func readSignature(header *multipart.FileHeader) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil && !errors.Is(cerr, io.EOF) && !errors.Is(cerr, io.ErrUnexpectedEOF) {
+			pklog.Errorf("Failed to close signature reader: %v", cerr)
+		}
+	}()
 
 	buf := make([]byte, signatureReadSize)
 	n, err := io.ReadFull(file, buf)

@@ -52,5 +52,9 @@
   "totp_enabled_success": "TOTP 已启用",
   "totp_disabled_success": "TOTP 已禁用",
   "totp_disable_confirm": "输入认证器上的验证码以确认禁用。",
-  "totp_confirm_disable": "确认禁用"
+  "totp_confirm_disable": "确认禁用",
+  "totp_setup_failed": "TOTP 设置失败",
+  "totp_invalid_code": "验证码无效",
+  "totp_qr_alt": "TOTP 二维码",
+  "totp_manual_key": "手动输入密钥:"
 }

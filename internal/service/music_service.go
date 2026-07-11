@@ -69,8 +69,8 @@ func (s *musicService) Create(ctx context.Context, userID uint, req *domain.Crea
 		Genre:       req.Genre,
 		Duration:    req.Duration,
 		Intro:       req.Intro,
-		Img:         req.Img,
-		Path:        req.Path,
+		Img:         "",
+		Path:        "",
 		Type:        musicType,
 		IssuingDate: req.IssuingDate,
 		UserID:      userID,
@@ -204,9 +204,6 @@ func (s *musicService) Update(ctx context.Context, userID uint, role string, id 
 	if req.Intro != nil {
 		music.Intro = *req.Intro
 	}
-	if req.Img != nil {
-		music.Img = *req.Img
-	}
 	if req.Type != nil {
 		music.Type = *req.Type
 	}
@@ -270,7 +267,18 @@ func (s *musicService) GetAudioPath(ctx context.Context, id uint) (string, error
 	if music.Path == "" {
 		return "", ErrMediaNotFound
 	}
-	return music.Path, nil
+
+	// Path traversal protection: ensure resolved path stays within upload dir
+	absPath, err := filepath.Abs(filepath.Clean(music.Path))
+	if err != nil {
+		return "", fmt.Errorf("invalid audio path: %w", err)
+	}
+	uploadDir := filepath.Clean(config.AppConfig.Server.UploadDir)
+	if !strings.HasPrefix(absPath, uploadDir+string(filepath.Separator)) && absPath != uploadDir {
+		return "", ErrMediaNotFound
+	}
+
+	return absPath, nil
 }
 
 func (s *musicService) GetCoverPath(ctx context.Context, id uint) (string, error) {
@@ -281,7 +289,18 @@ func (s *musicService) GetCoverPath(ctx context.Context, id uint) (string, error
 	if music.Img == "" {
 		return "", ErrMediaNotFound
 	}
-	return music.Img, nil
+
+	// Path traversal protection: ensure resolved path stays within upload dir
+	absPath, err := filepath.Abs(filepath.Clean(music.Img))
+	if err != nil {
+		return "", fmt.Errorf("invalid cover path: %w", err)
+	}
+	uploadDir := filepath.Clean(config.AppConfig.Server.UploadDir)
+	if !strings.HasPrefix(absPath, uploadDir+string(filepath.Separator)) && absPath != uploadDir {
+		return "", ErrMediaNotFound
+	}
+
+	return absPath, nil
 }
 
 // toEnrichedResponses 批量转换并填充音乐响应列表。
@@ -341,75 +360,79 @@ func (s *musicService) UploadFiles(ctx context.Context, userID uint, role string
 
 	uploadDir := config.AppConfig.Server.UploadDir
 	musicDir := filepath.Join(uploadDir, strconv.FormatUint(uint64(id), 10))
-	if err := os.MkdirAll(musicDir, 0755); err != nil {
+	if err := os.MkdirAll(musicDir, 0700); err != nil {
 		return nil, fmt.Errorf("failed to create upload directory: %w", err)
 	}
 
-	var writtenFiles []string
-	rollback := func() {
-		cleanupUploadedFiles(writtenFiles)
-	}
-
 	if audioHeader != nil {
-		previousPath := music.Path
-		dest, fileHash, err := saveUploadedMediaFile(musicDir, "audio", audioHeader, true)
+		tmpPath, finalPath, fileHash, err := saveUploadedMediaFile(musicDir, "audio", audioHeader, true)
 		if err != nil {
-			rollback()
 			return nil, err
 		}
-		if dest != previousPath {
-			writtenFiles = append(writtenFiles, dest)
+		// Remove old file to avoid orphaned old-extension files
+		if music.Path != "" && music.Path != finalPath {
+			cleanupUploadedFiles([]string{music.Path})
 		}
-		music.Path = dest
+		// Atomically rename temp file to final path
+		if err := os.Rename(tmpPath, finalPath); err != nil {
+			return nil, fmt.Errorf("failed to finalize audio file: %w", err)
+		}
+		music.Path = finalPath
 		music.FileHash = fileHash
 	}
 
 	if coverHeader != nil {
-		previousPath := music.Img
-		dest, _, err := saveUploadedMediaFile(musicDir, "cover", coverHeader, false)
+		tmpPath, finalPath, _, err := saveUploadedMediaFile(musicDir, "cover", coverHeader, false)
 		if err != nil {
-			rollback()
 			return nil, err
 		}
-		if dest != previousPath {
-			writtenFiles = append(writtenFiles, dest)
+		// Remove old file to avoid orphaned old-extension files
+		if music.Img != "" && music.Img != finalPath {
+			cleanupUploadedFiles([]string{music.Img})
 		}
-		music.Img = dest
+		// Atomically rename temp file to final path
+		if err := os.Rename(tmpPath, finalPath); err != nil {
+			return nil, fmt.Errorf("failed to finalize cover file: %w", err)
+		}
+		music.Img = finalPath
 	}
 
 	if err := s.repo.Update(ctx, music); err != nil {
-		rollback()
 		return nil, err
 	}
 
 	return music.ToResponse(), nil
 }
 
-func saveUploadedMediaFile(dir, baseName string, header *multipart.FileHeader, calculateHash bool) (string, string, error) {
+// saveUploadedMediaFile saves the uploaded file to a temp file first, returning
+// the temp path, final path (with extension), and optional file hash.
+// The caller is responsible for the atomic os.Rename from tmpPath to finalPath.
+func saveUploadedMediaFile(dir, baseName string, header *multipart.FileHeader, calculateHash bool) (tmpPath, finalPath string, fileHash string, err error) {
 	ext := filepath.Ext(header.Filename)
-	dest := filepath.Join(dir, baseName+ext)
+	finalPath = filepath.Join(dir, baseName+ext)
+	tmpPath = filepath.Join(dir, baseName+".tmp")
 
 	src, err := header.Open()
 	if err != nil {
-		return "", "", fmt.Errorf("failed to open %s file: %w", baseName, err)
+		return "", "", "", fmt.Errorf("failed to open %s file: %w", baseName, err)
 	}
 	defer func() {
-		if err := src.Close(); err != nil {
-			pklog.Errorf("Failed to close %s source: %v", baseName, err)
+		if cerr := src.Close(); cerr != nil && !errors.Is(cerr, io.EOF) && !errors.Is(cerr, io.ErrUnexpectedEOF) {
+			pklog.Errorf("Failed to close %s source: %v", baseName, cerr)
 		}
 	}()
 
-	dst, err := os.Create(dest)
+	dst, err := os.Create(tmpPath)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to create %s file: %w", baseName, err)
+		return "", "", "", fmt.Errorf("failed to create %s file: %w", baseName, err)
 	}
 	saved := false
 	defer func() {
-		if err := dst.Close(); err != nil {
-			pklog.Errorf("Failed to close %s destination: %v", baseName, err)
+		if cerr := dst.Close(); cerr != nil {
+			pklog.Errorf("Failed to close %s destination: %v", baseName, cerr)
 		}
 		if !saved {
-			cleanupUploadedFiles([]string{dest})
+			cleanupUploadedFiles([]string{tmpPath})
 		}
 	}()
 
@@ -419,14 +442,13 @@ func saveUploadedMediaFile(dir, baseName string, header *multipart.FileHeader, c
 		writer = io.MultiWriter(dst, hasher)
 	}
 	if _, err := io.Copy(writer, src); err != nil {
-		return "", "", fmt.Errorf("failed to save %s file: %w", baseName, err)
+		return "", "", "", fmt.Errorf("failed to save %s file: %w", baseName, err)
 	}
 	saved = true
-	fileHash := ""
 	if calculateHash {
 		fileHash = hex.EncodeToString(hasher.Sum(nil))
 	}
-	return dest, fileHash, nil
+	return tmpPath, finalPath, fileHash, nil
 }
 
 func buildMetadataEnrichment(existing *domain.Music, incoming domain.MusicMetadata) *domain.UpdateMusicRequest {

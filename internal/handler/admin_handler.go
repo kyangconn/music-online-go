@@ -241,6 +241,32 @@ func (h *AdminHandler) UpdateUserStatus(c *gin.Context) {
 		return
 	}
 
+	currentUserID := c.GetUint("userID")
+	if uint(id) == currentUserID {
+		BadRequest(c, "Cannot modify your own account")
+		return
+	}
+
+	// If disabling an admin, ensure they're not the last active admin
+	if !req.IsActive {
+		targetUser, err := h.userService.GetUserByID(c.Request.Context(), uint(id))
+		if err != nil {
+			InternalServerError(c, "Failed to fetch user")
+			return
+		}
+		if targetUser.Role == "admin" {
+			adminCount, err := h.userService.CountAdmins(c.Request.Context())
+			if err != nil {
+				InternalServerError(c, "Failed to count admins")
+				return
+			}
+			if adminCount <= 1 {
+				BadRequest(c, "Cannot disable the last active admin")
+				return
+			}
+		}
+	}
+
 	if err := h.userService.UpdateUserStatus(c.Request.Context(), uint(id), req.IsActive); err != nil {
 		InternalServerError(c, "Failed to update user status")
 		return
@@ -274,6 +300,32 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		BadRequest(c, "Invalid request body")
 		return
+	}
+
+	currentUserID := c.GetUint("userID")
+	if uint(id) == currentUserID {
+		BadRequest(c, "Cannot modify your own account")
+		return
+	}
+
+	// If changing from admin to non-admin, ensure they're not the last active admin
+	if req.Role != "admin" {
+		targetUser, err := h.userService.GetUserByID(c.Request.Context(), uint(id))
+		if err != nil {
+			InternalServerError(c, "Failed to fetch user")
+			return
+		}
+		if targetUser.Role == "admin" {
+			adminCount, err := h.userService.CountAdmins(c.Request.Context())
+			if err != nil {
+				InternalServerError(c, "Failed to count admins")
+				return
+			}
+			if adminCount <= 1 {
+				BadRequest(c, "Cannot remove the last active admin role")
+				return
+			}
+		}
 	}
 
 	if err := h.userService.UpdateUserRole(c.Request.Context(), uint(id), req.Role); err != nil {

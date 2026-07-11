@@ -88,12 +88,18 @@ make build-be   # 仅后端（需已有前端产物）
 
 ```bash
 make test       # Go 测试 + 前端 ESLint
+make test-cover # Go 测试 + 函数级覆盖率汇总
 make check      # 非修改型检查：Go vet + 前端 typecheck/ESLint
 make verify     # Go 测试 + check
 make lint       # 修改型检查：Go fmt + Go vet + 前端 ESLint --fix
 make lint-fe    # 前端 ESLint --fix
 make lint-be    # Go vet
+make audit-be   # 非修改型 golangci-lint 全量审计
 ```
+
+后端深度检查使用 `golangci-lint` v2；版本固定在 `.golangci-lint-version`，CI
+只阻止新增问题。本地运行 `make audit-be` 前需安装该版本，参见
+[golangci-lint 官方安装文档](https://golangci-lint.run/docs/welcome/install/)。
 
 ## Docker
 

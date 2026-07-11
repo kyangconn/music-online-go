@@ -10,8 +10,16 @@ import request from "@/utils/request";
 export const useUserStore = defineStore("user", () => {
   /** 用户认证令牌 */
   const token = ref(localStorage.getItem("token") || "");
+
   /** 用户信息对象 */
-  const user = ref<UserInfo | null>(JSON.parse(localStorage.getItem("user") || "null"));
+  let storedUser: UserInfo | null = null;
+  try {
+    const raw = localStorage.getItem("user");
+    if (raw) storedUser = JSON.parse(raw);
+  } catch {
+    localStorage.removeItem("user"); // 清理损坏的数据
+  }
+  const user = ref<UserInfo | null>(storedUser);
 
   /** 用户是否已登录 */
   const isLoggedIn = computed(() => !!token.value);

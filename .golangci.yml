@@ -1,0 +1,25 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - nilerr
+    - noctx
+    - nolintlint
+    - rowserrcheck
+    - sqlclosecheck
+  exclusions:
+    rules:
+      # Tests use in-process requests and do not need cancellation propagation.
+      - path: _test\.go
+        linters:
+          - noctx
+      # This is a fixed bcrypt hash used to equalise failed-login timing, not a credential.
+      - path: internal/service/user_service\.go
+        text: "G101:"
+        linters:
+          - gosec
+

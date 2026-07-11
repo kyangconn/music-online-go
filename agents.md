@@ -40,6 +40,8 @@ The `Makefile` at the project root provides the canonical shortcuts. **Always pr
 | `make lint`         | Format + vet Go, then ESLint frontend              |
 | `make lint-fe`      | Run full ESLint on frontend                        |
 | `make lint-be`      | Run `go vet ./...`                                 |
+| `make audit-be`     | Run non-mutating `golangci-lint` audit             |
+| `make test-cover`   | Run Go tests and print function coverage           |
 | `make test`         | Go tests + frontend lint                           |
 | `make docker`       | Build multi-stage Docker image                     |
 

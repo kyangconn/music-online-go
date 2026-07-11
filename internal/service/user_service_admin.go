@@ -43,6 +43,10 @@ func (s *userService) CountAll(ctx context.Context) (int64, error) {
 	return s.userRepo.CountAll(ctx)
 }
 
+func (s *userService) CountAdmins(ctx context.Context) (int64, error) {
+	return s.userRepo.CountAdmins(ctx)
+}
+
 func (s *userService) SetupTOTP(ctx context.Context, userID uint) (*domain.TOTPSetupResponse, error) {
 	user, err := s.userRepo.FindByID(ctx, userID)
 	if err != nil {

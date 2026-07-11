@@ -1,8 +1,9 @@
-.PHONY: help install-fe install-fe-dev build build-fe build-be build-silent dev dev-fe dev-be test test-be check verify check-fe check-be typecheck-fe lint lint-fe lint-be docker clean
+.PHONY: help install-fe install-fe-dev build build-fe build-be build-silent dev dev-fe dev-be test test-be test-cover check verify check-fe check-be typecheck-fe lint lint-fe lint-be audit-be docker clean
 
 .DEFAULT_GOAL := help
 
 FE_DIR := web
+GO_MODULE := $(shell go list -m)
 
 # Detect OS for binary extension
 ifeq ($(OS),Windows_NT)
@@ -37,7 +38,9 @@ help: ## Show available commands
 	@echo "  make lint           Run all linters (Go + ESLint)"
 	@echo "  make lint-fe        Run ESLint on frontend"
 	@echo "  make lint-be        Run Go vet"
+	@echo "  make audit-be       Run non-mutating golangci-lint audit"
 	@echo "  make test           Run all tests (Go + frontend lint)"
+	@echo "  make test-cover     Run Go tests with a coverage summary"
 	@echo ""
 	@echo "=== Docker ==="
 	@echo "  make docker         Build Docker image"
@@ -78,6 +81,10 @@ test: test-be lint-fe ## Run backend tests + frontend lint
 test-be: ## Run Go tests
 	go test -v ./...
 
+test-cover: ## Run Go tests and print statement coverage by function
+	go test -coverpkg=$(GO_MODULE)/... -coverprofile=coverage.out ./...
+	go tool cover -func coverage.out
+
 check: check-be check-fe ## Run non-mutating checks
 
 verify: test-be check ## Run tests + non-mutating checks
@@ -103,6 +110,9 @@ lint-fe: ## Run ESLint on frontend
 
 lint-be: ## Run Go vet
 	go vet ./...
+
+audit-be: ## Run non-mutating golangci-lint audit
+	golangci-lint run ./...
 
 # ── Docker ────────────────────────────────────────────────
 

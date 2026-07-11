@@ -5,6 +5,7 @@ package handler
 import (
 	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"os"
@@ -466,7 +467,7 @@ func (h *MusicHandler) serveMediaFile(c *gin.Context, mediaPath string, missingM
 	}
 	defer func() {
 		fileErr := file.Close()
-		if fileErr != nil {
+		if fileErr != nil && !errors.Is(fileErr, io.EOF) && !errors.Is(fileErr, io.ErrUnexpectedEOF) {
 			pklog.Errorf("Failed to close media file %s: %v", mediaPath, fileErr)
 		}
 	}()

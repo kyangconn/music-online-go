@@ -32,6 +32,7 @@ type UserRepository interface {
 	UpdateStatus(ctx context.Context, id uint, isActive bool) error
 	UpdateRole(ctx context.Context, id uint, role string) error
 	Search(ctx context.Context, query string, page, pageSize int) ([]*domain.User, int64, error)
+	CountAdmins(ctx context.Context) (int64, error)
 	// 统计
 	CountAll(ctx context.Context) (int64, error)
 	// TOTP
@@ -160,5 +161,12 @@ func (r *userRepository) List(ctx context.Context, page, pageSize int) ([]*domai
 func (r *userRepository) CountAll(ctx context.Context) (int64, error) {
 	var count int64
 	err := r.db.WithContext(ctx).Model(&domain.User{}).Count(&count).Error
+	return count, err
+}
+
+// CountAdmins 统计活跃管理员数量
+func (r *userRepository) CountAdmins(ctx context.Context) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&domain.User{}).Where("role = ? AND is_active = ?", "admin", true).Count(&count).Error
 	return count, err
 }

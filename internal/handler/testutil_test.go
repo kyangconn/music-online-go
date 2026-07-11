@@ -57,6 +57,19 @@ func TestMain(m *testing.M) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
+	testRouter.GET("/ready", func(c *gin.Context) {
+		sqlDB, err := database.DB.DB()
+		if err != nil {
+			c.JSON(503, gin.H{"status": "not ready"})
+			return
+		}
+		if err := sqlDB.Ping(); err != nil {
+			c.JSON(503, gin.H{"status": "not ready"})
+			return
+		}
+		c.JSON(200, gin.H{"status": "ready"})
+	})
+
 	api := testRouter.Group("/api/v1")
 
 	public := api.Group("/users")
@@ -67,7 +80,7 @@ func TestMain(m *testing.M) {
 	}
 
 	protected := api.Group("/users")
-	protected.Use(middleware.AuthMiddleware())
+	protected.Use(middleware.AuthMiddleware(database.DB))
 	{
 		protected.GET("/profile", userHandler.GetUserProfile)
 		protected.PUT("/profile", userHandler.UpdateUser)
@@ -102,7 +115,7 @@ func TestMain(m *testing.M) {
 	api.GET("/users/:id/likes", middleware.OptionalAuthMiddleware(), musicHandler.ListUserLikedMusic)
 
 	musicProtected := api.Group("/musics")
-	musicProtected.Use(middleware.AuthMiddleware())
+	musicProtected.Use(middleware.AuthMiddleware(database.DB))
 	{
 		musicProtected.POST("", musicHandler.Create)
 		musicProtected.POST("/duplicate-check", musicHandler.CheckDuplicates)
@@ -119,7 +132,7 @@ func TestMain(m *testing.M) {
 		musicTags.GET("/:id", musicTagHandler.GetMusicTag)
 		musicTags.GET("/mbid/lookup", musicTagHandler.LookupByMBID)
 
-		musicTags.Use(middleware.AuthMiddleware())
+		musicTags.Use(middleware.AuthMiddleware(database.DB))
 		{
 			musicTags.POST("", musicTagHandler.CreateMusicTag)
 			musicTags.PUT("/:id", musicTagHandler.UpdateMusicTag)

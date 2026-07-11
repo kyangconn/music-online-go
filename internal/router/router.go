@@ -43,20 +43,43 @@ func New(h *Handlers, db *gorm.DB) *gin.Engine {
 		prometheusMiddleware(),
 	)
 
-	registerHealthAndMetrics(router)
+	registerHealthAndMetrics(router, db)
 	registerAPIRoutes(router, h, db)
 
 	return router
 }
 
 // registerHealthAndMetrics 注册健康检查和Prometheus指标端点
-func registerHealthAndMetrics(router *gin.Engine) {
+func registerHealthAndMetrics(router *gin.Engine, db *gorm.DB) {
+	// /health 存活检查：仅确认进程运行中
 	router.GET("/health", func(c *gin.Context) {
-		// 注意：health endpoint 无法访问 DB，由调用方注入后此处可扩展
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "ok",
 			"time":    time.Now().Format(time.RFC3339),
 			"version": runtime.Version(),
+		})
+	})
+
+	// /ready 就绪检查：确认数据库连接正常
+	router.GET("/ready", func(c *gin.Context) {
+		sqlDB, err := db.DB()
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "not ready",
+				"error":  "database handle unavailable",
+			})
+			return
+		}
+		if err := sqlDB.Ping(); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "not ready",
+				"error":  fmt.Sprintf("database ping failed: %v", err),
+			})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"status": "ready",
+			"time":   time.Now().Format(time.RFC3339),
 		})
 	})
 
@@ -68,8 +91,8 @@ func registerAPIRoutes(router *gin.Engine, h *Handlers, db *gorm.DB) {
 	api := router.Group("/api/v1")
 
 	registerUserRoutes(api, h.User, h.Admin, db)
-	registerMusicRoutes(api, h.Music)
-	registerMusicTagRoutes(api, h.MusicTag)
+	registerMusicRoutes(api, h.Music, db)
+	registerMusicTagRoutes(api, h.MusicTag, db)
 }
 
 // registerUserRoutes 注册用户相关路由
@@ -82,7 +105,7 @@ func registerUserRoutes(api *gin.RouterGroup, userHandler *handler.UserHandler, 
 	}
 
 	protected := api.Group("/users")
-	protected.Use(middleware.AuthMiddleware())
+	protected.Use(middleware.AuthMiddleware(db))
 	{
 		protected.GET("/profile", userHandler.GetUserProfile)
 		protected.PUT("/profile", userHandler.UpdateUser)
@@ -106,7 +129,7 @@ func registerUserRoutes(api *gin.RouterGroup, userHandler *handler.UserHandler, 
 }
 
 // registerMusicRoutes 注册音乐相关路由
-func registerMusicRoutes(api *gin.RouterGroup, musicHandler *handler.MusicHandler) {
+func registerMusicRoutes(api *gin.RouterGroup, musicHandler *handler.MusicHandler, db *gorm.DB) {
 	api.GET("/upload-policy", musicHandler.UploadPolicy)
 
 	musicPublic := api.Group("/musics")
@@ -124,7 +147,7 @@ func registerMusicRoutes(api *gin.RouterGroup, musicHandler *handler.MusicHandle
 	musicPublic.GET("/:id/cover", musicHandler.Cover)
 
 	musicProtected := api.Group("/musics")
-	musicProtected.Use(middleware.AuthMiddleware())
+	musicProtected.Use(middleware.AuthMiddleware(db))
 	{
 		musicProtected.POST("", musicHandler.Create)
 		musicProtected.POST("/duplicate-check", musicHandler.CheckDuplicates)
@@ -137,14 +160,14 @@ func registerMusicRoutes(api *gin.RouterGroup, musicHandler *handler.MusicHandle
 }
 
 // registerMusicTagRoutes 注册音乐标签相关路由
-func registerMusicTagRoutes(api *gin.RouterGroup, musicTagHandler *handler.MusicTagHandler) {
+func registerMusicTagRoutes(api *gin.RouterGroup, musicTagHandler *handler.MusicTagHandler, db *gorm.DB) {
 	musicTags := api.Group("/music-tags")
 	{
 		musicTags.POST("/search", musicTagHandler.SearchMusicTags)
 		musicTags.GET("/:id", musicTagHandler.GetMusicTag)
 		musicTags.GET("/mbid/lookup", musicTagHandler.LookupByMBID)
 
-		musicTags.Use(middleware.AuthMiddleware())
+		musicTags.Use(middleware.AuthMiddleware(db))
 		{
 			musicTags.POST("", musicTagHandler.CreateMusicTag)
 			musicTags.PUT("/:id", musicTagHandler.UpdateMusicTag)

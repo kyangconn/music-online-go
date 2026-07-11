@@ -51,11 +51,20 @@ jobs:
       - name: Go Mod Download
         run: go mod download
 
+      - name: GolangCI-Lint (new issues)
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version-file: .golangci-lint-version
+          only-new-issues: true
+
       - name: Go Test
         env:
           DATABASE_TYPE: sqlite
           DATABASE_PATH: ":memory:"
-        run: go test ./...
+        run: |
+          MODULE="$(go list -m)"
+          go test -coverpkg="$MODULE/..." -coverprofile=coverage.out ./...
+          go tool cover -func coverage.out | tail -n 1
 
       - name: Go Build Check
         run: go build -v ./cmd/server

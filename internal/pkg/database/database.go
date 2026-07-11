@@ -5,6 +5,7 @@ package database
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -98,7 +99,7 @@ func prepareSQLitePath(path string) (string, error) {
 	if dir == "." || dir == "" {
 		return path, nil
 	}
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", fmt.Errorf("failed to create sqlite directory: %w", err)
 	}
 	return path, nil
@@ -147,8 +148,8 @@ func hashFile(path string) (string, error) {
 		return "", err
 	}
 	defer func() {
-		if err := file.Close(); err != nil {
-			pklog.Warnf("Failed to close music file %s after hashing: %v", path, err)
+		if cerr := file.Close(); cerr != nil && !errors.Is(cerr, io.EOF) && !errors.Is(cerr, io.ErrUnexpectedEOF) {
+			pklog.Warnf("Failed to close music file %s after hashing: %v", path, cerr)
 		}
 	}()
 

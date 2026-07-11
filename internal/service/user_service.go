@@ -39,6 +39,7 @@ type UserService interface {
 	UpdateUserRole(ctx context.Context, id uint, role string) error
 	SearchUsers(ctx context.Context, query string, page, pageSize int) ([]*domain.UserResponse, int64, error)
 	CountAll(ctx context.Context) (int64, error)
+	CountAdmins(ctx context.Context) (int64, error)
 	// TOTP
 	SetupTOTP(ctx context.Context, userID uint) (*domain.TOTPSetupResponse, error)
 	EnableTOTP(ctx context.Context, userID uint, code string) error
@@ -163,6 +164,10 @@ func (s *userService) Login(ctx context.Context, req *domain.LoginRequest) (*dom
 	// 尝试按用户名查找
 	user, err = s.userRepo.FindByUsername(ctx, req.Username)
 	if err != nil {
+		// 只有明确"用户名不存在"时才回退到邮箱查询
+		if !errors.Is(err, repository.ErrUserNotFound) {
+			return nil, fmt.Errorf("failed to find user: %w", err)
+		}
 		// 如果按用户名找不到，尝试按邮箱查找
 		user, err = s.userRepo.FindByEmail(ctx, req.Username)
 		if err != nil {

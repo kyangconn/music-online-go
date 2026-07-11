@@ -52,5 +52,9 @@
   "totp_enabled_success": "TOTP enabled successfully",
   "totp_disabled_success": "TOTP disabled successfully",
   "totp_disable_confirm": "Enter a code from your authenticator to confirm disabling.",
-  "totp_confirm_disable": "Confirm Disable"
+  "totp_confirm_disable": "Confirm Disable",
+  "totp_setup_failed": "Failed to setup TOTP",
+  "totp_invalid_code": "Invalid code",
+  "totp_qr_alt": "TOTP QR Code",
+  "totp_manual_key": "Manual key:"
 }

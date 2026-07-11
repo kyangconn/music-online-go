@@ -24,7 +24,7 @@ const startSetup = async () => {
     qrDataUrl.value = await QRCode.toDataURL(data.qr_code_url);
     setupOpen.value = true;
   } catch (_e) {
-    ElMessage.error("Failed to setup TOTP");
+    ElMessage.error(t("settings.totp_setup_failed"));
   } finally {
     loading.value = false;
   }
@@ -42,7 +42,7 @@ const handleEnable = async () => {
     setupOpen.value = false;
     setupCode.value = "";
   } catch (_e) {
-    ElMessage.error("Invalid code");
+    ElMessage.error(t("settings.totp_invalid_code"));
   } finally {
     loading.value = false;
   }
@@ -60,7 +60,7 @@ const handleDisable = async () => {
     disableDialogVisible.value = false;
     disableCode.value = "";
   } catch (_e) {
-    ElMessage.error("Invalid code");
+    ElMessage.error(t("settings.totp_invalid_code"));
   } finally {
     loading.value = false;
   }
@@ -97,9 +97,9 @@ const cancelSetup = () => {
 
     <div v-if="setupOpen" class="totp-setup-panel">
       <p class="scan-hint">{{ $t("settings.totp_scan_hint") }}</p>
-      <img v-if="qrDataUrl" :src="qrDataUrl" alt="TOTP QR Code" class="qr-image" />
+      <img v-if="qrDataUrl" :src="qrDataUrl" :alt="$t('settings.totp_qr_alt')" class="qr-image" />
       <p class="secret-text">
-        Manual key: <code>{{ secret }}</code>
+        {{ $t("settings.totp_manual_key") }} <code>{{ secret }}</code>
       </p>
 
       <el-input

@@ -478,6 +478,254 @@ func TestDuplicateCheckSuggestsAndEnrichesMetadata(t *testing.T) {
 	}
 }
 
+// TestDisabledAccountTokenRejected verifies that once an admin disables a user's
+// account, the disabled user's existing JWT is rejected (401) on protected routes.
+func TestDisabledAccountTokenRejected(t *testing.T) {
+	userToken, userID := registerAndLoginWithID(t, "disableuser")
+
+	_, adminID := registerAndLoginWithID(t, "disableadmin")
+	database.DB.Model(&domain.User{}).Where("id = ?", adminID).Update("role", "admin")
+	adminToken := loginUser(t, "disableadmin")
+
+	w := httptest.NewRecorder()
+	body := `{"is_active":false}`
+	req, _ := http.NewRequest("PUT", "/api/v1/users/admin/users/"+strconv.Itoa(int(userID))+"/status", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("disable user: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("GET", "/api/v1/users/profile", nil)
+	req.Header.Set("Authorization", "Bearer "+userToken)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("disabled user profile: expected 401, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestAdminCannotDisableSelf verifies that an admin cannot disable their own
+// account or change their own role.
+func TestAdminCannotDisableSelf(t *testing.T) {
+	_, adminID := registerAndLoginWithID(t, "selfadmin")
+	database.DB.Model(&domain.User{}).Where("id = ?", adminID).Update("role", "admin")
+	adminToken := loginUser(t, "selfadmin")
+
+	w := httptest.NewRecorder()
+	body := `{"is_active":false}`
+	req, _ := http.NewRequest("PUT", "/api/v1/users/admin/users/"+strconv.Itoa(int(adminID))+"/status", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest && w.Code != http.StatusForbidden {
+		t.Fatalf("admin disable self: expected 400 or 403, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	body = `{"role":"user"}`
+	req, _ = http.NewRequest("PUT", "/api/v1/users/admin/users/"+strconv.Itoa(int(adminID))+"/role", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest && w.Code != http.StatusForbidden {
+		t.Fatalf("admin change own role: expected 400 or 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestLastAdminCannotBeDemoted verifies that the last remaining admin cannot be
+// demoted, either by self or by a non-admin.
+func TestLastAdminCannotBeDemoted(t *testing.T) {
+	_, admin1ID := registerAndLoginWithID(t, "lastadmin1")
+	_, admin2ID := registerAndLoginWithID(t, "lastadmin2")
+	database.DB.Model(&domain.User{}).Where("id IN ?", []uint{admin1ID, admin2ID}).Update("role", "admin")
+	admin2Token := loginUser(t, "lastadmin2")
+
+	// admin2 demotes admin1 – should succeed (2 admins → 1)
+	w := httptest.NewRecorder()
+	body := `{"role":"user"}`
+	req, _ := http.NewRequest("PUT", "/api/v1/users/admin/users/"+strconv.Itoa(int(admin1ID))+"/role", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+admin2Token)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("admin2 demote admin1: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// admin1 (now user) tries to demote admin2 → 403 (not admin)
+	admin1Token := loginUser(t, "lastadmin1")
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("PUT", "/api/v1/users/admin/users/"+strconv.Itoa(int(admin2ID))+"/role", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+admin1Token)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("former admin demote last admin: expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// admin2 cannot demote self
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("PUT", "/api/v1/users/admin/users/"+strconv.Itoa(int(admin2ID))+"/role", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+admin2Token)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest && w.Code != http.StatusForbidden {
+		t.Fatalf("admin2 demote self: expected 400 or 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestNonAdminCannotAccessAdminRoutes verifies that a regular user cannot access
+// admin-protected endpoints.
+func TestNonAdminCannotAccessAdminRoutes(t *testing.T) {
+	userToken := registerAndLogin(t, "noroleuser")
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/users/admin/users", nil)
+	req.Header.Set("Authorization", "Bearer "+userToken)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("non-admin list users: expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	body := `{"is_active":false}`
+	req, _ = http.NewRequest("PUT", "/api/v1/users/admin/users/1/status", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+userToken)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("non-admin update status: expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestPathTraversalRejected verifies that the create music endpoint ignores
+// img and path fields injected by the client, preventing path traversal.
+func TestPathTraversalRejected(t *testing.T) {
+	token := registerAndLogin(t, "pathtraversaluser")
+
+	body := `{"title":"Traversal Song","artist":"Test Artist","img":"/etc/passwd","path":"/etc/passwd"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/musics", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create music: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Data struct {
+			Img  string `json:"img"`
+			Path string `json:"path"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("response parse: %v", err)
+	}
+	if resp.Data.Img != "" {
+		t.Errorf("img should be empty, got %q", resp.Data.Img)
+	}
+	if resp.Data.Path != "" {
+		t.Errorf("path should be empty, got %q", resp.Data.Path)
+	}
+}
+
+// TestHealthAndReady verifies that the /health and /ready endpoints both return 200.
+func TestHealthAndReady(t *testing.T) {
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/health", nil)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("health: expected 200, got %d", w.Code)
+	}
+	var healthResp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &healthResp); err != nil {
+		t.Fatalf("health response parse: %v", err)
+	}
+	if healthResp["status"] != "ok" {
+		t.Errorf("health status = %v, want ok", healthResp["status"])
+	}
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("GET", "/ready", nil)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("ready: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var readyResp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &readyResp); err != nil {
+		t.Fatalf("ready response parse: %v", err)
+	}
+	if readyResp["status"] != "ready" {
+		t.Errorf("ready status = %v, want ready", readyResp["status"])
+	}
+}
+
+func registerAndLoginWithID(t *testing.T, username string) (string, uint) {
+	t.Helper()
+
+	body := `{"username":"` + username + `","email":"` + username + `@test.com","password":"password123"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/users/register", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("register %s: expected 201, got %d: %s", username, w.Code, w.Body.String())
+	}
+
+	loginBody := `{"username":"` + username + `","password":"password123"}`
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("POST", "/api/v1/users/login", strings.NewReader(loginBody))
+	req.Header.Set("Content-Type", "application/json")
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("login %s: expected 200, got %d: %s", username, w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Data struct {
+			User struct {
+				ID uint `json:"id"`
+			} `json:"user"`
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("login response parse: %v", err)
+	}
+	if resp.Data.Token == "" {
+		t.Fatal("token should not be empty")
+	}
+	return resp.Data.Token, resp.Data.User.ID
+}
+
+func loginUser(t *testing.T, username string) string {
+	t.Helper()
+
+	loginBody := `{"username":"` + username + `","password":"password123"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/users/login", strings.NewReader(loginBody))
+	req.Header.Set("Content-Type", "application/json")
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("login %s: expected 200, got %d: %s", username, w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("login response parse: %v", err)
+	}
+	if resp.Data.Token == "" {
+		t.Fatal("token should not be empty")
+	}
+	return resp.Data.Token
+}
+
 func registerAndLogin(t *testing.T, username string) string {
 	t.Helper()
 
