@@ -117,7 +117,9 @@
 
 ### 已确认测试缺口
 
-- [x] Go handler 集成测试：禁用账号拦截、管理员自保护、权限隔离、路径穿越、健康就绪（handler_test 12→18 func）
+- [x] Go handler 集成测试：禁用账号拦截、管理员自保护、权限隔离、路径穿越、健康就绪、上传路径验证（handler_test 12→19 func）
 - [x] Middleware 单元测试：CORS Origin 反射、角色中间件（新增 middleware_test.go，6 sub-test）
+- [x] Config 单元测试：JWT secret 弱值拒绝（新增 config_test.go，7 case table-driven）
+- [x] Service 单元测试：Login 错误传播、DB 错误不伪装、凭据验证（新增 user_service_test.go，5 case stub repo）
 - [ ] 补 Vue store 损坏缓存恢复、SecuritySettings 交互/i18n、关键上传和播放流程的组件测试
 - [ ] 在启用 CGO 的 CI 任务运行 go test -race ./...

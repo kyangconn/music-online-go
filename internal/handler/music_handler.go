@@ -460,7 +460,7 @@ func parseMusicSearchParams(c *gin.Context) (*domain.MusicSearchParams, error) {
 }
 
 func (h *MusicHandler) serveMediaFile(c *gin.Context, mediaPath string, missingMessage string) {
-	file, err := os.Open(mediaPath)
+	file, err := os.Open(filepath.Clean(mediaPath))
 	if err != nil {
 		NotFound(c, missingMessage)
 		return

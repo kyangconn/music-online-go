@@ -143,7 +143,7 @@ func backfillMusicFileHashes() error {
 }
 
 func hashFile(path string) (string, error) {
-	file, err := os.Open(path)
+	file, err := os.Open(filepath.Clean(path))
 	if err != nil {
 		return "", err
 	}

@@ -662,6 +662,60 @@ func TestHealthAndReady(t *testing.T) {
 	}
 }
 
+// TestUploadFilesCreatesAudioPath 验证上传后响应包含合法的 path/img 字段，
+// 且流式播放和封面图请求返回 200 和正确的 Content-Type。
+func TestUploadFilesCreatesAudioPath(t *testing.T) {
+	token := registerAndLogin(t, "pathuser")
+	musicID := createMusic(t, token, "Path Check Song")
+
+	w := uploadMusicFiles(t, token, musicID)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Data struct {
+			Path string `json:"path"`
+			Img  string `json:"img"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("parse upload response: %v", err)
+	}
+	if resp.Data.Path == "" {
+		t.Fatal("path must not be empty after upload")
+	}
+	if resp.Data.Img == "" {
+		t.Fatal("img must not be empty after upload")
+	}
+
+	// 验证流式播放返回 200 且 Content-Type 为音频格式
+	streamPath := "/api/v1/musics/" + strconv.Itoa(int(musicID)) + "/stream"
+	w = httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", streamPath, nil)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("stream: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	ct := w.Header().Get("Content-Type")
+	if !strings.HasPrefix(ct, "audio/") {
+		t.Fatalf("stream Content-Type = %q, want audio/*", ct)
+	}
+
+	// 验证封面图返回 200 且 Content-Type 为图片格式
+	coverPath := "/api/v1/musics/" + strconv.Itoa(int(musicID)) + "/cover"
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("GET", coverPath, nil)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("cover: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	ct = w.Header().Get("Content-Type")
+	if ct != "image/png" {
+		t.Fatalf("cover Content-Type = %q, want image/png", ct)
+	}
+}
+
 func registerAndLoginWithID(t *testing.T, username string) (string, uint) {
 	t.Helper()
 

@@ -142,13 +142,22 @@ func LoadConfig() error {
 	pklog.Infof("Loaded config file: %s", viper.ConfigFileUsed())
 
 	// P0: validate JWT secret in non-debug modes
-	if AppConfig.Server.Mode != "debug" {
-		if AppConfig.JWT.Secret == "" || AppConfig.JWT.Secret == "your-secret-key-change-in-production" {
-			pklog.Fatalf("JWT secret is empty or uses the default insecure value; set a strong secret via jwt.secret in config")
-			return errors.New("weak JWT secret rejected in production mode")
-		}
+	if err := ValidateJWTSecret(AppConfig.JWT.Secret, AppConfig.Server.Mode); err != nil {
+		pklog.Fatalf("%v", err)
+		return err
 	}
 
+	return nil
+}
+
+// ValidateJWTSecret checks that the JWT secret is strong enough for non-debug modes.
+// In debug mode any secret (including empty/default) is accepted.
+func ValidateJWTSecret(secret, mode string) error {
+	if mode != "debug" {
+		if secret == "" || secret == "your-secret-key-change-in-production" {
+			return errors.New("weak JWT secret rejected: must be set to a strong random value in non-debug mode")
+		}
+	}
 	return nil
 }
 

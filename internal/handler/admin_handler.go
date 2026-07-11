@@ -135,8 +135,8 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 		StackSys:         formatBytes(mem.StackSys),
 
 		NumGC:      mem.NumGC,
-		PauseTotal: fmtDuration(time.Duration(mem.PauseTotalNs)),
-		LastGCTime: time.Unix(0, int64(mem.LastGC)).Format(time.RFC3339),
+		PauseTotal: fmtDuration(time.Duration(mem.PauseTotalNs)), //nolint:gosec // PauseTotalNs < int64 max for realistic uptimes
+		LastGCTime: time.Unix(0, int64(mem.LastGC)).Format(time.RFC3339), //nolint:gosec // LastGC timestamp within int64 range until year 2262
 		GCCPUFrac:  fmt.Sprintf("%.4f%%", gcCPUFrac),
 
 		DBMaxOpenConns: dbStats.MaxOpenConnections,

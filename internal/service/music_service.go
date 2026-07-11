@@ -422,7 +422,7 @@ func saveUploadedMediaFile(dir, baseName string, header *multipart.FileHeader, c
 		}
 	}()
 
-	dst, err := os.Create(tmpPath)
+	dst, err := os.Create(filepath.Clean(tmpPath))
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to create %s file: %w", baseName, err)
 	}
