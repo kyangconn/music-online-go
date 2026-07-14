@@ -292,6 +292,12 @@ tar -czf music-online-files.tgz config.yaml uploads/
 
 Restore PostgreSQL by importing the SQL dump, then restoring the upload directory and config file.
 
+### Database Upgrades & Rollback
+
+At startup, the service applies pending database migrations in version order and records them in the `schema_migrations` table. Each migration and its history record run in one transaction. A failure stops startup and is not marked as applied, so the migration can be retried after fixing the cause.
+
+Before upgrading, back up the database, uploaded files, and configuration as described above. Automatic down migrations are not provided. To roll back the application, stop the service, restore the complete pre-upgrade backup, and then deploy the older binary. Do not point an older binary at a database that has already received newer migrations; it will refuse to start when it detects an unknown migration version.
+
 ## License
 
 MIT

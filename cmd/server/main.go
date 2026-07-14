@@ -42,7 +42,7 @@ func main() {
 	if err := database.Connect(); err != nil {
 		pklog.Fatalf("Failed to connect database: %v", err)
 	}
-	if err := database.AutoMigrate(); err != nil {
+	if err := database.Migrate(); err != nil {
 		pklog.Fatalf("Failed to migrate database: %v", err)
 	}
 	if err := bootstrapAdmin(context.Background()); err != nil {

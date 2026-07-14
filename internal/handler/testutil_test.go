@@ -38,7 +38,7 @@ func TestMain(m *testing.M) {
 	if err := database.Connect(); err != nil {
 		panic(err)
 	}
-	if err := database.AutoMigrate(); err != nil {
+	if err := database.Migrate(); err != nil {
 		panic(err)
 	}
 
