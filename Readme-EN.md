@@ -9,9 +9,9 @@ Full-stack music management platform — Go backend + Vue 3 frontend, compiled i
 - Go 1.26 + Gin framework
 - GORM (SQLite / PostgreSQL)
 - JWT authentication + OTP two-factor
-- Prometheus metrics
+- Optional Prometheus metrics protected by a bearer token
 - Rate limiting middleware
-- RSA-encrypted sensitive fields
+- bcrypt password hashing
 
 **Frontend** (see [web](./web))
 
@@ -158,6 +158,9 @@ Dedicated environment variables:
 | `XDG_CONFIG_HOME` | XDG base directory for user-level config search                            |
 | `HOSTNAME`        | Hostname shown in admin panel (fallback)                                   |
 
+CORS and metrics settings can also be overridden with `SERVER_ALLOWED_ORIGINS`,
+`METRICS_ENABLED`, and `METRICS_TOKEN`; use comma-separated origins in the environment variable.
+
 The first admin can also be bootstrapped entirely from environment variables:
 
 ```bash
@@ -176,7 +179,7 @@ See [config-example.yaml](./config-example.yaml).
 
 | Key                    | Type   | Default     | Description                         |
 |------------------------|--------|-------------|-------------------------------------|
-| `server.port`          | string | `"3060"`    | Listen port                         |
+| `server.port`          | string | `"8080"`    | Listen port                         |
 | `server.mode`          | string | `"debug"`   | Run mode: `debug` / `release`       |
 | `server.read_timeout`  | int    | `30`        | HTTP read timeout (seconds)         |
 | `server.write_timeout` | int    | `30`        | HTTP write timeout (seconds)        |
@@ -184,10 +187,13 @@ See [config-example.yaml](./config-example.yaml).
 | `server.log_file`      | string | `""`        | Log file path (empty = stdout only) |
 | `server.max_audio_size_mb` | int | `200`       | Maximum size per audio file (MB)    |
 | `server.max_cover_size_mb` | int | `10`        | Maximum size per cover image (MB)   |
+| `server.allowed_origins` | string[] | `[]`      | Additional credentialed cross-origin API origins |
 
 `server.upload_dir` may be absolute or relative. Relative paths are resolved from the server process working directory. Local `make dev-be` writes to `uploads/` under the repo root by default; Docker defaults to `SERVER_UPLOAD_DIR=/data/uploads` inside the mounted volume.
 
 Uploads are validated by size, extension, request MIME, and file header signature. The frontend also pre-checks files to avoid wasted uploads, but backend validation is the security boundary.
+
+Same-origin requests do not need to be listed. Configure `server.allowed_origins` only when the frontend is served from another origin, for example `["https://music-ui.example.com"]`. Wildcards and URLs with paths are rejected.
 
 #### database
 
@@ -222,6 +228,18 @@ DATABASE_TYPE=postgres DATABASE_HOST=localhost DATABASE_PORT=5432 DATABASE_USER=
 | `jwt.secret`      | string | —       | JWT signing key (must be changed in production) |
 | `jwt.expire_hour` | int    | `24`    | JWT expiration time (hours)                     |
 
+Passwords are stored with bcrypt hashes; there is no RSA field-encryption configuration.
+
+#### metrics
+
+| Key               | Type   | Default | Description                                 |
+|-------------------|--------|---------|---------------------------------------------|
+| `metrics.enabled` | bool   | `false` | Expose `/metrics`                           |
+| `metrics.token`   | string | `""`  | Bearer token used by the Prometheus scraper |
+
+Metrics are disabled by default. Enabling them requires a non-empty token and requests must use
+`Authorization: Bearer <token>`. `/health` reports process liveness; `/ready` verifies both the database and writable upload storage.
+
 #### admin.bootstrap
 
 First-admin bootstrap is explicit opt-in. By default, no admin account is created. When enabled, the app runs it after database migration: it creates the configured username if missing, or promotes and activates the existing username as admin.
@@ -236,12 +254,6 @@ First-admin bootstrap is explicit opt-in. By default, no admin account is create
 | `admin.bootstrap.reset_password` | bool    | `false`           | Reset password for an existing username using the configured value |
 
 After the admin exists, disable `admin.bootstrap.enabled` and restart. If it remains enabled, the app only keeps that username as an active admin and does not create duplicates. In production, do not commit admin passwords; prefer env vars or deployment-only config.
-
-#### security
-
-| Key                      | Type   | Default | Description                   |
-|--------------------------|--------|---------|-------------------------------|
-| `security.password_salt` | string | —       | Password hash salt (reserved) |
 
 ### Logging
 

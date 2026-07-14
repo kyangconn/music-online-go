@@ -103,8 +103,9 @@
 - [x] 定义音乐和账号删除生命周期：音乐删除会事务清理收藏和专辑引用、硬删除记录与媒体目录；账号注销要求当前密码，事务清理收藏和自有音乐后硬删除，且保护最后一个活跃管理员。
 - [ ] 用版本化 migration 取代仅靠 GORM `AutoMigrate` 的升级方式，并提供备份、升级失败和回滚说明。
 - [x] 收紧本地数据权限：SQLite 目录和上传目录当前创建为 `0755`；自托管默认应按数据敏感度使用 `0700` / `0750`，并允许配置覆盖。
-- [x] 修正 CORS：当前同时返回 `Access-Control-Allow-Origin: *` 与 credentials；改为明确的允许来源列表，并补预检和跨域凭据测试。
-- [x] 区分存活与就绪检查：`/health` 当前不检查数据库和存储；增加 readiness 检查，并决定 `/metrics` 是否需要鉴权或仅绑定内网。
+- [x] 修正 CORS：同源自动放行，额外跨域来源必须进入 `server.allowed_origins` 白名单；拒绝通配符并覆盖预检、拒绝和凭据响应测试。
+- [x] 区分存活与就绪检查：`/health` 仅表示进程存活，`/ready` 检查数据库和上传目录可写性；`/metrics` 默认关闭，启用时要求 Bearer token。
+- [ ] 引入 refresh token 与可撤销会话：设计短期 access token、refresh token 轮换、服务端撤销/登出和安全存储，再替换当前仅使用 `localStorage` access token 的会话模型。
 
 ### P2：可靠性与前端质量
 
@@ -118,7 +119,7 @@
 ### 已确认测试缺口
 
 - [x] Go handler 集成测试：禁用账号拦截、管理员自保护、权限隔离、路径穿越、健康就绪、上传路径验证（handler_test 12→19 func）
-- [x] Middleware 单元测试：CORS Origin 反射、角色中间件（新增 middleware_test.go，6 sub-test）
+- [x] Middleware 单元测试：CORS 同源/白名单/拒绝/预检、角色中间件
 - [x] Config 单元测试：JWT secret 弱值拒绝（新增 config_test.go，7 case table-driven）
 - [x] Service 单元测试：Login 错误传播、DB 错误不伪装、凭据验证（新增 user_service_test.go，5 case stub repo）
 - [x] 补 Vue store 损坏缓存恢复、SecuritySettings/账户注销交互与 i18n、上传重试编排和播放器状态测试，并接入 Makefile、检查 CI 与发布 CI。

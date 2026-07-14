@@ -3,9 +3,12 @@
 package router
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"net/http"
+	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -37,20 +40,20 @@ func New(h *Handlers, db *gorm.DB) *gin.Engine {
 
 	router.Use(
 		middleware.LoggerMiddleware(),
-		middleware.CORSMiddleware(),
+		middleware.CORSMiddleware(config.AppConfig.Server.AllowedOrigins),
 		middleware.RateLimitMiddleware(rate.Limit(20), 50),
 		gin.Recovery(),
 		prometheusMiddleware(),
 	)
 
-	registerHealthAndMetrics(router, db)
+	registerHealthAndMetrics(router, db, config.AppConfig.Server.UploadDir, config.AppConfig.Metrics)
 	registerAPIRoutes(router, h, db)
 
 	return router
 }
 
 // registerHealthAndMetrics 注册健康检查和Prometheus指标端点
-func registerHealthAndMetrics(router *gin.Engine, db *gorm.DB) {
+func registerHealthAndMetrics(router *gin.Engine, db *gorm.DB, uploadDir string, metrics config.MetricsConfig) {
 	// /health 存活检查：仅确认进程运行中
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -60,8 +63,15 @@ func registerHealthAndMetrics(router *gin.Engine, db *gorm.DB) {
 		})
 	})
 
-	// /ready 就绪检查：确认数据库连接正常
+	// /ready 就绪检查：确认数据库和上传存储均可用
 	router.GET("/ready", func(c *gin.Context) {
+		if db == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "not ready",
+				"error":  "database handle unavailable",
+			})
+			return
+		}
 		sqlDB, err := db.DB()
 		if err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{
@@ -77,13 +87,63 @@ func registerHealthAndMetrics(router *gin.Engine, db *gorm.DB) {
 			})
 			return
 		}
+		if err := checkUploadStorage(uploadDir); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "not ready",
+				"error":  "upload storage unavailable",
+			})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"status": "ready",
 			"time":   time.Now().Format(time.RFC3339),
 		})
 	})
 
-	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	metricsHandler := gin.WrapH(promhttp.Handler())
+	router.GET("/metrics", func(c *gin.Context) {
+		if !metrics.Enabled {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		if !hasMetricsToken(c.GetHeader("Authorization"), metrics.Token) {
+			c.Header("WWW-Authenticate", "Bearer")
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		metricsHandler(c)
+	})
+}
+
+func checkUploadStorage(uploadDir string) error {
+	if strings.TrimSpace(uploadDir) == "" {
+		return fmt.Errorf("upload directory is empty")
+	}
+	if err := os.MkdirAll(uploadDir, 0700); err != nil {
+		return fmt.Errorf("create upload directory: %w", err)
+	}
+	probe, err := os.CreateTemp(uploadDir, ".ready-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create storage probe: %w", err)
+	}
+	probePath := probe.Name()
+	defer func() { _ = os.Remove(probePath) }()
+	if err := probe.Close(); err != nil {
+		return fmt.Errorf("close storage probe: %w", err)
+	}
+	if err := os.Remove(probePath); err != nil {
+		return fmt.Errorf("remove storage probe: %w", err)
+	}
+	return nil
+}
+
+func hasMetricsToken(header, expected string) bool {
+	const prefix = "Bearer "
+	if !strings.HasPrefix(header, prefix) {
+		return false
+	}
+	provided := strings.TrimPrefix(header, prefix)
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
 }
 
 // registerAPIRoutes 注册所有API路由

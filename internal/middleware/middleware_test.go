@@ -1,5 +1,5 @@
 // Package middleware middleware_test.go - 中间件单元测试
-// 测试 CORS 中间件的 Origin 反射行为和角色中间件的权限拦截
+// 测试 CORS 白名单行为和角色中间件的权限拦截
 package middleware
 
 import (
@@ -22,48 +22,72 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestCORSMiddlewareOriginReflection(t *testing.T) {
+func TestCORSMiddlewareAllowlist(t *testing.T) {
 	r := gin.New()
-	r.Use(CORSMiddleware())
+	r.Use(CORSMiddleware([]string{"https://allowed.example.com"}))
 	r.GET("/test", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
 
-	t.Run("reflects request Origin header", func(t *testing.T) {
+	t.Run("allows configured cross origin", func(t *testing.T) {
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest("GET", "/test", nil)
-		req.Header.Set("Origin", "https://example.com")
+		req.Header.Set("Origin", "https://allowed.example.com")
 		r.ServeHTTP(w, req)
 
-		if got := w.Header().Get("Access-Control-Allow-Origin"); got != "https://example.com" {
-			t.Fatalf("Access-Control-Allow-Origin = %q, want %q", got, "https://example.com")
+		if got := w.Header().Get("Access-Control-Allow-Origin"); got != "https://allowed.example.com" {
+			t.Fatalf("Access-Control-Allow-Origin = %q", got)
 		}
 		if got := w.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
 			t.Fatalf("Access-Control-Allow-Credentials = %q, want %q", got, "true")
 		}
 	})
 
-	t.Run("returns wildcard when no Origin header", func(t *testing.T) {
+	t.Run("rejects unconfigured cross origin", func(t *testing.T) {
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest("GET", "/test", nil)
+		req.Header.Set("Origin", "https://blocked.example.com")
 		r.ServeHTTP(w, req)
 
-		if got := w.Header().Get("Access-Control-Allow-Origin"); got != "*" {
-			t.Fatalf("Access-Control-Allow-Origin = %q, want %q", got, "*")
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
 		}
-		if got := w.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
-			t.Fatalf("Access-Control-Allow-Credentials = %q, want %q", got, "true")
+		if got := w.Header().Get("Access-Control-Allow-Origin"); got != "" {
+			t.Fatalf("Access-Control-Allow-Origin = %q, want empty", got)
 		}
 	})
 
-	t.Run("sets Access-Control-Allow-Credentials", func(t *testing.T) {
+	t.Run("allows same origin without configuration", func(t *testing.T) {
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest("GET", "/test", nil)
-		req.Header.Set("Origin", "https://example.com")
+		req.Host = "music.example.com"
+		req.Header.Set("Origin", "https://music.example.com")
+		req.Header.Set("X-Forwarded-Proto", "https")
 		r.ServeHTTP(w, req)
 
-		if got := w.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
-			t.Fatalf("Access-Control-Allow-Credentials = %q, want %q", got, "true")
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+		}
+	})
+
+	t.Run("omits CORS headers without Origin", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/test", nil)
+		r.ServeHTTP(w, req)
+
+		if got := w.Header().Get("Access-Control-Allow-Origin"); got != "" {
+			t.Fatalf("Access-Control-Allow-Origin = %q, want empty", got)
+		}
+	})
+
+	t.Run("handles allowed preflight", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("OPTIONS", "/test", nil)
+		req.Header.Set("Origin", "https://allowed.example.com")
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
 		}
 	})
 }

@@ -1,11 +1,12 @@
 server:
-  port: "3060"
+  port: "8080"
   mode: "release"
   read_timeout: 30
   write_timeout: 30
   upload_dir: "uploads"
   max_audio_size_mb: 200
   max_cover_size_mb: 10
+  allowed_origins: []
 
 database:
   type: "sqlite"
@@ -21,6 +22,10 @@ jwt:
   secret: "your-secret-key-change-in-production"
   expire_hour: 24
 
+metrics:
+  enabled: false
+  token: ""
+
 admin:
   bootstrap:
     enabled: false
@@ -29,6 +34,3 @@ admin:
     password: ""
     full_name: "Administrator"
     reset_password: false
-
-security:
-  password_salt: "user-management-salt"

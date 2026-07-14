@@ -9,9 +9,9 @@
 - Go 1.26 + Gin 框架
 - GORM（支持 SQLite / PostgreSQL）
 - JWT 认证 + OTP 双因素
-- Prometheus 指标监控
+- 可选的 Prometheus 指标监控（Bearer token 保护）
 - 零信任限流中间件
-- RSA 加密敏感字段
+- bcrypt 密码哈希
 
 **前端**（详见 [web](./web)）
 
@@ -163,6 +163,9 @@ SERVER_PORT=8080 DATABASE_TYPE=sqlite DATABASE_PATH=/data/music.db ./music-serve
 | `XDG_CONFIG_HOME` | XDG 基础目录，用于搜索用户级配置                                           |
 | `HOSTNAME`        | Admin 面板中显示的 host 名（fallback）                                |
 
+跨域与指标配置也可通过 `SERVER_ALLOWED_ORIGINS`、`METRICS_ENABLED` 和
+`METRICS_TOKEN` 覆盖；跨域来源环境变量使用逗号分隔。
+
 首个管理员也可以完全用环境变量初始化：
 
 ```bash
@@ -181,7 +184,7 @@ ADMIN_BOOTSTRAP_PASSWORD='change-me-please' \
 
 | 字段                     | 类型     | 默认值         | 说明                       |
 |------------------------|--------|-------------|--------------------------|
-| `server.port`          | string | `"3060"`    | 监听端口                     |
+| `server.port`          | string | `"8080"`    | 监听端口                     |
 | `server.mode`          | string | `"debug"`   | 运行模式：`debug` / `release` |
 | `server.read_timeout`  | int    | `30`        | HTTP 读超时（秒）              |
 | `server.write_timeout` | int    | `30`        | HTTP 写超时（秒）              |
@@ -189,10 +192,14 @@ ADMIN_BOOTSTRAP_PASSWORD='change-me-please' \
 | `server.log_file`      | string | `""`        | 日志文件路径（空表示仅 stdout）      |
 | `server.max_audio_size_mb` | int | `200`       | 单个音频文件最大大小（MB）          |
 | `server.max_cover_size_mb` | int | `10`        | 单个封面图片最大大小（MB）          |
+| `server.allowed_origins` | string[] | `[]`      | 允许携带凭据访问 API 的额外跨域来源 |
 
 `server.upload_dir` 支持绝对路径或相对路径；相对路径按服务进程的当前工作目录解析。本地 `make dev-be` 默认会写到仓库根目录下的 `uploads/`，Docker 默认通过 `SERVER_UPLOAD_DIR=/data/uploads` 写入挂载卷。
 
 上传会同时校验大小、扩展名、请求 MIME 和文件头签名。前端也会做预检以减少无效上传，但后端校验才是最终安全边界。
+
+同源请求无需加入 `server.allowed_origins`。只有把前端部署到不同来源时才需要配置完整来源，例如
+`["https://music-ui.example.com"]`；不支持通配符或带路径的地址。
 
 #### database
 
@@ -227,6 +234,18 @@ DATABASE_TYPE=postgres DATABASE_HOST=localhost DATABASE_PORT=5432 DATABASE_USER=
 | `jwt.secret`      | string | -    | JWT 签名密钥（生产环境必须修改） |
 | `jwt.expire_hour` | int    | `24` | JWT 过期时间（小时）       |
 
+密码使用 bcrypt 哈希保存；当前不存在 RSA 字段加密配置。
+
+#### metrics
+
+| 字段              | 类型   | 默认值  | 说明                               |
+|-------------------|--------|---------|------------------------------------|
+| `metrics.enabled` | bool   | `false` | 是否开放 `/metrics`                |
+| `metrics.token`   | string | `""`  | Prometheus 抓取使用的 Bearer token |
+
+指标默认关闭。启用时必须同时设置非空 token，并使用
+`Authorization: Bearer <token>` 抓取。`/health` 只表示进程存活；`/ready` 会同时检查数据库连接和上传目录可写性。
+
 #### admin.bootstrap
 
 首个管理员初始化是显式 opt-in：默认不创建任何管理员。启用后，程序会在数据库迁移后确保指定用户是可用的管理员；如果用户名不存在则创建，如果用户名已存在则提升为 admin 并激活账号。
@@ -241,12 +260,6 @@ DATABASE_TYPE=postgres DATABASE_HOST=localhost DATABASE_PORT=5432 DATABASE_USER=
 | `admin.bootstrap.reset_password`        | bool   | `false`           | 用户名已存在时，是否用配置中的 password 重置密码      |
 
 初始化完成后，建议关闭 `admin.bootstrap.enabled` 并重启；如果保留启用状态，程序也只会确保该用户仍是 admin，不会重复创建账号。生产环境不要把管理员密码提交到仓库，优先用环境变量或只读部署配置提供。
-
-#### security
-
-| 字段                       | 类型     | 默认值 | 说明         |
-|--------------------------|--------|-----|------------|
-| `security.password_salt` | string | -   | 密码哈希盐值（预留） |
 
 ### 日志
 

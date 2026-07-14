@@ -88,7 +88,7 @@ When in doubt, run `make help` to see all available commands.
 - The frontend has **i18n** (Chinese + English). When adding UI text, use the i18n system (`web/src/i18n/`).
 - Element Plus is the UI component library. Do not introduce other UI frameworks.
 - The frontend uses **Pinia** for state management and **Vue Router** for routing.
-- The project uses **RSA encryption** for sensitive fields and **JWT + OTP** for authentication — be cautious around auth-related code.
+- The project uses **bcrypt password hashing** and **JWT + OTP** authentication — be cautious around auth-related code.
 - **Docker** multi-stage build: frontend (Node) → backend (Go) → Alpine runtime. The `Dockerfile` expects `config.yaml` at the final stage.
 
 ---

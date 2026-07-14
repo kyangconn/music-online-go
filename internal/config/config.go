@@ -4,6 +4,8 @@ package config
 
 import (
 	"errors"
+	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +18,7 @@ type Config struct {
 	Server         ServerConfig
 	Database       DatabaseConfig
 	JWT            JWTConfig
+	Metrics        MetricsConfig
 	AdminBootstrap AdminBootstrapConfig
 }
 
@@ -28,6 +31,7 @@ type ServerConfig struct {
 	LogFile        string
 	MaxAudioSizeMB int
 	MaxCoverSizeMB int
+	AllowedOrigins []string
 }
 
 type DatabaseConfig struct {
@@ -46,6 +50,11 @@ type JWTConfig struct {
 	ExpireHour int
 }
 
+type MetricsConfig struct {
+	Enabled bool
+	Token   string
+}
+
 type AdminBootstrapConfig struct {
 	Enabled       bool
 	Username      string
@@ -53,10 +62,6 @@ type AdminBootstrapConfig struct {
 	Password      string
 	FullName      string
 	ResetPassword bool
-}
-
-type SecurityConfig struct {
-	PasswordSalt string
 }
 
 var AppConfig *Config
@@ -74,7 +79,7 @@ func LoadConfig() error {
 	}
 
 	// 设置默认值
-	viper.SetDefault("server.port", "3060")
+	viper.SetDefault("server.port", "8080")
 	viper.SetDefault("server.mode", "debug")
 	viper.SetDefault("server.read_timeout", 30)
 	viper.SetDefault("server.write_timeout", 30)
@@ -82,10 +87,13 @@ func LoadConfig() error {
 	viper.SetDefault("server.log_file", "")
 	viper.SetDefault("server.max_audio_size_mb", 200)
 	viper.SetDefault("server.max_cover_size_mb", 10)
+	viper.SetDefault("server.allowed_origins", []string{})
 	viper.SetDefault("database.type", "sqlite")
 	viper.SetDefault("database.path", "music.db")
 	viper.SetDefault("database.sslmode", "disable")
 	viper.SetDefault("jwt.expire_hour", 24)
+	viper.SetDefault("metrics.enabled", false)
+	viper.SetDefault("metrics.token", "")
 	viper.SetDefault("admin.bootstrap.enabled", false)
 	viper.SetDefault("admin.bootstrap.full_name", "Administrator")
 	viper.SetDefault("admin.bootstrap.reset_password", false)
@@ -104,6 +112,10 @@ func LoadConfig() error {
 	if logFile == "" {
 		logFile = viper.GetString("server.log_file")
 	}
+	allowedOrigins, err := NormalizeAllowedOrigins(viper.GetStringSlice("server.allowed_origins"))
+	if err != nil {
+		return err
+	}
 
 	AppConfig = &Config{
 		Server: ServerConfig{
@@ -115,6 +127,7 @@ func LoadConfig() error {
 			LogFile:        logFile,
 			MaxAudioSizeMB: viper.GetInt("server.max_audio_size_mb"),
 			MaxCoverSizeMB: viper.GetInt("server.max_cover_size_mb"),
+			AllowedOrigins: allowedOrigins,
 		},
 		Database: DatabaseConfig{
 			Type:     viper.GetString("database.type"),
@@ -129,6 +142,10 @@ func LoadConfig() error {
 		JWT: JWTConfig{
 			Secret:     viper.GetString("jwt.secret"),
 			ExpireHour: viper.GetInt("jwt.expire_hour"),
+		},
+		Metrics: MetricsConfig{
+			Enabled: viper.GetBool("metrics.enabled"),
+			Token:   viper.GetString("metrics.token"),
 		},
 		AdminBootstrap: AdminBootstrapConfig{
 			Enabled:       viper.GetBool("admin.bootstrap.enabled"),
@@ -146,7 +163,42 @@ func LoadConfig() error {
 		pklog.Fatalf("%v", err)
 		return err
 	}
+	if err := ValidateMetricsConfig(AppConfig.Metrics); err != nil {
+		return err
+	}
 
+	return nil
+}
+
+func NormalizeAllowedOrigins(values []string) ([]string, error) {
+	seen := make(map[string]struct{})
+	origins := make([]string, 0, len(values))
+	for _, value := range values {
+		for _, item := range strings.Split(value, ",") {
+			origin := strings.TrimSpace(item)
+			if origin == "" {
+				continue
+			}
+			parsed, err := url.Parse(origin)
+			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
+				parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
+				return nil, fmt.Errorf("invalid allowed origin %q: expected http(s)://host[:port]", origin)
+			}
+			normalized := strings.ToLower(parsed.Scheme + "://" + parsed.Host)
+			if _, ok := seen[normalized]; ok {
+				continue
+			}
+			seen[normalized] = struct{}{}
+			origins = append(origins, normalized)
+		}
+	}
+	return origins, nil
+}
+
+func ValidateMetricsConfig(cfg MetricsConfig) error {
+	if cfg.Enabled && strings.TrimSpace(cfg.Token) == "" {
+		return errors.New("metrics token is required when metrics are enabled")
+	}
 	return nil
 }
 
