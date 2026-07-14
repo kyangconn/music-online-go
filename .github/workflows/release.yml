@@ -14,6 +14,7 @@ jobs:
     env:
       GO_VERSION: "1.26"
       NODE_VERSION: "24"
+      PNPM_VERSION: "11.9"
 
     steps:
       - name: Checkout
@@ -24,7 +25,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
-          version: 11
+          version: ${{ env.PNPM_VERSION }}
 
       - name: Setup Node
         uses: actions/setup-node@v6
