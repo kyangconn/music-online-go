@@ -12,5 +12,5 @@ func (s *musicService) AdminDelete(ctx context.Context, id uint) error {
 	}
 
 	// 管理员可以直接删除，不需要检查所有权
-	return s.repo.Delete(ctx, id)
+	return s.deleteMusic(ctx, id)
 }

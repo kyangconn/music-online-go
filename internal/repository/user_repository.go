@@ -25,6 +25,7 @@ type UserRepository interface {
 	FindByEmail(ctx context.Context, email string) (*domain.User, error)
 	Update(ctx context.Context, user *domain.User) error
 	Delete(ctx context.Context, id uint) error
+	ListOwnedMusicIDs(ctx context.Context, id uint) ([]uint, error)
 	ExistsByUsername(ctx context.Context, username string) (bool, error)
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
 	List(ctx context.Context, page, pageSize int) ([]*domain.User, int64, error)
@@ -116,14 +117,42 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 }
 
 func (r *userRepository) Delete(ctx context.Context, id uint) error {
-	result := r.db.WithContext(ctx).Delete(&domain.User{}, id)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrUserNotFound
-	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var musicIDs []uint
+		if err := tx.Model(&domain.Music{}).Where("user_id = ?", id).Pluck("id", &musicIDs).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Where("user_id = ?", id).Delete(&domain.UserMusicLike{}).Error; err != nil {
+			return err
+		}
+		if len(musicIDs) > 0 {
+			if err := tx.Where("music_id IN ?", musicIDs).Delete(&domain.UserMusicLike{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&domain.Music{}).Where("album_id IN ?", musicIDs).Update("album_id", nil).Error; err != nil {
+				return err
+			}
+			if err := tx.Unscoped().Where("id IN ?", musicIDs).Delete(&domain.Music{}).Error; err != nil {
+				return err
+			}
+		}
+
+		result := tx.Unscoped().Delete(&domain.User{}, id)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrUserNotFound
+		}
+		return nil
+	})
+}
+
+func (r *userRepository) ListOwnedMusicIDs(ctx context.Context, id uint) ([]uint, error) {
+	var musicIDs []uint
+	err := r.db.WithContext(ctx).Model(&domain.Music{}).Where("user_id = ?", id).Pluck("id", &musicIDs).Error
+	return musicIDs, err
 }
 
 func (r *userRepository) ExistsByUsername(ctx context.Context, username string) (bool, error) {

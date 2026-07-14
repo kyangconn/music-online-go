@@ -122,3 +122,7 @@ type TOTPVerifyRequest struct {
 type TOTPDisableRequest struct {
 	Code string `json:"code" binding:"required,len=6"`
 }
+
+type DeleteAccountRequest struct {
+	Password string `json:"password" binding:"required"`
+}

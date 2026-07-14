@@ -9,6 +9,9 @@ package service_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/kyangconn/music-online-go/internal/config"
@@ -23,11 +26,18 @@ import (
 type stubUserRepo struct {
 	findByUsernameFn func(ctx context.Context, username string) (*domain.User, error)
 	findByEmailFn    func(ctx context.Context, email string) (*domain.User, error)
+	findByIDFn       func(ctx context.Context, id uint) (*domain.User, error)
+	countAdminsFn    func(ctx context.Context) (int64, error)
+	listMusicIDsFn   func(ctx context.Context, id uint) ([]uint, error)
+	deleteFn         func(ctx context.Context, id uint) error
 }
 
 func (s *stubUserRepo) Create(_ context.Context, _ *domain.User) error { return nil }
 
-func (s *stubUserRepo) FindByID(_ context.Context, _ uint) (*domain.User, error) {
+func (s *stubUserRepo) FindByID(ctx context.Context, id uint) (*domain.User, error) {
+	if s.findByIDFn != nil {
+		return s.findByIDFn(ctx, id)
+	}
 	return nil, repository.ErrUserNotFound
 }
 
@@ -47,7 +57,19 @@ func (s *stubUserRepo) FindByEmail(_ context.Context, email string) (*domain.Use
 
 func (s *stubUserRepo) Update(_ context.Context, _ *domain.User) error { return nil }
 
-func (s *stubUserRepo) Delete(_ context.Context, _ uint) error { return nil }
+func (s *stubUserRepo) Delete(ctx context.Context, id uint) error {
+	if s.deleteFn != nil {
+		return s.deleteFn(ctx, id)
+	}
+	return nil
+}
+
+func (s *stubUserRepo) ListOwnedMusicIDs(ctx context.Context, id uint) ([]uint, error) {
+	if s.listMusicIDsFn != nil {
+		return s.listMusicIDsFn(ctx, id)
+	}
+	return nil, nil
+}
 
 func (s *stubUserRepo) ExistsByUsername(_ context.Context, _ string) (bool, error) { return false, nil }
 
@@ -65,7 +87,12 @@ func (s *stubUserRepo) Search(_ context.Context, _ string, _, _ int) ([]*domain.
 	return nil, 0, nil
 }
 
-func (s *stubUserRepo) CountAdmins(_ context.Context) (int64, error) { return 0, nil }
+func (s *stubUserRepo) CountAdmins(ctx context.Context) (int64, error) {
+	if s.countAdminsFn != nil {
+		return s.countAdminsFn(ctx)
+	}
+	return 0, nil
+}
 
 func (s *stubUserRepo) CountAll(_ context.Context) (int64, error) { return 0, nil }
 
@@ -192,5 +219,87 @@ func TestLoginValidCredentials(t *testing.T) {
 	}
 	if resp.User.Username != "bob" {
 		t.Fatalf("username = %q, want bob", resp.User.Username)
+	}
+}
+
+func TestDeleteUserRejectsIncorrectPassword(t *testing.T) {
+	user := makeActiveUser(t, "delete-user", "correct-password")
+	deleted := false
+	repo := &stubUserRepo{
+		findByIDFn: func(_ context.Context, _ uint) (*domain.User, error) { return user, nil },
+		deleteFn: func(_ context.Context, _ uint) error {
+			deleted = true
+			return nil
+		},
+	}
+	svc := service.NewUserService(repo)
+
+	err := svc.DeleteUser(context.Background(), 1, "wrong-password")
+
+	assertLoginErrIs(t, err, service.ErrInvalidCredentials)
+	if deleted {
+		t.Fatal("repository delete was called for an invalid password")
+	}
+}
+
+func TestDeleteUserProtectsLastActiveAdmin(t *testing.T) {
+	user := makeActiveUser(t, "last-admin", "correct-password")
+	user.Role = "admin"
+	deleted := false
+	repo := &stubUserRepo{
+		findByIDFn:    func(_ context.Context, _ uint) (*domain.User, error) { return user, nil },
+		countAdminsFn: func(_ context.Context) (int64, error) { return 1, nil },
+		deleteFn: func(_ context.Context, _ uint) error {
+			deleted = true
+			return nil
+		},
+	}
+	svc := service.NewUserService(repo)
+
+	err := svc.DeleteUser(context.Background(), 1, "correct-password")
+
+	assertLoginErrIs(t, err, service.ErrLastActiveAdmin)
+	if deleted {
+		t.Fatal("repository delete was called for the last active admin")
+	}
+}
+
+func TestDeleteUserCleansOwnedMusicDirectoriesAfterDatabaseDelete(t *testing.T) {
+	originalConfig := config.AppConfig
+	uploadDir := t.TempDir()
+	config.AppConfig = &config.Config{Server: config.ServerConfig{UploadDir: uploadDir}}
+	t.Cleanup(func() { config.AppConfig = originalConfig })
+
+	user := makeActiveUser(t, "delete-user", "correct-password")
+	for _, id := range []uint{10, 11} {
+		dir := filepath.Join(uploadDir, fmt.Sprintf("%d", id))
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatalf("create upload directory: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "audio.mp3"), []byte("audio"), 0600); err != nil {
+			t.Fatalf("write upload: %v", err)
+		}
+	}
+	deleted := false
+	repo := &stubUserRepo{
+		findByIDFn:     func(_ context.Context, _ uint) (*domain.User, error) { return user, nil },
+		listMusicIDsFn: func(_ context.Context, _ uint) ([]uint, error) { return []uint{10, 11}, nil },
+		deleteFn: func(_ context.Context, _ uint) error {
+			deleted = true
+			return nil
+		},
+	}
+	svc := service.NewUserService(repo)
+
+	if err := svc.DeleteUser(context.Background(), 1, "correct-password"); err != nil {
+		t.Fatalf("delete user: %v", err)
+	}
+	if !deleted {
+		t.Fatal("repository delete was not called")
+	}
+	for _, id := range []uint{10, 11} {
+		if _, err := os.Stat(filepath.Join(uploadDir, fmt.Sprintf("%d", id))); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("upload directory %d still exists or stat failed: %v", id, err)
+		}
 	}
 }

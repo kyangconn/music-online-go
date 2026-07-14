@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -714,6 +715,128 @@ func TestUploadFilesCreatesAudioPath(t *testing.T) {
 	if ct != "image/png" {
 		t.Fatalf("cover Content-Type = %q, want image/png", ct)
 	}
+}
+
+func TestDeleteMusicRemovesDatabaseRelationsAndMedia(t *testing.T) {
+	ownerToken := registerAndLogin(t, "delete-music-owner")
+	likerToken := registerAndLogin(t, "delete-music-liker")
+	musicID := createMusic(t, ownerToken, "Delete Lifecycle Song")
+	if w := uploadMusicFiles(t, ownerToken, musicID); w.Code != http.StatusOK {
+		t.Fatalf("upload: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var stored domain.Music
+	if err := database.DB.First(&stored, musicID).Error; err != nil {
+		t.Fatalf("find uploaded music: %v", err)
+	}
+	musicDir := filepath.Dir(stored.Path)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/musics/"+strconv.Itoa(int(musicID))+"/like", nil)
+	req.Header.Set("Authorization", "Bearer "+likerToken)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("like: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("DELETE", "/api/v1/musics/"+strconv.Itoa(int(musicID)), nil)
+	req.Header.Set("Authorization", "Bearer "+ownerToken)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var musicCount int64
+	if err := database.DB.Unscoped().Model(&domain.Music{}).Where("id = ?", musicID).Count(&musicCount).Error; err != nil {
+		t.Fatalf("count deleted music: %v", err)
+	}
+	if musicCount != 0 {
+		t.Fatalf("music rows after deletion = %d, want 0", musicCount)
+	}
+	var likeCount int64
+	if err := database.DB.Model(&domain.UserMusicLike{}).Where("music_id = ?", musicID).Count(&likeCount).Error; err != nil {
+		t.Fatalf("count deleted likes: %v", err)
+	}
+	if likeCount != 0 {
+		t.Fatalf("like rows after deletion = %d, want 0", likeCount)
+	}
+	if _, err := os.Stat(musicDir); !os.IsNotExist(err) {
+		t.Fatalf("music directory still exists or stat failed: %v", err)
+	}
+}
+
+func TestDeleteAccountRequiresPasswordAndRemovesOwnedData(t *testing.T) {
+	token, userID := registerAndLoginWithID(t, "delete-account-user")
+	musicID := createMusic(t, token, "Account Lifecycle Song")
+	if w := uploadMusicFiles(t, token, musicID); w.Code != http.StatusOK {
+		t.Fatalf("upload: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var stored domain.Music
+	if err := database.DB.First(&stored, musicID).Error; err != nil {
+		t.Fatalf("find uploaded music: %v", err)
+	}
+	musicDir := filepath.Dir(stored.Path)
+
+	w := deleteAccount(t, token, "wrong-password")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("wrong password: expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(musicDir); err != nil {
+		t.Fatalf("media was removed after rejected deletion: %v", err)
+	}
+
+	w = deleteAccount(t, token, "password123")
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete account: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var userCount int64
+	if err := database.DB.Unscoped().Model(&domain.User{}).Where("id = ?", userID).Count(&userCount).Error; err != nil {
+		t.Fatalf("count deleted user: %v", err)
+	}
+	if userCount != 0 {
+		t.Fatalf("user rows after deletion = %d, want 0", userCount)
+	}
+	var musicCount int64
+	if err := database.DB.Unscoped().Model(&domain.Music{}).Where("id = ?", musicID).Count(&musicCount).Error; err != nil {
+		t.Fatalf("count account music: %v", err)
+	}
+	if musicCount != 0 {
+		t.Fatalf("owned music rows after deletion = %d, want 0", musicCount)
+	}
+	if _, err := os.Stat(musicDir); !os.IsNotExist(err) {
+		t.Fatalf("owned music directory still exists or stat failed: %v", err)
+	}
+
+	w = httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/users/profile", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("deleted account token: expected 401, got %d: %s", w.Code, w.Body.String())
+	}
+
+	registerBody := `{"username":"delete-account-user","email":"delete-account-user@test.com","password":"password123"}`
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("POST", "/api/v1/users/register", strings.NewReader(registerBody))
+	req.Header.Set("Content-Type", "application/json")
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("re-register deleted account: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func deleteAccount(t *testing.T, token, password string) *httptest.ResponseRecorder {
+	t.Helper()
+	w := httptest.NewRecorder()
+	body := `{"password":"` + password + `"}`
+	req, _ := http.NewRequest("DELETE", "/api/v1/users/profile", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	testRouter.ServeHTTP(w, req)
+	return w
 }
 
 func registerAndLoginWithID(t *testing.T, username string) (string, uint) {

@@ -19,11 +19,17 @@ import (
 )
 
 var testRouter *gin.Engine
+var testUploadDir string
 
 func TestMain(m *testing.M) {
+	var err error
+	testUploadDir, err = os.MkdirTemp("", "music-online-handler-test-")
+	if err != nil {
+		panic(err)
+	}
 	config.AppConfig = &config.Config{
 		Database: config.DatabaseConfig{Type: "sqlite", Path: ":memory:"},
-		Server:   config.ServerConfig{UploadDir: os.TempDir()},
+		Server:   config.ServerConfig{UploadDir: testUploadDir},
 		JWT:      config.JWTConfig{Secret: "test-secret", ExpireHour: 24},
 	}
 
@@ -144,6 +150,10 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	if err := database.Close(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to close test database: %v\n", err)
+		os.Exit(1)
+	}
+	if err := os.RemoveAll(testUploadDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to remove test uploads: %v\n", err)
 		os.Exit(1)
 	}
 	os.Exit(code)

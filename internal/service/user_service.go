@@ -21,6 +21,7 @@ var (
 	ErrInvalidTOTPCode      = errors.New("invalid totp code")
 	ErrOldPasswordIncorrect = errors.New("old password is incorrect")
 	ErrBootstrapAdminConfig = errors.New("bootstrap admin config is incomplete")
+	ErrLastActiveAdmin      = errors.New("cannot delete the last active admin")
 )
 
 // UserService defines user business logic operations.
@@ -30,7 +31,7 @@ type UserService interface {
 	GetUserByID(ctx context.Context, id uint) (*domain.UserResponse, error)
 	GetUserByUsername(ctx context.Context, username string) (*domain.UserResponse, error)
 	UpdateUser(ctx context.Context, id uint, req *domain.UpdateUserRequest) (*domain.UserResponse, error)
-	DeleteUser(ctx context.Context, id uint) error
+	DeleteUser(ctx context.Context, id uint, currentPassword string) error
 	ChangePassword(ctx context.Context, userID uint, oldPassword, newPassword string) error
 	VerifyUser(ctx context.Context, id uint) error
 	ListUsers(ctx context.Context, page, pageSize int) ([]*domain.UserResponse, int64, error)
@@ -262,8 +263,41 @@ func (s *userService) UpdateUser(ctx context.Context, id uint, req *domain.Updat
 	return user.ToResponse(), nil
 }
 
-func (s *userService) DeleteUser(ctx context.Context, id uint) error {
-	return s.userRepo.Delete(ctx, id)
+func (s *userService) DeleteUser(ctx context.Context, id uint, currentPassword string) error {
+	user, err := s.userRepo.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	valid, err := password.VerifyPassword(currentPassword, user.Password)
+	if err != nil {
+		return fmt.Errorf("failed to verify password: %w", err)
+	}
+	if !valid {
+		return ErrInvalidCredentials
+	}
+
+	if user.Role == "admin" && user.IsActive {
+		adminCount, err := s.userRepo.CountAdmins(ctx)
+		if err != nil {
+			return err
+		}
+		if adminCount <= 1 {
+			return ErrLastActiveAdmin
+		}
+	}
+
+	musicIDs, err := s.userRepo.ListOwnedMusicIDs(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := s.userRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+	for _, musicID := range musicIDs {
+		cleanupMusicUploadDirectory(musicID)
+	}
+	return nil
 }
 
 func (s *userService) ChangePassword(ctx context.Context, userID uint, oldPassword, newPassword string) error {

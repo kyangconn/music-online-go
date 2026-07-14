@@ -191,6 +191,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param request body domain.DeleteAccountRequest true "当前密码"
 // @Success 200 {object} Response "删除成功"
 // @Failure 401 {object} Response "未授权"
 // @Failure 404 {object} Response "用户不存在"
@@ -198,8 +199,23 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 func (h *UserHandler) DeleteUser(c *gin.Context) {
 	userID := c.GetUint("userID")
 
-	if err := h.userService.DeleteUser(c.Request.Context(), userID); err != nil {
-		NotFound(c, "User not found")
+	var req domain.DeleteAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, "Current password is required")
+		return
+	}
+
+	if err := h.userService.DeleteUser(c.Request.Context(), userID, req.Password); err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidCredentials):
+			BadRequest(c, "Current password is incorrect")
+		case errors.Is(err, service.ErrLastActiveAdmin):
+			BadRequest(c, "Cannot delete the last active admin")
+		case errors.Is(err, repository.ErrUserNotFound):
+			NotFound(c, "User not found")
+		default:
+			InternalServerError(c, "Failed to delete account")
+		}
 		return
 	}
 
@@ -216,7 +232,7 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 // @Param request body ChangePasswordRequest true "密码信息"
 // @Success 200 {object} Response "修改成功"
 // @Failure 400 {object} Response "请求参数错误"
-// @Failure 401 {object} Response "旧密码错误"
+// @Failure 400 {object} Response "旧密码错误"
 // @Router /api/v1/users/change-password [post]
 func (h *UserHandler) ChangePassword(c *gin.Context) {
 	userID := c.GetUint("userID")
@@ -230,7 +246,7 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 	if err := h.userService.ChangePassword(c.Request.Context(), userID, req.OldPassword, req.NewPassword); err != nil {
 		switch {
 		case errors.Is(err, service.ErrOldPasswordIncorrect):
-			Unauthorized(c, "Old password is incorrect")
+			BadRequest(c, "Old password is incorrect")
 		default:
 			InternalServerError(c, "Failed to change password")
 		}

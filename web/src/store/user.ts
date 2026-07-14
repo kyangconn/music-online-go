@@ -88,6 +88,11 @@ export const useUserStore = defineStore("user", () => {
     }
   }
 
+  async function deleteAccount(currentPassword: string) {
+    await request.delete("/users/profile", { data: { password: currentPassword } });
+    logout();
+  }
+
   /**
    * 向服务端请求生成 TOTP 两步验证的密钥和二维码
    * @returns 包含 TOTP secret 和二维码 URL 的数据
@@ -142,6 +147,7 @@ export const useUserStore = defineStore("user", () => {
     setUser,
     updateUser,
     changePassword,
+    deleteAccount,
     setupTOTP,
     enableTOTP,
     disableTOTP,

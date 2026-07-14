@@ -165,7 +165,22 @@ func (r *musicRepository) Update(ctx context.Context, music *domain.Music) error
 }
 
 func (r *musicRepository) Delete(ctx context.Context, id uint) error {
-	return r.db.WithContext(ctx).Delete(&domain.Music{}, id).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("music_id = ?", id).Delete(&domain.UserMusicLike{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&domain.Music{}).Where("album_id = ?", id).Update("album_id", nil).Error; err != nil {
+			return err
+		}
+		result := tx.Unscoped().Delete(&domain.Music{}, id)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrMusicNotFound
+		}
+		return nil
+	})
 }
 
 func (r *musicRepository) LikeMusic(ctx context.Context, userID, musicID uint) error {

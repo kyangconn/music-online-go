@@ -249,11 +249,14 @@ func (h *MusicHandler) Delete(c *gin.Context) {
 	}
 
 	if err := h.service.Delete(c.Request.Context(), c.GetUint("userID"), c.GetString("role"), uint(id)); err != nil {
-		if errors.Is(err, service.ErrForbidden) {
+		switch {
+		case errors.Is(err, service.ErrForbidden):
 			Forbidden(c, "You can only delete your own music")
-			return
+		case errors.Is(err, repository.ErrMusicNotFound):
+			NotFound(c, "Music not found")
+		default:
+			InternalServerError(c, "Failed to delete music")
 		}
-		InternalServerError(c, "Failed to delete music")
 		return
 	}
 

@@ -230,7 +230,25 @@ func (s *musicService) Delete(ctx context.Context, userID uint, role string, id 
 		return ErrForbidden
 	}
 
-	return s.repo.Delete(ctx, id)
+	return s.deleteMusic(ctx, id)
+}
+
+func (s *musicService) deleteMusic(ctx context.Context, id uint) error {
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+	cleanupMusicUploadDirectory(id)
+	return nil
+}
+
+func cleanupMusicUploadDirectory(id uint) {
+	if config.AppConfig == nil || config.AppConfig.Server.UploadDir == "" {
+		return
+	}
+	dir := filepath.Join(config.AppConfig.Server.UploadDir, strconv.FormatUint(uint64(id), 10))
+	if err := os.RemoveAll(dir); err != nil {
+		pklog.Errorf("Failed to clean up upload directory %s: %v", dir, err)
+	}
 }
 
 func (s *musicService) Like(ctx context.Context, userID, musicID uint) error {
@@ -364,19 +382,36 @@ func (s *musicService) UploadFiles(ctx context.Context, userID uint, role string
 		return nil, fmt.Errorf("failed to create upload directory: %w", err)
 	}
 
+	var staged []*stagedMediaFile
+	cleanupStaged := func() {
+		for _, file := range staged {
+			file.cleanupTemp()
+		}
+	}
+	rollbackApplied := func(cause error) error {
+		var rollbackErr error
+		for i := len(staged) - 1; i >= 0; i-- {
+			if err := staged[i].rollback(); err != nil {
+				rollbackErr = errors.Join(rollbackErr, err)
+			}
+		}
+		if rollbackErr != nil {
+			return errors.Join(cause, fmt.Errorf("failed to restore previous media files: %w", rollbackErr))
+		}
+		return cause
+	}
+
 	if audioHeader != nil {
 		tmpPath, finalPath, fileHash, err := saveUploadedMediaFile(musicDir, "audio", audioHeader, true)
 		if err != nil {
+			cleanupStaged()
 			return nil, err
 		}
-		// Remove old file to avoid orphaned old-extension files
-		if music.Path != "" && music.Path != finalPath {
-			cleanupUploadedFiles([]string{music.Path})
-		}
-		// Atomically rename temp file to final path
-		if err := os.Rename(tmpPath, finalPath); err != nil {
-			return nil, fmt.Errorf("failed to finalize audio file: %w", err)
-		}
+		staged = append(staged, &stagedMediaFile{
+			tmpPath:      tmpPath,
+			finalPath:    finalPath,
+			previousPath: music.Path,
+		})
 		music.Path = finalPath
 		music.FileHash = fileHash
 	}
@@ -384,33 +419,101 @@ func (s *musicService) UploadFiles(ctx context.Context, userID uint, role string
 	if coverHeader != nil {
 		tmpPath, finalPath, _, err := saveUploadedMediaFile(musicDir, "cover", coverHeader, false)
 		if err != nil {
+			cleanupStaged()
 			return nil, err
 		}
-		// Remove old file to avoid orphaned old-extension files
-		if music.Img != "" && music.Img != finalPath {
-			cleanupUploadedFiles([]string{music.Img})
-		}
-		// Atomically rename temp file to final path
-		if err := os.Rename(tmpPath, finalPath); err != nil {
-			return nil, fmt.Errorf("failed to finalize cover file: %w", err)
-		}
+		staged = append(staged, &stagedMediaFile{
+			tmpPath:      tmpPath,
+			finalPath:    finalPath,
+			previousPath: music.Img,
+		})
 		music.Img = finalPath
 	}
 
+	for _, file := range staged {
+		if err := file.apply(); err != nil {
+			return nil, rollbackApplied(err)
+		}
+	}
+
 	if err := s.repo.Update(ctx, music); err != nil {
-		return nil, err
+		return nil, rollbackApplied(err)
+	}
+
+	for _, file := range staged {
+		file.commit()
 	}
 
 	return music.ToResponse(), nil
 }
 
-// saveUploadedMediaFile saves the uploaded file to a temp file first, returning
-// the temp path, final path (with extension), and optional file hash.
-// The caller is responsible for the atomic os.Rename from tmpPath to finalPath.
+type stagedMediaFile struct {
+	tmpPath      string
+	finalPath    string
+	previousPath string
+	backupPath   string
+	applied      bool
+}
+
+func (f *stagedMediaFile) apply() error {
+	if _, err := os.Stat(f.finalPath); err == nil {
+		f.backupPath = f.tmpPath + ".backup"
+		if err := os.Rename(f.finalPath, f.backupPath); err != nil {
+			return fmt.Errorf("failed to back up existing media file: %w", err)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("failed to inspect existing media file: %w", err)
+	}
+
+	if err := os.Rename(f.tmpPath, f.finalPath); err != nil {
+		if f.backupPath != "" {
+			if restoreErr := os.Rename(f.backupPath, f.finalPath); restoreErr != nil {
+				return errors.Join(
+					fmt.Errorf("failed to finalize media file: %w", err),
+					fmt.Errorf("failed to restore media backup: %w", restoreErr),
+				)
+			}
+			f.backupPath = ""
+		}
+		return fmt.Errorf("failed to finalize media file: %w", err)
+	}
+
+	f.applied = true
+	return nil
+}
+
+func (f *stagedMediaFile) rollback() error {
+	var rollbackErr error
+	if f.applied {
+		if err := os.Remove(f.finalPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			rollbackErr = errors.Join(rollbackErr, fmt.Errorf("remove replacement %s: %w", f.finalPath, err))
+		}
+	}
+	if f.backupPath != "" {
+		if err := os.Rename(f.backupPath, f.finalPath); err != nil {
+			rollbackErr = errors.Join(rollbackErr, fmt.Errorf("restore backup %s: %w", f.finalPath, err))
+		}
+	}
+	f.cleanupTemp()
+	return rollbackErr
+}
+
+func (f *stagedMediaFile) commit() {
+	cleanupUploadedFiles([]string{f.backupPath})
+	if f.previousPath != f.finalPath {
+		cleanupUploadedFiles([]string{f.previousPath})
+	}
+}
+
+func (f *stagedMediaFile) cleanupTemp() {
+	cleanupUploadedFiles([]string{f.tmpPath})
+}
+
+// saveUploadedMediaFile saves the upload to a unique temporary file. The caller
+// promotes it only after every requested media file has been validated and staged.
 func saveUploadedMediaFile(dir, baseName string, header *multipart.FileHeader, calculateHash bool) (tmpPath, finalPath string, fileHash string, err error) {
 	ext := filepath.Ext(header.Filename)
 	finalPath = filepath.Join(dir, baseName+ext)
-	tmpPath = filepath.Join(dir, baseName+".tmp")
 
 	src, err := header.Open()
 	if err != nil {
@@ -422,10 +525,11 @@ func saveUploadedMediaFile(dir, baseName string, header *multipart.FileHeader, c
 		}
 	}()
 
-	dst, err := os.Create(filepath.Clean(tmpPath))
+	dst, err := os.CreateTemp(dir, "."+baseName+"-*.tmp")
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to create %s file: %w", baseName, err)
 	}
+	tmpPath = dst.Name()
 	saved := false
 	defer func() {
 		if cerr := dst.Close(); cerr != nil {
