@@ -43,6 +43,10 @@ jobs:
         working-directory: web
         run: pnpm eslint .
 
+      - name: Test Frontend
+        working-directory: web
+        run: pnpm test
+
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
@@ -65,6 +69,13 @@ jobs:
           MODULE="$(go list -m)"
           go test -coverpkg="$MODULE/..." -coverprofile=coverage.out ./...
           go tool cover -func coverage.out | tail -n 1
+
+      - name: Go Race Detector
+        env:
+          CGO_ENABLED: "1"
+          DATABASE_TYPE: sqlite
+          DATABASE_PATH: ":memory:"
+        run: go test -race ./...
 
       - name: Go Build Check
         run: go build -v ./cmd/server

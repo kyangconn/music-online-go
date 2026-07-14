@@ -8,7 +8,10 @@
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "eslint . --fix"
+    "lint": "eslint . --fix",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
@@ -28,11 +31,14 @@
     "@types/node": "^24.12.4",
     "@types/qrcode": "^1.5.6",
     "@vitejs/plugin-vue": "^6.0.7",
+    "@vitest/coverage-v8": "^4.1.10",
+    "@vue/test-utils": "^2.4.11",
     "@vue/tsconfig": "^0.9.1",
     "eslint": "^10.4.0",
     "eslint-plugin-perfectionist": "^5.9.0",
     "eslint-plugin-vue": "^10.9.1",
     "globals": "^16.5.0",
+    "happy-dom": "^20.10.6",
     "jiti": "^2.7.0",
     "sass": "^1.100.0",
     "typescript": "~6.0.3",

@@ -1,4 +1,4 @@
-.PHONY: help install-fe install-fe-dev build build-fe build-be build-silent dev dev-fe dev-be test test-be test-cover check verify check-fe check-be typecheck-fe lint lint-fe lint-be audit-be docker clean
+.PHONY: help install-fe install-fe-dev build build-fe build-be build-silent dev dev-fe dev-be test test-be test-fe test-cover test-cover-fe check verify check-fe check-be typecheck-fe lint lint-fe lint-be audit-be docker clean
 
 .DEFAULT_GOAL := help
 
@@ -39,8 +39,9 @@ help: ## Show available commands
 	@echo "  make lint-fe        Run ESLint on frontend"
 	@echo "  make lint-be        Run Go vet"
 	@echo "  make audit-be       Run non-mutating golangci-lint audit"
-	@echo "  make test           Run all tests (Go + frontend lint)"
+	@echo "  make test           Run backend + frontend tests"
 	@echo "  make test-cover     Run Go tests with a coverage summary"
+	@echo "  make test-cover-fe  Run frontend tests with a coverage summary"
 	@echo ""
 	@echo "=== Docker ==="
 	@echo "  make docker         Build Docker image"
@@ -76,18 +77,24 @@ dev-fe: ## Start Vite dev server at localhost:5173
 dev-be: ## Start Go server at localhost:8080
 	go run ./cmd/server
 
-test: test-be lint-fe ## Run backend tests + frontend lint
+test: test-be test-fe ## Run backend + frontend tests
 
 test-be: ## Run Go tests
 	go test -v ./...
+
+test-fe: ## Run frontend unit and component tests
+	pnpm --dir $(FE_DIR) test
 
 test-cover: ## Run Go tests and print statement coverage by function
 	go test -coverpkg=$(GO_MODULE)/... -coverprofile=coverage.out ./...
 	go tool cover -func coverage.out
 
+test-cover-fe: ## Run frontend tests and print coverage
+	pnpm --dir $(FE_DIR) test:coverage
+
 check: check-be check-fe ## Run non-mutating checks
 
-verify: test-be check ## Run tests + non-mutating checks
+verify: test-be test-fe check ## Run tests + non-mutating checks
 
 check-be: ## Run Go vet
 	go vet ./...

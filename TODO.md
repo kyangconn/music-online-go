@@ -99,8 +99,8 @@
 
 ### P1：数据一致性与运维
 
-- [x] 上传替换改为原子流程：当前先覆盖最终文件再更新数据库；数据库失败时，同名旧文件无法恢复，不同扩展名的旧文件还会残留。应使用临时文件、原子 rename、旧文件延迟清理和失败恢复。
-- [ ] 定义音乐和账号删除生命周期：当前以软删除数据库记录为主，上传文件、喜欢关系、用户拥有的媒体及保留/转移策略没有完整闭环。
+- [x] 上传替换改为原子流程：所有文件先写入唯一临时文件，Windows 兼容地备份同名目标；数据库失败时逆序恢复，成功后再清旧扩展和备份。
+- [x] 定义音乐和账号删除生命周期：音乐删除会事务清理收藏和专辑引用、硬删除记录与媒体目录；账号注销要求当前密码，事务清理收藏和自有音乐后硬删除，且保护最后一个活跃管理员。
 - [ ] 用版本化 migration 取代仅靠 GORM `AutoMigrate` 的升级方式，并提供备份、升级失败和回滚说明。
 - [x] 收紧本地数据权限：SQLite 目录和上传目录当前创建为 `0755`；自托管默认应按数据敏感度使用 `0700` / `0750`，并允许配置覆盖。
 - [x] 修正 CORS：当前同时返回 `Access-Control-Allow-Origin: *` 与 credentials；改为明确的允许来源列表，并补预检和跨域凭据测试。
@@ -121,5 +121,5 @@
 - [x] Middleware 单元测试：CORS Origin 反射、角色中间件（新增 middleware_test.go，6 sub-test）
 - [x] Config 单元测试：JWT secret 弱值拒绝（新增 config_test.go，7 case table-driven）
 - [x] Service 单元测试：Login 错误传播、DB 错误不伪装、凭据验证（新增 user_service_test.go，5 case stub repo）
-- [ ] 补 Vue store 损坏缓存恢复、SecuritySettings 交互/i18n、关键上传和播放流程的组件测试
-- [ ] 在启用 CGO 的 CI 任务运行 go test -race ./...
+- [x] 补 Vue store 损坏缓存恢复、SecuritySettings/账户注销交互与 i18n、上传重试编排和播放器状态测试，并接入 Makefile、检查 CI 与发布 CI。
+- [x] 在 Linux 检查 CI 中启用 CGO 并运行 `go test -race ./...`；当前 Windows 本机没有 C 编译器，因此由 CI 提供竞态验证证据。
