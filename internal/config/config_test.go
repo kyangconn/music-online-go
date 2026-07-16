@@ -167,6 +167,9 @@ jwt:
 	t.Setenv("SERVER_PORT", "9090")
 	t.Setenv("SERVER_ALLOWED_ORIGINS", "https://one.example,https://two.example")
 	t.Setenv("SERVER_TRUSTED_PROXIES", "127.0.0.1,10.0.0.0/8")
+	t.Setenv("DATABASE_TYPE", "")
+	t.Setenv("DATABASE_PATH", "")
+	t.Setenv("DATABASE_PORT", "")
 	t.Setenv("JWT_SECRET", "environment-secret-32-bytes-long!!")
 	if err := LoadConfig(); err != nil {
 		t.Fatalf("LoadConfig: %v", err)
