@@ -1,0 +1,50 @@
+services:
+  app:
+    environment:
+      DATABASE_TYPE: postgres
+      DATABASE_HOST: postgres
+      DATABASE_PORT: ${POSTGRES_PORT:-5432}
+      DATABASE_USER: ${POSTGRES_USER:-music_online}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-}
+      DATABASE_NAME: ${POSTGRES_DB:-music_online}
+      DATABASE_SSLMODE: ${DATABASE_SSLMODE:-disable}
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
+
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:18-alpine3.23}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    init: true
+    logging:
+      driver: ${LOG_DRIVER:-local}
+      options:
+        max-size: ${LOG_MAX_SIZE:-10m}
+        max-file: "${LOG_MAX_FILE:-3}"
+    command:
+      - postgres
+      - -p
+      - "${POSTGRES_PORT:-5432}"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-music_online}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      POSTGRES_PASSWORD_FILE: ${POSTGRES_PASSWORD_FILE:-}
+      POSTGRES_DB: ${POSTGRES_DB:-music_online}
+    volumes:
+      # PostgreSQL 18+ stores data in a major-version subdirectory so that
+      # pg_upgrade --link can operate without crossing a mount boundary.
+      - "${POSTGRES_DATA_PATH:-music-online-postgres-data}:/var/lib/postgresql"
+    stop_grace_period: ${POSTGRES_STOP_GRACE_PERIOD:-30s}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -h 127.0.0.1 -p ${POSTGRES_PORT:-5432} -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: ${POSTGRES_HEALTHCHECK_INTERVAL:-10s}
+      timeout: ${POSTGRES_HEALTHCHECK_TIMEOUT:-5s}
+      start_period: ${POSTGRES_HEALTHCHECK_START_PERIOD:-10s}
+      retries: ${POSTGRES_HEALTHCHECK_RETRIES:-5}
+
+volumes:
+  music-online-postgres-data:
+    name: ${POSTGRES_DATA_VOLUME_NAME:-music-online-postgres-data}

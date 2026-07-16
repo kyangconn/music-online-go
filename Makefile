@@ -1,9 +1,13 @@
-.PHONY: help install-fe install-fe-dev build build-fe build-be build-silent dev dev-fe dev-be test test-be test-fe test-cover test-cover-fe check verify check-fe check-be typecheck-fe lint lint-fe lint-be audit-be docker clean
+.PHONY: help install-fe install-fe-dev build build-fe build-be build-silent dev dev-fe dev-be test test-be test-fe test-cover test-cover-fe check verify check-fe check-be typecheck-fe lint lint-fe lint-be audit-be docker docker-config docker-config-postgres docker-up docker-up-postgres docker-down clean
 
 .DEFAULT_GOAL := help
 
 FE_DIR := web
 GO_MODULE := $(shell go list -m)
+DOCKER_IMAGE ?= music-online-go:local
+VERSION ?= dev
+VCS_REF ?= unknown
+BUILD_DATE ?= 1970-01-01T00:00:00Z
 
 # Detect OS for binary extension
 ifeq ($(OS),Windows_NT)
@@ -44,7 +48,16 @@ help: ## Show available commands
 	@echo "  make test-cover-fe  Run frontend tests with a coverage summary"
 	@echo ""
 	@echo "=== Docker ==="
-	@echo "  make docker         Build Docker image"
+	@echo "  make docker                 Build Docker image"
+	@echo "  make docker-config          Validate the SQLite Compose configuration"
+	@echo "  make docker-config-postgres Validate the PostgreSQL Compose configuration"
+	@echo "  make docker-config-secrets  Validate the SQLite Compose secrets override"
+	@echo "  make docker-config-postgres-secrets Validate PostgreSQL + secrets overrides"
+	@echo "  make docker-up              Start the SQLite Compose deployment"
+	@echo "  make docker-up-postgres     Start the PostgreSQL Compose deployment"
+	@echo "  make docker-up-secrets      Start SQLite with a Docker secret"
+	@echo "  make docker-up-postgres-secrets Start PostgreSQL with Docker secrets"
+	@echo "  make docker-down            Stop Compose services (preserves data volumes)"
 	@echo "  make clean          Remove build artifacts"
 
 install-fe: ## Install frontend dependencies from lockfile
@@ -124,7 +137,38 @@ audit-be: ## Run non-mutating golangci-lint audit
 # ── Docker ────────────────────────────────────────────────
 
 docker: ## Build multi-stage Docker image
-	docker build -t music-online-go .
+	docker build \
+		--build-arg VERSION="$(VERSION)" \
+		--build-arg VCS_REF="$(VCS_REF)" \
+		--build-arg BUILD_DATE="$(BUILD_DATE)" \
+		-t "$(DOCKER_IMAGE)" .
+
+docker-config: ## Validate the default SQLite Compose configuration
+	docker compose -f compose.yaml config --quiet
+
+docker-config-postgres: ## Validate the PostgreSQL Compose override
+	docker compose -f compose.yaml -f compose.postgres.yaml config --quiet
+
+docker-config-secrets: ## Validate the default deployment with the JWT secret override
+	docker compose -f compose.yaml -f compose.secrets.yaml config --quiet
+
+docker-config-postgres-secrets: ## Validate PostgreSQL with JWT and database secrets
+	docker compose -f compose.yaml -f compose.postgres.yaml -f compose.secrets.yaml -f compose.postgres-secrets.yaml config --quiet
+
+docker-up: ## Start the default SQLite Compose deployment
+	docker compose -f compose.yaml up -d --build
+
+docker-up-postgres: ## Start the PostgreSQL Compose deployment
+	docker compose -f compose.yaml -f compose.postgres.yaml up -d --build
+
+docker-up-secrets: ## Start SQLite with JWT supplied as a Docker secret
+	docker compose -f compose.yaml -f compose.secrets.yaml up -d --build
+
+docker-up-postgres-secrets: ## Start PostgreSQL with JWT and database passwords supplied as Docker secrets
+	docker compose -f compose.yaml -f compose.postgres.yaml -f compose.secrets.yaml -f compose.postgres-secrets.yaml up -d --build
+
+docker-down: ## Stop Compose services without deleting persistent volumes
+	docker compose -f compose.yaml down --remove-orphans
 
 clean: ## Remove build artifacts
 	rm -rf cmd/server/dist

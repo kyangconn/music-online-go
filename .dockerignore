@@ -1,0 +1,58 @@
+# Version control and local tooling
+.git
+.gitignore
+.gitattributes
+.github
+.agents
+.codex
+.idea
+.vscode
+.trae
+
+# Secrets and machine-local configuration
+**/.env
+**/.env.*
+!.env.example
+config.yaml
+conf*.yaml
+!config-example.yaml
+!config-docker-example.yaml
+secrets
+
+# Dependencies and generated frontend assets
+vendor
+.pnpm-store
+**/node_modules
+web/coverage
+web/dist
+cmd/server/dist
+
+# Runtime data and uploads
+data
+uploads
+*.db
+*.db-shm
+*.db-wal
+
+# Binaries, test output, and profiles
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.coverprofile
+coverage.*
+music-online
+music-server
+server
+
+# Files not used by the image build
+README*
+TODO.md
+docs
+scripts
+Makefile
+compose*.yaml
+agents.md
+LICENSE

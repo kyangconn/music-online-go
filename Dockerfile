@@ -1,44 +1,78 @@
-# Build frontend
-FROM node:24-alpine AS frontend-builder
+# syntax=docker/dockerfile:1.7
+
+FROM node:24-alpine3.24 AS frontend-builder
+
+WORKDIR /src/web
+
 RUN corepack enable
-WORKDIR /web
-COPY web/package.json web/pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
-COPY web/ .
+
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm config set store-dir /pnpm/store && \
+    pnpm install --frozen-lockfile
+
+COPY web/index.html web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.json web/vite.config.ts ./
+COPY web/public ./public
+COPY web/src ./src
+
 RUN pnpm build
 
-# Build backend
-FROM golang:1.26-alpine AS backend-builder
-WORKDIR /app
+FROM golang:1.26-alpine3.24 AS backend-builder
 
-# Install build dependencies
-RUN apk add --no-cache git
+ARG VERSION=dev
+ARG VCS_REF=unknown
+ARG BUILD_DATE=1970-01-01T00:00:00Z
+
+WORKDIR /src
+
+RUN apk add --no-cache ca-certificates git
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
-COPY . .
-# Copy frontend build artifacts to expected location for embedding
-COPY --from=frontend-builder /web/dist ./cmd/server/dist
+COPY cmd ./cmd
+COPY internal ./internal
+COPY --from=frontend-builder /src/cmd/server/dist ./cmd/server/dist
 
-# Build static binary
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-extldflags "-static"' -o main ./cmd/server
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build \
+      -trimpath \
+      -ldflags="-s -w \
+        -X github.com/kyangconn/music-online-go/internal/version.Version=${VERSION} \
+        -X github.com/kyangconn/music-online-go/internal/version.Commit=${VCS_REF} \
+        -X github.com/kyangconn/music-online-go/internal/version.BuildTime=${BUILD_DATE}" \
+      -o /out/music-online ./cmd/server
 
-# Final stage
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates tzdata
+FROM alpine:3.24.1 AS runtime
 
-WORKDIR /app
+ARG VERSION=dev
+ARG VCS_REF=unknown
+ARG BUILD_DATE=1970-01-01T00:00:00Z
 
-COPY --from=backend-builder /app/main .
+LABEL org.opencontainers.image.title="Music Online" \
+      org.opencontainers.image.description="Self-hosted music management platform" \
+      org.opencontainers.image.source="https://github.com/kyangconn/music-online-go" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.licenses="MIT"
 
-ENV SERVER_PORT=8080 \
-    SERVER_MODE=release \
-    DATABASE_TYPE=sqlite \
-    DATABASE_PATH=/data/music.db \
-    SERVER_UPLOAD_DIR=/data/uploads
+RUN apk add --no-cache ca-certificates tzdata wget && \
+    addgroup -S -g 10001 music-online && \
+    adduser -S -D -H -h /data -s /sbin/nologin -u 10001 -G music-online music-online && \
+    mkdir -p /app /data/uploads /etc/music-online && \
+    chown -R 10001:10001 /app /data
+
+COPY --from=backend-builder --chown=10001:10001 /out/music-online /app/music-online
+
+WORKDIR /data
+USER 10001:10001
 
 VOLUME ["/data"]
 EXPOSE 8080
+STOPSIGNAL SIGTERM
 
-CMD ["./main"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD wget -q -T 3 --spider "http://127.0.0.1:${SERVER_PORT:-8080}/ready" || exit 1
+
+ENTRYPOINT ["/app/music-online"]

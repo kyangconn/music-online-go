@@ -35,8 +35,11 @@ go.work.sum
 # config yaml
 conf*.yaml
 !config-example.yaml
+!config-docker-example.yaml
+secrets/
 
 # Frontend build artifacts (do not commit these)
+.pnpm-store/
 cmd/server/dist/
 web/dist/
 web/node_modules/

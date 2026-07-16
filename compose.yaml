@@ -1,0 +1,115 @@
+name: ${COMPOSE_PROJECT_NAME:-music-online}
+
+services:
+  app:
+    image: ${MUSIC_ONLINE_IMAGE:-music-online-go:local}
+    build:
+      context: .
+      args:
+        VERSION: ${VERSION:-dev}
+        VCS_REF: ${VCS_REF:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-1970-01-01T00:00:00Z}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    init: true
+    read_only: ${READ_ONLY_ROOTFS:-true}
+    logging:
+      driver: ${LOG_DRIVER:-local}
+      options:
+        max-size: ${LOG_MAX_SIZE:-10m}
+        max-file: "${LOG_MAX_FILE:-3}"
+    ports:
+      - name: http
+        target: ${SERVER_PORT:-${APP_CONTAINER_PORT:-8080}}
+        published: "${APP_PORT:-8080}"
+        host_ip: ${APP_BIND_ADDRESS:-127.0.0.1}
+        protocol: tcp
+    environment:
+      MO_CONFIG_FILE: ${MO_CONFIG_FILE:-/etc/music-online/config.yaml}
+      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_SECRET_FILE: ${JWT_SECRET_FILE:-}
+      MO_LOG_FILE:
+      MO_LOG_MAX_SIZE:
+      MO_LOG_MAX_BACKUPS:
+      MO_LOG_MAX_AGE:
+      SERVER_LISTEN_ADDRESS:
+      SERVER_PORT: ${SERVER_PORT:-${APP_CONTAINER_PORT:-8080}}
+      SERVER_MODE:
+      SERVER_READ_HEADER_TIMEOUT:
+      SERVER_READ_TIMEOUT:
+      SERVER_WRITE_TIMEOUT:
+      SERVER_IDLE_TIMEOUT:
+      SERVER_SHUTDOWN_TIMEOUT:
+      SERVER_READINESS_TIMEOUT:
+      SERVER_UPLOAD_DIR:
+      SERVER_LOG_FILE:
+      SERVER_MAX_JSON_BODY_SIZE_MB:
+      SERVER_MAX_AUDIO_SIZE_MB:
+      SERVER_MAX_COVER_SIZE_MB:
+      SERVER_ALLOWED_ORIGINS:
+      SERVER_TRUSTED_PROXIES:
+      DATABASE_TYPE:
+      DATABASE_PATH:
+      DATABASE_HOST:
+      DATABASE_PORT:
+      DATABASE_USER:
+      DATABASE_PASSWORD:
+      DATABASE_PASSWORD_FILE:
+      DATABASE_NAME:
+      DATABASE_SSLMODE:
+      DATABASE_LOG_LEVEL:
+      DATABASE_CONNECT_TIMEOUT_SECONDS:
+      DATABASE_MAX_OPEN_CONNECTIONS:
+      DATABASE_MAX_IDLE_CONNECTIONS:
+      DATABASE_CONNECTION_MAX_LIFETIME_MINUTES:
+      DATABASE_CONNECTION_MAX_IDLE_TIME_MINUTES:
+      JWT_EXPIRE_HOUR:
+      METRICS_ENABLED:
+      METRICS_TOKEN:
+      METRICS_TOKEN_FILE:
+      ADMIN_BOOTSTRAP_ENABLED:
+      ADMIN_BOOTSTRAP_USERNAME:
+      ADMIN_BOOTSTRAP_EMAIL:
+      ADMIN_BOOTSTRAP_PASSWORD:
+      ADMIN_BOOTSTRAP_PASSWORD_FILE:
+      ADMIN_BOOTSTRAP_FULL_NAME:
+      ADMIN_BOOTSTRAP_RESET_PASSWORD:
+      RATE_LIMIT_ENABLED:
+      RATE_LIMIT_GLOBAL_REQUESTS_PER_SECOND:
+      RATE_LIMIT_GLOBAL_BURST:
+      RATE_LIMIT_AUTH_REQUESTS_PER_SECOND:
+      RATE_LIMIT_AUTH_BURST:
+      LOGGING_MAX_SIZE_MB:
+      LOGGING_LEVEL:
+      LOGGING_ACCESS_LOG:
+      LOGGING_MAX_BACKUPS:
+      LOGGING_MAX_AGE_DAYS:
+      LOGGING_COMPRESS:
+      LOGGING_LOCAL_TIME:
+      TZ:
+    volumes:
+      - type: bind
+        source: ${CONFIG_FILE:-./config-docker-example.yaml}
+        target: ${MO_CONFIG_FILE:-/etc/music-online/config.yaml}
+        read_only: true
+        bind:
+          create_host_path: false
+      - "${DATA_PATH:-music-online-data}:/data"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=${TMPFS_SIZE:-256m},mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: ${STOP_GRACE_PERIOD:-30s}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q -T 3 --spider http://127.0.0.1:${SERVER_PORT:-${APP_CONTAINER_PORT:-8080}}/ready || exit 1
+      interval: ${HEALTHCHECK_INTERVAL:-30s}
+      timeout: ${HEALTHCHECK_TIMEOUT:-5s}
+      start_period: ${HEALTHCHECK_START_PERIOD:-15s}
+      retries: ${HEALTHCHECK_RETRIES:-3}
+
+volumes:
+  music-online-data:
+    name: ${DATA_VOLUME_NAME:-music-online-data}
