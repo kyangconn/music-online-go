@@ -166,6 +166,9 @@ const uploadSelectedFiles = async () => {
   uploadPercent.value = 1;
   await request.post<Music>(`/musics/${id}/upload`, formData, {
     headers: { "Content-Type": "multipart/form-data" },
+    // The server enforces a hard byte limit; do not abort a valid upload just
+    // because it takes longer than the ordinary API timeout.
+    timeout: 0,
     onUploadProgress: (event: AxiosProgressEvent) => {
       if (!event.total) return;
       uploadPercent.value = Math.max(1, Math.round((event.loaded / event.total) * 100));

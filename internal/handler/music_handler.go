@@ -19,6 +19,8 @@ import (
 	"github.com/kyangconn/music-online-go/internal/service"
 )
 
+const multipartFormMemoryBytes = 8 << 20
+
 // MusicHandler handles HTTP requests related to music operations.
 type MusicHandler struct {
 	service service.MusicService
@@ -76,8 +78,39 @@ func (h *MusicHandler) UploadFile(c *gin.Context) {
 		return
 	}
 
-	audioFile, _ := c.FormFile("file")
-	coverFile, _ := c.FormFile("cover")
+	requestBodyLimit := service.UploadRequestBodyLimit()
+	if c.Request.ContentLength > requestBodyLimit {
+		Error(c, http.StatusRequestEntityTooLarge, "Upload request body is too large")
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, requestBodyLimit)
+	if err := c.Request.ParseMultipartForm(multipartFormMemoryBytes); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			Error(c, http.StatusRequestEntityTooLarge, "Upload request body is too large")
+			return
+		}
+		BadRequest(c, "Invalid multipart form data")
+		return
+	}
+	if c.Request.MultipartForm != nil {
+		defer func() {
+			if err := c.Request.MultipartForm.RemoveAll(); err != nil {
+				pklog.Errorf("Failed to remove multipart temporary files: %v", err)
+			}
+		}()
+	}
+
+	audioFile, err := c.FormFile("file")
+	if err != nil && !errors.Is(err, http.ErrMissingFile) {
+		BadRequest(c, "Invalid multipart form data")
+		return
+	}
+	coverFile, err := c.FormFile("cover")
+	if err != nil && !errors.Is(err, http.ErrMissingFile) {
+		BadRequest(c, "Invalid multipart form data")
+		return
+	}
 
 	if audioFile == nil && coverFile == nil {
 		BadRequest(c, "At least one of 'file' or 'cover' is required")

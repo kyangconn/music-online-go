@@ -102,6 +102,7 @@ describe("useMusicUpload", () => {
     expect(requestMock.post.mock.calls[0]?.[0]).toBe("/musics/23/upload");
     expect(requestMock.post.mock.calls[0]?.[1]).toBeInstanceOf(FormData);
     expect((requestMock.post.mock.calls[0]?.[1] as FormData).get("file")).toBe(audio);
+    expect(requestMock.post.mock.calls[0]?.[2]?.timeout).toBe(0);
     expect(uploadPercent.value).toBe(100);
 
     vi.advanceTimersByTime(800);

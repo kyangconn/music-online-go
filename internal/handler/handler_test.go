@@ -17,8 +17,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kyangconn/music-online-go/internal/config"
 	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/kyangconn/music-online-go/internal/pkg/database"
+	"github.com/kyangconn/music-online-go/internal/service"
 	"github.com/pquerna/otp/totp"
 )
 
@@ -430,6 +432,92 @@ func TestUploadRejectsInvalidMediaFiles(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("invalid audio upload: expected 400, got %d: %s", w.Code, w.Body.String())
 	}
+}
+
+func TestUploadRequestBodyValidation(t *testing.T) {
+	originalAudioLimit := config.AppConfig.Server.MaxAudioSizeMB
+	originalCoverLimit := config.AppConfig.Server.MaxCoverSizeMB
+	config.AppConfig.Server.MaxAudioSizeMB = 1
+	config.AppConfig.Server.MaxCoverSizeMB = 1
+	t.Cleanup(func() {
+		config.AppConfig.Server.MaxAudioSizeMB = originalAudioLimit
+		config.AppConfig.Server.MaxCoverSizeMB = originalCoverLimit
+	})
+
+	token := registerAndLogin(t, "uploadbodylimituser")
+	musicID := createMusic(t, token, "Upload Body Limit Song")
+
+	var before domain.Music
+	if err := database.DB.First(&before, musicID).Error; err != nil {
+		t.Fatalf("load music before oversized upload: %v", err)
+	}
+
+	t.Run("oversized body is rejected before persistence", func(t *testing.T) {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		part, err := writer.CreateFormFile("file", "oversized.mp3")
+		if err != nil {
+			t.Fatalf("create oversized multipart file: %v", err)
+		}
+		payload := make([]byte, service.UploadRequestBodyLimit()+1)
+		copy(payload, validAudioBytes)
+		if _, err := part.Write(payload); err != nil {
+			t.Fatalf("write oversized multipart file: %v", err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatalf("close oversized multipart writer: %v", err)
+		}
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/api/v1/musics/"+strconv.Itoa(int(musicID))+"/upload", &body)
+		req.ContentLength = -1 // Exercise the streaming limit instead of the Content-Length fast path.
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.Header.Set("Authorization", "Bearer "+token)
+		testRouter.ServeHTTP(w, req)
+		if w.Code != http.StatusRequestEntityTooLarge {
+			t.Fatalf("oversized upload: expected 413, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var after domain.Music
+		if err := database.DB.First(&after, musicID).Error; err != nil {
+			t.Fatalf("load music after oversized upload: %v", err)
+		}
+		if after.Path != before.Path || after.Img != before.Img || after.FileHash != before.FileHash || !after.UpdatedAt.Equal(before.UpdatedAt) {
+			t.Fatalf("oversized upload changed stored music: before=%+v after=%+v", before, after)
+		}
+	})
+
+	t.Run("malformed multipart is a bad request", func(t *testing.T) {
+		body := strings.NewReader("--broken\r\nContent-Disposition: form-data; name=\"file\"; filename=\"song.mp3\"\r\n\r\nID3")
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/api/v1/musics/"+strconv.Itoa(int(musicID))+"/upload", body)
+		req.Header.Set("Content-Type", "multipart/form-data; boundary=broken")
+		req.Header.Set("Authorization", "Bearer "+token)
+		testRouter.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("malformed upload: expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("missing files keeps the existing response", func(t *testing.T) {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		if err := writer.WriteField("metadata", "ignored"); err != nil {
+			t.Fatalf("write multipart field: %v", err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatalf("close multipart writer: %v", err)
+		}
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/api/v1/musics/"+strconv.Itoa(int(musicID))+"/upload", &body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.Header.Set("Authorization", "Bearer "+token)
+		testRouter.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "At least one of 'file' or 'cover' is required") {
+			t.Fatalf("missing upload files: expected existing 400 response, got %d: %s", w.Code, w.Body.String())
+		}
+	})
 }
 
 func TestMusicSearchFiltersAndOptions(t *testing.T) {

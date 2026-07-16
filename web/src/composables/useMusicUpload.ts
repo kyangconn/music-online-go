@@ -109,6 +109,9 @@ export function useMusicUpload() {
         if (cover) fd.append("cover", cover);
         await request.post(`/musics/${musicId}/upload`, fd, {
           headers: { "Content-Type": "multipart/form-data" },
+          // Large uploads are bounded by the backend's byte limits, not the
+          // five-second timeout used for ordinary API calls.
+          timeout: 0,
           onUploadProgress: (event: AxiosProgressEvent) => {
             if (!event.total) return;
             uploadPercent.value = Math.max(1, Math.round((event.loaded / event.total) * 100));

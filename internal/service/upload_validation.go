@@ -16,9 +16,10 @@ import (
 )
 
 const (
-	defaultMaxAudioSizeMB = 200
-	defaultMaxCoverSizeMB = 10
-	signatureReadSize     = 512
+	defaultMaxAudioSizeMB  = 200
+	defaultMaxCoverSizeMB  = 10
+	multipartOverheadBytes = 1 << 20
+	signatureReadSize      = 512
 )
 
 var allowedAudioExts = map[string]struct{}{
@@ -76,6 +77,14 @@ func CurrentUploadPolicy() UploadPolicy {
 		AudioExtensions:   sortedExtensions(allowedAudioExts),
 		CoverExtensions:   sortedExtensions(allowedCoverExts),
 	}
+}
+
+// UploadRequestBodyLimit returns the aggregate multipart request limit. The
+// bounded overhead leaves room for multipart boundaries and headers without
+// allowing arbitrary non-file form data to bypass the configured file limits.
+func UploadRequestBodyLimit() int64 {
+	policy := CurrentUploadPolicy()
+	return policy.MaxAudioSizeBytes + policy.MaxCoverSizeBytes + multipartOverheadBytes
 }
 
 func validateUploadedAudioFile(header *multipart.FileHeader) error {
