@@ -90,6 +90,66 @@ func TestRegisterAndLogin(t *testing.T) {
 	}
 }
 
+func TestRegisterRejectsPasswordsOutsideBcryptSafePolicy(t *testing.T) {
+	tests := []struct {
+		name     string
+		password string
+	}{
+		{name: "too short", password: "1234567"},
+		{name: "too many ASCII bytes", password: strings.Repeat("a", 73)},
+		{name: "too many multibyte UTF-8 bytes", password: strings.Repeat("密", 25)},
+	}
+
+	for index, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := json.Marshal(map[string]string{
+				"username": fmt.Sprintf("password-policy-%d", index),
+				"email":    fmt.Sprintf("password-policy-%d@example.com", index),
+				"password": tt.password,
+			})
+			if err != nil {
+				t.Fatalf("marshal request: %v", err)
+			}
+
+			w := httptest.NewRecorder()
+			req, _ := http.NewRequest("POST", "/api/v1/users/register", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			testRouter.ServeHTTP(w, req)
+
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+			}
+			if !strings.Contains(w.Body.String(), "72 UTF-8 bytes") {
+				t.Fatalf("response does not explain password policy: %s", w.Body.String())
+			}
+		})
+	}
+}
+
+func TestChangePasswordExplainsBcryptSafeLimit(t *testing.T) {
+	token := registerAndLogin(t, "change-password-policy")
+	body, err := json.Marshal(map[string]string{
+		"old_password": "password123",
+		"new_password": strings.Repeat("密", 25),
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/users/change-password", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	testRouter.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "72 UTF-8 bytes") {
+		t.Fatalf("response does not explain password policy: %s", w.Body.String())
+	}
+}
+
 func TestLoginRequiresTOTPWhenEnabled(t *testing.T) {
 	username := "totpuser"
 	token := registerAndLogin(t, username)

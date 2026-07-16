@@ -5,6 +5,7 @@ import { ref, reactive } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { useApiError } from "@/composables/useApiError";
+import { validateNewPassword } from "@/utils/password";
 import request from "@/utils/request";
 
 const router = useRouter();
@@ -31,6 +32,17 @@ const validatePass2 = (_rule: unknown, value: string, callback: (error?: Error) 
   }
 };
 
+const validatePassword = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+  const validationError = validateNewPassword(value);
+  if (validationError === "too_short") {
+    callback(new Error(t("auth.password_min_length")));
+  } else if (validationError === "too_long") {
+    callback(new Error(t("auth.password_max_bytes")));
+  } else {
+    callback();
+  }
+};
+
 const rules = reactive<FormRules>({
   username: [{ required: true, message: t("auth.username_required"), trigger: "blur" }],
   email: [
@@ -39,7 +51,7 @@ const rules = reactive<FormRules>({
   ],
   password: [
     { required: true, message: t("auth.password_required"), trigger: "blur" },
-    { min: 8, message: t("auth.password_min_length"), trigger: "blur" },
+    { validator: validatePassword, trigger: "blur" },
   ],
   confirmPassword: [
     { required: true, message: t("auth.confirm_password_required"), trigger: "blur" },

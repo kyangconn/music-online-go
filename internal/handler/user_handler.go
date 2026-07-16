@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/kyangconn/music-online-go/internal/domain"
+	"github.com/kyangconn/music-online-go/internal/pkg/password"
 	"github.com/kyangconn/music-online-go/internal/repository"
 	"github.com/kyangconn/music-online-go/internal/service"
 )
@@ -45,6 +46,8 @@ func (h *UserHandler) Register(c *gin.Context) {
 	user, err := h.userService.Register(c.Request.Context(), &req)
 	if err != nil {
 		switch {
+		case errors.Is(err, password.ErrPasswordTooShort), errors.Is(err, password.ErrPasswordTooLong):
+			BadRequest(c, "Password must be at least 8 Unicode characters and no more than 72 UTF-8 bytes")
 		case errors.Is(err, repository.ErrUsernameExists):
 			Error(c, http.StatusConflict, "Username already exists")
 		case errors.Is(err, repository.ErrEmailExists):
@@ -247,6 +250,8 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 		switch {
 		case errors.Is(err, service.ErrOldPasswordIncorrect):
 			BadRequest(c, "Old password is incorrect")
+		case errors.Is(err, password.ErrPasswordTooShort), errors.Is(err, password.ErrPasswordTooLong):
+			BadRequest(c, "Password must be at least 8 Unicode characters and no more than 72 UTF-8 bytes")
 		default:
 			InternalServerError(c, "Failed to change password")
 		}
@@ -379,5 +384,5 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 
 type ChangePasswordRequest struct {
 	OldPassword string `json:"old_password" binding:"required"`
-	NewPassword string `json:"new_password" binding:"required,min=8,max=100"`
+	NewPassword string `json:"new_password" binding:"required"`
 }

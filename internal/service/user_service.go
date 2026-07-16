@@ -20,7 +20,7 @@ var (
 	ErrTOTPCodeRequired     = errors.New("totp code required")
 	ErrInvalidTOTPCode      = errors.New("invalid totp code")
 	ErrOldPasswordIncorrect = errors.New("old password is incorrect")
-	ErrBootstrapAdminConfig = errors.New("bootstrap admin config is incomplete")
+	ErrBootstrapAdminConfig = errors.New("bootstrap admin config is invalid")
 	ErrLastActiveAdmin      = errors.New("cannot delete the last active admin")
 )
 
@@ -91,8 +91,11 @@ func (s *userService) Register(ctx context.Context, req *domain.RegisterRequest)
 }
 
 func (s *userService) BootstrapAdmin(ctx context.Context, req BootstrapAdminRequest) (*domain.UserResponse, bool, error) {
-	if req.Username == "" || req.Email == "" || len(req.Password) < 8 {
-		return nil, false, ErrBootstrapAdminConfig
+	if req.Username == "" || req.Email == "" {
+		return nil, false, fmt.Errorf("%w: username and email are required", ErrBootstrapAdminConfig)
+	}
+	if err := password.ValidateNewPassword(req.Password); err != nil {
+		return nil, false, fmt.Errorf("%w: %w", ErrBootstrapAdminConfig, err)
 	}
 	if req.FullName == "" {
 		req.FullName = "Administrator"

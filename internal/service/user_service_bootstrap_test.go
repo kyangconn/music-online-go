@@ -2,6 +2,8 @@ package service_test
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -11,6 +13,22 @@ import (
 	"github.com/kyangconn/music-online-go/internal/service"
 	"gorm.io/gorm"
 )
+
+func TestBootstrapAdminRejectsInvalidPasswordPolicy(t *testing.T) {
+	svc := newBootstrapUserService(t)
+
+	_, _, err := svc.BootstrapAdmin(context.Background(), service.BootstrapAdminRequest{
+		Username: "admin",
+		Email:    "admin@example.com",
+		Password: strings.Repeat("a", 73),
+	})
+	if !errors.Is(err, service.ErrBootstrapAdminConfig) {
+		t.Fatalf("BootstrapAdmin() error = %v, want ErrBootstrapAdminConfig", err)
+	}
+	if !strings.Contains(err.Error(), "72 UTF-8 bytes") {
+		t.Fatalf("BootstrapAdmin() error = %q, want password policy detail", err)
+	}
+}
 
 func newBootstrapUserService(t *testing.T) service.UserService {
 	t.Helper()

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kyangconn/music-online-go/internal/config"
@@ -24,15 +25,22 @@ import (
 // stubUserRepo 实现 repository.UserRepository，通过函数字段注入自定义行为。
 // 未注入的方法返回安全默认值（nil 或 ErrUserNotFound）。
 type stubUserRepo struct {
+	createFn         func(ctx context.Context, user *domain.User) error
 	findByUsernameFn func(ctx context.Context, username string) (*domain.User, error)
 	findByEmailFn    func(ctx context.Context, email string) (*domain.User, error)
 	findByIDFn       func(ctx context.Context, id uint) (*domain.User, error)
+	updateFn         func(ctx context.Context, user *domain.User) error
 	countAdminsFn    func(ctx context.Context) (int64, error)
 	listMusicIDsFn   func(ctx context.Context, id uint) ([]uint, error)
 	deleteFn         func(ctx context.Context, id uint) error
 }
 
-func (s *stubUserRepo) Create(_ context.Context, _ *domain.User) error { return nil }
+func (s *stubUserRepo) Create(ctx context.Context, user *domain.User) error {
+	if s.createFn != nil {
+		return s.createFn(ctx, user)
+	}
+	return nil
+}
 
 func (s *stubUserRepo) FindByID(ctx context.Context, id uint) (*domain.User, error) {
 	if s.findByIDFn != nil {
@@ -55,7 +63,12 @@ func (s *stubUserRepo) FindByEmail(_ context.Context, email string) (*domain.Use
 	return nil, repository.ErrUserNotFound
 }
 
-func (s *stubUserRepo) Update(_ context.Context, _ *domain.User) error { return nil }
+func (s *stubUserRepo) Update(ctx context.Context, user *domain.User) error {
+	if s.updateFn != nil {
+		return s.updateFn(ctx, user)
+	}
+	return nil
+}
 
 func (s *stubUserRepo) Delete(ctx context.Context, id uint) error {
 	if s.deleteFn != nil {
@@ -130,7 +143,7 @@ func init() {
 
 // TestLoginFallbackToEmail 验证：按用户名找不到时，回退到邮箱查询可成功。
 func TestLoginFallbackToEmail(t *testing.T) {
-	user := makeActiveUser(t, "u", "pwd")
+	user := makeActiveUser(t, "u", "pwd12345")
 	repo := &stubUserRepo{
 		findByUsernameFn: func(_ context.Context, _ string) (*domain.User, error) {
 			return nil, repository.ErrUserNotFound
@@ -141,7 +154,7 @@ func TestLoginFallbackToEmail(t *testing.T) {
 	}
 	svc := service.NewUserService(repo)
 
-	resp, err := svc.Login(context.Background(), &domain.LoginRequest{Username: "u@example.com", Password: "pwd"})
+	resp, err := svc.Login(context.Background(), &domain.LoginRequest{Username: "u@example.com", Password: "pwd12345"})
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
@@ -188,7 +201,7 @@ func TestLoginUserNotFound(t *testing.T) {
 
 // TestLoginWrongPassword 验证：用户名存在但密码错误时，返回 ErrInvalidCredentials。
 func TestLoginWrongPassword(t *testing.T) {
-	user := makeActiveUser(t, "alice", "correct")
+	user := makeActiveUser(t, "alice", "correct1")
 	repo := &stubUserRepo{
 		findByUsernameFn: func(_ context.Context, _ string) (*domain.User, error) {
 			return user, nil
@@ -197,6 +210,22 @@ func TestLoginWrongPassword(t *testing.T) {
 	svc := service.NewUserService(repo)
 
 	_, err := svc.Login(context.Background(), &domain.LoginRequest{Username: "alice", Password: "wrong"})
+	assertLoginErrIs(t, err, service.ErrInvalidCredentials)
+}
+
+func TestLoginOversizedPasswordIsInvalidCredentials(t *testing.T) {
+	user := makeActiveUser(t, "alice", "correct-password")
+	repo := &stubUserRepo{
+		findByUsernameFn: func(_ context.Context, _ string) (*domain.User, error) {
+			return user, nil
+		},
+	}
+	svc := service.NewUserService(repo)
+
+	_, err := svc.Login(context.Background(), &domain.LoginRequest{
+		Username: "alice",
+		Password: strings.Repeat("a", 73),
+	})
 	assertLoginErrIs(t, err, service.ErrInvalidCredentials)
 }
 
@@ -219,6 +248,50 @@ func TestLoginValidCredentials(t *testing.T) {
 	}
 	if resp.User.Username != "bob" {
 		t.Fatalf("username = %q, want bob", resp.User.Username)
+	}
+}
+
+func TestRegisterRejectsOversizedPasswordBeforeCreate(t *testing.T) {
+	created := false
+	repo := &stubUserRepo{createFn: func(_ context.Context, _ *domain.User) error {
+		created = true
+		return nil
+	}}
+	svc := service.NewUserService(repo)
+
+	_, err := svc.Register(context.Background(), &domain.RegisterRequest{
+		Username: "too-long",
+		Email:    "too-long@example.com",
+		Password: strings.Repeat("密", 25),
+	})
+
+	if !errors.Is(err, password.ErrPasswordTooLong) {
+		t.Fatalf("Register() error = %v, want ErrPasswordTooLong", err)
+	}
+	if created {
+		t.Fatal("repository Create was called for an invalid password")
+	}
+}
+
+func TestChangePasswordRejectsOversizedPasswordBeforeUpdate(t *testing.T) {
+	user := makeActiveUser(t, "change-password", "current-password")
+	updated := false
+	repo := &stubUserRepo{
+		findByIDFn: func(_ context.Context, _ uint) (*domain.User, error) { return user, nil },
+		updateFn: func(_ context.Context, _ *domain.User) error {
+			updated = true
+			return nil
+		},
+	}
+	svc := service.NewUserService(repo)
+
+	err := svc.ChangePassword(context.Background(), 1, "current-password", strings.Repeat("a", 73))
+
+	if !errors.Is(err, password.ErrPasswordTooLong) {
+		t.Fatalf("ChangePassword() error = %v, want ErrPasswordTooLong", err)
+	}
+	if updated {
+		t.Fatal("repository Update was called for an invalid password")
 	}
 }
 

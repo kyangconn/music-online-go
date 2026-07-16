@@ -3,6 +3,7 @@ import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 import { ref, reactive, computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { useUserStore } from "@/store/user";
+import { validateNewPassword } from "@/utils/password";
 
 const { t } = useI18n();
 const userStore = useUserStore();
@@ -58,8 +59,16 @@ const rules = reactive<FormRules>({
   new_password: [
     {
       validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
-        if (isChangingPassword.value && value.length < 8) {
+        if (!isChangingPassword.value) {
+          callback();
+          return;
+        }
+
+        const validationError = validateNewPassword(value);
+        if (validationError === "too_short") {
           callback(new Error(t("settings.password_min_length")));
+        } else if (validationError === "too_long") {
+          callback(new Error(t("settings.password_max_bytes")));
         } else {
           callback();
         }
