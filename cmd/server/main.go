@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -30,6 +31,14 @@ import (
 
 //go:embed dist/*
 var webDist embed.FS
+
+var fingerprintedAssetPattern = regexp.MustCompile(`(?:^|/)[^/]+-[A-Za-z0-9_-]{8,}\.[^/]+$`)
+
+const (
+	cacheControlImmutable  = "public, max-age=31536000, immutable"
+	cacheControlRevalidate = "no-cache"
+	cacheControlShort      = "public, max-age=3600"
+)
 
 func main() {
 	parseFlags()
@@ -149,26 +158,43 @@ func configureStaticAssets(r *gin.Engine) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 			return
 		}
-		path := strings.TrimPrefix(c.Request.URL.Path, "/")
-		if path == "" {
-			path = "index.html"
+		requestedPath := strings.TrimPrefix(c.Request.URL.Path, "/")
+		if requestedPath == "" {
+			requestedPath = "index.html"
 		}
 
-		data, contentType, err := readEmbedFile(distFS, path)
+		servedPath := requestedPath
+		data, contentType, err := readEmbedFile(distFS, servedPath)
 		if err != nil {
-			data, contentType, err = readEmbedFile(distFS, "index.html")
+			servedPath = "index.html"
+			data, contentType, err = readEmbedFile(distFS, servedPath)
 			if err != nil {
 				c.String(http.StatusNotFound, "Not Found")
 				return
 			}
 		}
 
+		c.Header("Cache-Control", cacheControlForAsset(servedPath))
 		if contentType != "" {
 			c.Data(http.StatusOK, contentType, data)
 		} else {
 			c.Data(http.StatusOK, "application/octet-stream", data)
 		}
 	})
+}
+
+func cacheControlForAsset(name string) string {
+	cleanName := strings.TrimPrefix(name, "/")
+	switch cleanName {
+	case "", "index.html", "sw.js", "manifest.json", "manifest.webmanifest":
+		return cacheControlRevalidate
+	}
+
+	if strings.HasPrefix(cleanName, "assets/") && fingerprintedAssetPattern.MatchString(cleanName) {
+		return cacheControlImmutable
+	}
+
+	return cacheControlShort
 }
 
 func readEmbedFile(fsys fs.FS, name string) ([]byte, string, error) {
