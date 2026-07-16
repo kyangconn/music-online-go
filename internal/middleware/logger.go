@@ -3,6 +3,7 @@
 package middleware
 
 import (
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -31,11 +32,12 @@ func LoggerMiddleware() gin.HandlerFunc {
 	}
 }
 
-func CORSMiddleware(allowedOrigins []string) gin.HandlerFunc {
+func CORSMiddleware(allowedOrigins, trustedProxies []string) gin.HandlerFunc {
 	allowed := make(map[string]struct{}, len(allowedOrigins))
 	for _, origin := range allowedOrigins {
 		allowed[strings.ToLower(origin)] = struct{}{}
 	}
+	trustedNetworks := trustedProxyNetworks(trustedProxies)
 
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
@@ -43,7 +45,7 @@ func CORSMiddleware(allowedOrigins []string) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		if !isSameOrigin(c.Request, origin) {
+		if !isSameOrigin(c.Request, origin, trustedNetworks) {
 			if _, ok := allowed[strings.ToLower(origin)]; !ok {
 				handler.Forbidden(c, "Origin is not allowed")
 				c.Abort()
@@ -66,18 +68,54 @@ func CORSMiddleware(allowedOrigins []string) gin.HandlerFunc {
 	}
 }
 
-func isSameOrigin(request *http.Request, origin string) bool {
+func isSameOrigin(request *http.Request, origin string, trustedProxies []*net.IPNet) bool {
 	parsed, err := url.Parse(origin)
 	if err != nil || parsed.Host == "" {
 		return false
 	}
-	scheme := request.Header.Get("X-Forwarded-Proto")
-	if scheme == "" {
-		if request.TLS != nil {
-			scheme = "https"
-		} else {
-			scheme = "http"
+	scheme := "http"
+	if request.TLS != nil {
+		scheme = "https"
+	} else if isTrustedPeer(request.RemoteAddr, trustedProxies) {
+		if forwarded := strings.TrimSpace(strings.Split(request.Header.Get("X-Forwarded-Proto"), ",")[0]); forwarded != "" {
+			scheme = forwarded
 		}
 	}
 	return strings.EqualFold(parsed.Scheme, scheme) && strings.EqualFold(parsed.Host, request.Host)
+}
+
+func trustedProxyNetworks(values []string) []*net.IPNet {
+	networks := make([]*net.IPNet, 0, len(values))
+	for _, value := range values {
+		if ip := net.ParseIP(value); ip != nil {
+			bits := 128
+			if ip.To4() != nil {
+				ip = ip.To4()
+				bits = 32
+			}
+			networks = append(networks, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+			continue
+		}
+		if _, network, err := net.ParseCIDR(value); err == nil {
+			networks = append(networks, network)
+		}
+	}
+	return networks
+}
+
+func isTrustedPeer(remoteAddress string, trustedProxies []*net.IPNet) bool {
+	host, _, err := net.SplitHostPort(remoteAddress)
+	if err != nil {
+		host = strings.Trim(remoteAddress, "[]")
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, network := range trustedProxies {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }

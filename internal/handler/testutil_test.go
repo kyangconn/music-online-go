@@ -28,9 +28,16 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	config.AppConfig = &config.Config{
-		Database: config.DatabaseConfig{Type: "sqlite", Path: ":memory:"},
-		Server:   config.ServerConfig{UploadDir: testUploadDir},
-		JWT:      config.JWTConfig{Secret: "test-secret", ExpireHour: 24},
+		Database: config.DatabaseConfig{
+			Type:                         "sqlite",
+			Path:                         ":memory:",
+			LogLevel:                     "auto",
+			ConnectTimeoutSeconds:        10,
+			ConnectionMaxLifetimeMinutes: 60,
+			ConnectionMaxIdleTimeMinutes: 10,
+		},
+		Server: config.ServerConfig{UploadDir: testUploadDir},
+		JWT:    config.JWTConfig{Secret: "test-secret", ExpireHour: 24},
 	}
 
 	gin.SetMode(gin.TestMode)

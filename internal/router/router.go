@@ -3,6 +3,7 @@
 package router
 
 import (
+	"context"
 	"crypto/subtle"
 	"fmt"
 	"net/http"
@@ -30,30 +31,49 @@ type Handlers struct {
 	Admin    *handler.AdminHandler
 }
 
-// New 创建并配置Gin路由器
-func New(h *Handlers, db *gorm.DB) *gin.Engine {
-	if config.AppConfig.Server.Mode == "release" {
+// New 创建并配置Gin路由器。
+func New(h *Handlers, db *gorm.DB) (*gin.Engine, error) {
+	switch config.AppConfig.Server.Mode {
+	case "release":
 		gin.SetMode(gin.ReleaseMode)
+	case "test":
+		gin.SetMode(gin.TestMode)
+	default:
+		gin.SetMode(gin.DebugMode)
 	}
 
 	router := gin.New()
+	if err := router.SetTrustedProxies(config.AppConfig.Server.TrustedProxies); err != nil {
+		return nil, fmt.Errorf("configure trusted proxies: %w", err)
+	}
 
-	router.Use(
-		middleware.LoggerMiddleware(),
-		middleware.CORSMiddleware(config.AppConfig.Server.AllowedOrigins),
-		middleware.RateLimitMiddleware(rate.Limit(20), 50),
-		gin.Recovery(),
-		prometheusMiddleware(),
+	if config.AppConfig.Logging.AccessLog {
+		router.Use(middleware.LoggerMiddleware())
+	}
+	router.Use(middleware.CORSMiddleware(config.AppConfig.Server.AllowedOrigins, config.AppConfig.Server.TrustedProxies))
+	if config.AppConfig.RateLimit.Enabled {
+		router.Use(middleware.RateLimitMiddleware(
+			rate.Limit(config.AppConfig.RateLimit.GlobalRequestsPerSecond),
+			config.AppConfig.RateLimit.GlobalBurst,
+		))
+	}
+	router.Use(middleware.JSONBodyLimitMiddleware(int64(config.AppConfig.Server.MaxJSONBodySizeMB) << 20))
+	router.Use(gin.Recovery(), prometheusMiddleware())
+
+	registerHealthAndMetrics(
+		router,
+		db,
+		config.AppConfig.Server.UploadDir,
+		time.Duration(config.AppConfig.Server.ReadinessTimeout)*time.Second,
+		config.AppConfig.Metrics,
 	)
+	registerAPIRoutes(router, h, db, config.AppConfig.RateLimit)
 
-	registerHealthAndMetrics(router, db, config.AppConfig.Server.UploadDir, config.AppConfig.Metrics)
-	registerAPIRoutes(router, h, db)
-
-	return router
+	return router, nil
 }
 
 // registerHealthAndMetrics 注册健康检查和Prometheus指标端点
-func registerHealthAndMetrics(router *gin.Engine, db *gorm.DB, uploadDir string, metrics config.MetricsConfig) {
+func registerHealthAndMetrics(router *gin.Engine, db *gorm.DB, uploadDir string, readinessTimeout time.Duration, metrics config.MetricsConfig) {
 	// /health 存活检查：仅确认进程运行中
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -80,7 +100,9 @@ func registerHealthAndMetrics(router *gin.Engine, db *gorm.DB, uploadDir string,
 			})
 			return
 		}
-		if err := sqlDB.Ping(); err != nil {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), readinessTimeout)
+		defer cancel()
+		if err := sqlDB.PingContext(ctx); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{
 				"status": "not ready",
 				"error":  fmt.Sprintf("database ping failed: %v", err),
@@ -147,18 +169,20 @@ func hasMetricsToken(header, expected string) bool {
 }
 
 // registerAPIRoutes 注册所有API路由
-func registerAPIRoutes(router *gin.Engine, h *Handlers, db *gorm.DB) {
+func registerAPIRoutes(router *gin.Engine, h *Handlers, db *gorm.DB, rateLimit config.RateLimitConfig) {
 	api := router.Group("/api/v1")
 
-	registerUserRoutes(api, h.User, h.Admin, db)
+	registerUserRoutes(api, h.User, h.Admin, db, rateLimit)
 	registerMusicRoutes(api, h.Music, db)
 	registerMusicTagRoutes(api, h.MusicTag, db)
 }
 
 // registerUserRoutes 注册用户相关路由
-func registerUserRoutes(api *gin.RouterGroup, userHandler *handler.UserHandler, adminHandler *handler.AdminHandler, db *gorm.DB) {
+func registerUserRoutes(api *gin.RouterGroup, userHandler *handler.UserHandler, adminHandler *handler.AdminHandler, db *gorm.DB, rateLimit config.RateLimitConfig) {
 	public := api.Group("/users")
-	public.Use(middleware.RateLimitMiddleware(rate.Limit(1), 5))
+	if rateLimit.Enabled {
+		public.Use(middleware.RateLimitMiddleware(rate.Limit(rateLimit.AuthRequestsPerSecond), rateLimit.AuthBurst))
+	}
 	{
 		public.POST("/register", userHandler.Register)
 		public.POST("/login", userHandler.Login)

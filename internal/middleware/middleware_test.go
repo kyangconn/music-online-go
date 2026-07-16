@@ -3,6 +3,7 @@
 package middleware
 
 import (
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -24,7 +25,7 @@ func TestMain(m *testing.M) {
 
 func TestCORSMiddlewareAllowlist(t *testing.T) {
 	r := gin.New()
-	r.Use(CORSMiddleware([]string{"https://allowed.example.com"}))
+	r.Use(CORSMiddleware([]string{"https://allowed.example.com"}, nil))
 	r.GET("/test", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
@@ -62,7 +63,7 @@ func TestCORSMiddlewareAllowlist(t *testing.T) {
 		req, _ := http.NewRequest("GET", "/test", nil)
 		req.Host = "music.example.com"
 		req.Header.Set("Origin", "https://music.example.com")
-		req.Header.Set("X-Forwarded-Proto", "https")
+		req.TLS = &tls.ConnectionState{}
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
@@ -90,6 +91,32 @@ func TestCORSMiddlewareAllowlist(t *testing.T) {
 			t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
 		}
 	})
+}
+
+func TestCORSMiddlewareOnlyTrustsForwardedProtoFromConfiguredProxy(t *testing.T) {
+	newRequest := func() *http.Request {
+		req := httptest.NewRequest(http.MethodGet, "http://music.example.com/test", nil)
+		req.Host = "music.example.com"
+		req.RemoteAddr = "192.0.2.1:4321"
+		req.Header.Set("Origin", "https://music.example.com")
+		req.Header.Set("X-Forwarded-Proto", "https")
+		return req
+	}
+	serve := func(trustedProxies []string) *httptest.ResponseRecorder {
+		r := gin.New()
+		r.Use(CORSMiddleware(nil, trustedProxies))
+		r.GET("/test", func(c *gin.Context) { c.Status(http.StatusOK) })
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, newRequest())
+		return w
+	}
+
+	if got := serve(nil).Code; got != http.StatusForbidden {
+		t.Fatalf("untrusted forwarded proto status = %d, want %d", got, http.StatusForbidden)
+	}
+	if got := serve([]string{"192.0.2.1"}).Code; got != http.StatusOK {
+		t.Fatalf("trusted forwarded proto status = %d, want %d", got, http.StatusOK)
+	}
 }
 
 func TestRoleMiddlewareRejectsNonAdmin(t *testing.T) {

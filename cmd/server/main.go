@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -32,12 +33,24 @@ var webDist embed.FS
 
 func main() {
 	parseFlags()
-	pklog.Infof("%s", version.String())
 
 	if err := config.LoadConfig(); err != nil {
 		pklog.Fatalf("Failed to load config: %v", err)
 	}
-	pklog.Init(config.AppConfig.Server.LogFile)
+	pklog.Init(config.AppConfig.Server.LogFile, pklog.Options{
+		Level:      config.AppConfig.Logging.Level,
+		MaxSizeMB:  config.AppConfig.Logging.MaxSizeMB,
+		MaxBackups: config.AppConfig.Logging.MaxBackups,
+		MaxAgeDays: config.AppConfig.Logging.MaxAgeDays,
+		Compress:   config.AppConfig.Logging.Compress,
+		LocalTime:  config.AppConfig.Logging.LocalTime,
+	})
+	pklog.Infof("%s", version.String())
+	if config.AppConfig.SourceFile == "" {
+		pklog.Infof("No config file found; using defaults and environment overrides")
+	} else {
+		pklog.Infof("Loaded config file: %s", config.AppConfig.SourceFile)
+	}
 
 	if err := database.Connect(); err != nil {
 		pklog.Fatalf("Failed to connect database: %v", err)
@@ -55,7 +68,10 @@ func main() {
 	}()
 
 	handlers := initDependencies()
-	r := router.New(handlers, database.DB)
+	r, err := router.New(handlers, database.DB)
+	if err != nil {
+		pklog.Fatalf("Failed to configure router: %v", err)
+	}
 	configureStaticAssets(r)
 	startServer(r)
 }
@@ -219,14 +235,16 @@ func startServer(r *gin.Engine) {
 	}
 
 	srv := &http.Server{
-		Addr:         ":" + port,
-		Handler:      r,
-		ReadTimeout:  time.Duration(config.AppConfig.Server.ReadTimeout) * time.Second,
-		WriteTimeout: time.Duration(config.AppConfig.Server.WriteTimeout) * time.Second,
+		Addr:              serverAddress(config.AppConfig.Server.ListenAddress, port),
+		Handler:           r,
+		ReadHeaderTimeout: time.Duration(config.AppConfig.Server.ReadHeaderTimeout) * time.Second,
+		ReadTimeout:       time.Duration(config.AppConfig.Server.ReadTimeout) * time.Second,
+		WriteTimeout:      time.Duration(config.AppConfig.Server.WriteTimeout) * time.Second,
+		IdleTimeout:       time.Duration(config.AppConfig.Server.IdleTimeout) * time.Second,
 	}
 
 	go func() {
-		pklog.Infof("Server starting on http://localhost:%s", port)
+		pklog.Infof("Server listening on %s", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			if strings.Contains(err.Error(), "address already in use") {
 				pklog.Fatalf("Port %s is already in use. Close the other program or use a different port.", port)
@@ -240,10 +258,20 @@ func startServer(r *gin.Engine) {
 	<-quit
 	pklog.Infof("Shutting down server...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		time.Duration(config.AppConfig.Server.ShutdownTimeout)*time.Second,
+	)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		pklog.Fatalf("Server forced to shutdown: %v", err)
 	}
 	pklog.Infof("Server exited")
+}
+
+func serverAddress(listenAddress, port string) string {
+	if strings.TrimSpace(listenAddress) == "" {
+		return ":" + port
+	}
+	return net.JoinHostPort(strings.TrimSpace(listenAddress), port)
 }

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -24,7 +25,7 @@ func TestReadyChecksDatabaseAndUploadStorage(t *testing.T) {
 
 	t.Run("ready when database and storage are available", func(t *testing.T) {
 		r := gin.New()
-		registerHealthAndMetrics(r, db, t.TempDir(), config.MetricsConfig{})
+		registerHealthAndMetrics(r, db, t.TempDir(), 2*time.Second, config.MetricsConfig{})
 
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/ready", nil)
@@ -40,7 +41,7 @@ func TestReadyChecksDatabaseAndUploadStorage(t *testing.T) {
 			t.Fatalf("write blocking file: %v", err)
 		}
 		r := gin.New()
-		registerHealthAndMetrics(r, db, badPath, config.MetricsConfig{})
+		registerHealthAndMetrics(r, db, badPath, 2*time.Second, config.MetricsConfig{})
 
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/ready", nil)
@@ -59,7 +60,7 @@ func TestMetricsEndpointRequiresConfigurationAndBearerToken(t *testing.T) {
 
 	t.Run("disabled returns not found", func(t *testing.T) {
 		r := gin.New()
-		registerHealthAndMetrics(r, nil, t.TempDir(), config.MetricsConfig{})
+		registerHealthAndMetrics(r, nil, t.TempDir(), 2*time.Second, config.MetricsConfig{})
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 		if w.Code != http.StatusNotFound {
@@ -68,7 +69,7 @@ func TestMetricsEndpointRequiresConfigurationAndBearerToken(t *testing.T) {
 	})
 
 	r := gin.New()
-	registerHealthAndMetrics(r, nil, t.TempDir(), config.MetricsConfig{Enabled: true, Token: "scrape-secret"})
+	registerHealthAndMetrics(r, nil, t.TempDir(), 2*time.Second, config.MetricsConfig{Enabled: true, Token: "scrape-secret"})
 	for _, tc := range []struct {
 		name   string
 		header string
