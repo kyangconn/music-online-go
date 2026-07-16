@@ -1,12 +1,23 @@
 server:
+  # 留空表示监听所有网络接口；也可设为 127.0.0.1 或具体 IP。
+  listen_address: ""
   port: "8080"
   mode: "release"
-  read_timeout: 30
-  write_timeout: 30
+  # read/write 为 0 时不限制完整上传或媒体流的持续时间。
+  read_header_timeout: 10
+  read_timeout: 0
+  write_timeout: 0
+  idle_timeout: 60
+  shutdown_timeout: 15
+  readiness_timeout: 2
   upload_dir: "uploads"
+  log_file: ""
+  max_json_body_size_mb: 1
   max_audio_size_mb: 200
   max_cover_size_mb: 10
   allowed_origins: []
+  # 只填直接连接到本服务的反向代理 IP/CIDR；默认不信任代理头。
+  trusted_proxies: []
 
 database:
   type: "sqlite"
@@ -16,15 +27,39 @@ database:
   user: ""
   password: ""
   name: ""
-  sslmode: "disable"
+  sslmode: "prefer"
+  log_level: "auto"
+  connect_timeout_seconds: 10
+  # 0 表示按数据库类型自动选择；SQLite 默认 1/1，PostgreSQL 默认 25/5。
+  max_open_connections: 0
+  max_idle_connections: 0
+  connection_max_lifetime_minutes: 60
+  connection_max_idle_time_minutes: 10
 
 jwt:
+  # 所有模式至少需要 32 个 UTF-8 字节；release/test 还会拒绝此占位值。
   secret: "your-secret-key-change-in-production"
   expire_hour: 24
 
 metrics:
   enabled: false
   token: ""
+
+rate_limit:
+  enabled: true
+  global_requests_per_second: 20
+  global_burst: 50
+  auth_requests_per_second: 1
+  auth_burst: 5
+
+logging:
+  level: "info"
+  access_log: true
+  max_size_mb: 50
+  max_backups: 3
+  max_age_days: 28
+  compress: true
+  local_time: true
 
 admin:
   bootstrap:
