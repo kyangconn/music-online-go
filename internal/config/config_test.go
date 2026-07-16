@@ -17,10 +17,11 @@ func TestValidateJWTSecret(t *testing.T) {
 		{"empty in release", "", "release", true},
 		{"default in release", "your-secret-key-change-in-production", "release", true},
 		{"default in test mode", "your-secret-key-change-in-production", "test", true},
-		{"empty in debug is ok", "", "debug", false},
+		{"empty in debug is rejected", "", "debug", true},
+		{"short in debug is rejected", "short-secret", "debug", true},
 		{"default in debug is ok", "your-secret-key-change-in-production", "debug", false},
-		{"strong in release", "super-secret-random-key", "release", false},
-		{"strong in debug", "another-key", "debug", false},
+		{"strong in release", "0123456789abcdef0123456789abcdef", "release", false},
+		{"strong in debug", "abcdef0123456789abcdef0123456789", "debug", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

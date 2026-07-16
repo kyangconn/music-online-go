@@ -203,12 +203,17 @@ func ValidateMetricsConfig(cfg MetricsConfig) error {
 }
 
 // ValidateJWTSecret checks that the JWT secret is strong enough for non-debug modes.
-// In debug mode any secret (including empty/default) is accepted.
+// Debug mode may use the documented development placeholder, but never an empty
+// signing key. Non-debug modes require an explicitly configured secret.
 func ValidateJWTSecret(secret, mode string) error {
-	if mode != "debug" {
-		if secret == "" || secret == "your-secret-key-change-in-production" {
-			return errors.New("weak JWT secret rejected: must be set to a strong random value in non-debug mode")
-		}
+	if strings.TrimSpace(secret) == "" {
+		return errors.New("jwt.secret is required")
+	}
+	if len([]byte(secret)) < 32 {
+		return errors.New("jwt.secret must contain at least 32 bytes")
+	}
+	if mode != "debug" && secret == "your-secret-key-change-in-production" {
+		return errors.New("weak JWT secret rejected: must be set to a strong random value in non-debug mode")
 	}
 	return nil
 }

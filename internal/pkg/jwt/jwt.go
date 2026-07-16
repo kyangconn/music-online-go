@@ -15,6 +15,8 @@ var (
 	ErrExpiredToken = errors.New("token has expired")
 )
 
+const tokenIssuer = "user-management"
+
 type Claims struct {
 	UserID   uint   `json:"user_id"`
 	Username string `json:"username"`
@@ -33,7 +35,7 @@ func GenerateToken(userID uint, username, role string) (string, error) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expireTime),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Issuer:    "user-management",
+			Issuer:    tokenIssuer,
 		},
 	}
 
@@ -44,8 +46,11 @@ func GenerateToken(userID uint, username, role string) (string, error) {
 // ParseToken 解析和验证JWT令牌
 func ParseToken(tokenString string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		if token.Method != jwt.SigningMethodHS256 {
+			return nil, ErrInvalidToken
+		}
 		return []byte(config.AppConfig.JWT.Secret), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 
 	if err != nil {
 		if ve, ok := errors.AsType[*jwt.ValidationError](err); ok {
@@ -56,7 +61,7 @@ func ParseToken(tokenString string) (*Claims, error) {
 		return nil, ErrInvalidToken
 	}
 
-	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid && claims.VerifyIssuer(tokenIssuer, true) {
 		return claims, nil
 	}
 
