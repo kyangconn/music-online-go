@@ -131,6 +131,21 @@ If `DATA_PATH` or `POSTGRES_DATA_PATH` is changed from a named volume to a host 
 
 The published port binds to `127.0.0.1` by default. Set `APP_BIND_ADDRESS=0.0.0.0` only when direct remote access is intentional, and normally place the service behind an HTTPS reverse proxy. PWA installation and the offline app shell work on `localhost`; other devices require HTTPS for secure-context browser features.
 
+### Read-only media-library mount
+
+External libraries are optional and are never mounted by the application. Mount NFS/SMB on the host first, then expose an existing directory read-only to the container:
+
+```bash
+MEDIA_PATH=/srv/music
+MEDIA_CONTAINER_PATH=/media/music
+make docker-config-media
+make docker-up-media
+```
+
+Register `/media/music` in the admin UI, not the host path. A root may declare `auto`, `local`, `nfs`, or `smb`, an exact expected filesystem such as `nfs4`, and an optional relative sentinel file. On Linux the application combines `/proc/self/mountinfo` evidence with a real directory/sentinel read; it does not treat ping as proof of NFS availability and never runs `mount` or `net use`. Native Windows deployments should prefer UNC paths over session-scoped mapped drives.
+
+The default bind propagation is `rprivate`, which assumes the host mount exists before the container starts. On a Linux engine, set `MEDIA_BIND_PROPAGATION=rslave` only when mount/remount events made after container startup must propagate and the runtime supports it. Do not rely on bind propagation on Docker Desktop.
+
 ### PostgreSQL Compose override
 
 Set at least `JWT_SECRET` and `POSTGRES_PASSWORD` in `.env`, then validate and start both files:
@@ -193,6 +208,9 @@ Copy `.env.example` instead of editing Compose YAML for routine deployment chang
 | `MO_CONFIG_FILE` | `/etc/music-online/config.yaml` | Config path inside the container and explicit application config path |
 | `DATA_PATH` | `music-online-data` | `/data` source; keep this value for the declared named volume, or use a host path such as `./data` |
 | `DATA_VOLUME_NAME` | `music-online-data` | Engine-level name of the default application data volume |
+| `MEDIA_PATH` | none | Existing host media directory consumed by the optional `compose.media.yaml` override |
+| `MEDIA_CONTAINER_PATH` | `/media/music` | Read-only media path visible inside the container |
+| `MEDIA_BIND_PROPAGATION` | `rprivate` | Linux bind propagation; use `rslave` only for deliberate post-start host remount propagation |
 | `RESTART_POLICY` | `unless-stopped` | Restart policy for application and PostgreSQL services |
 | `READ_ONLY_ROOTFS` | `true` | Make the application root filesystem read-only; disabling is not recommended |
 | `LOG_DRIVER` | `local` | Docker stdout/stderr logging driver for both services |
@@ -220,6 +238,7 @@ Copy `.env.example` instead of editing Compose YAML for routine deployment chang
 | `POSTGRES_HEALTHCHECK_START_PERIOD` | `10s` | PostgreSQL startup grace period |
 | `POSTGRES_HEALTHCHECK_RETRIES` | `5` | Failed checks before PostgreSQL is unhealthy |
 | `JWT_SECRET_HOST_FILE` | `./secrets/jwt_secret` | Host file consumed by `compose.secrets.yaml` |
+| `MUSICBEE_SUBMIT_TOKEN_HOST_FILE` | `./secrets/musicbee_submit_token` | Host file consumed by `compose.musicbee-secrets.yaml` |
 | `POSTGRES_PASSWORD_HOST_FILE` | `./secrets/postgres_password` | Host file consumed by `compose.postgres-secrets.yaml` |
 
 `DOCKER_IMAGE` is a Make variable used by `make docker`; `MUSIC_ONLINE_IMAGE` is the corresponding Compose setting used by `make docker-up*`.
@@ -230,9 +249,11 @@ Compose always passes the resolved `SERVER_PORT`/`APP_CONTAINER_PORT` into the a
 
 Configuration uses [Viper](https://github.com/spf13/viper). It reads one YAML file, applies environment overrides, then validates the complete result before opening the database or listening on a port.
 
+Loading uses a private parser instance and publishes only a fully validated startup snapshot to services. Configuration is not live-reloaded during requests; restart the instance after changing YAML or environment values. A failed load cannot expose a partially populated config to running code.
+
 ### Precedence and CLI flags
 
-General values use this order: **environment variable > selected YAML file > built-in default**. Compose first interpolates `.env`, then passes the resulting application environment into the container. Four sensitive values also accept `*_FILE`; either a direct environment value or a file value overrides YAML, and setting both forms is rejected as ambiguous.
+General values use this order: **environment variable > selected YAML file > built-in default**. Compose first interpolates `.env`, then passes the resulting application environment into the container. Five sensitive values also accept `*_FILE`; either a direct environment value or a file value overrides YAML, and setting both forms is rejected as ambiguous.
 
 Only two CLI flags exist; each takes priority by setting its dedicated environment variable before configuration is loaded:
 
@@ -314,6 +335,24 @@ The service trusts no proxy headers by default. Add only the IP/CIDR of the reve
 
 JSON bodies are buffered only up to `max_json_body_size_mb` before handlers run; known-length and chunked oversized requests return 413. Uploads are checked by request size, declared limit, extension, request MIME, and file signature. The frontend pre-check is only a convenience; backend validation is the security boundary. Compose provides a `256m` `/tmp` tmpfs, enough for roughly one multipart request near the default limits. For concurrent uploads, size `TMPFS_SIZE` to about `(audio limit + cover limit + 1 MiB overhead) × expected concurrency`. A reverse proxy must allow the same combined request size and keep upload/response timeouts long enough for the slowest supported client, or it will reject the request before the application sees it.
 
+### Media library
+
+| YAML key | Environment variable | Type | Default | Description |
+|---|---|---|---:|---|
+| `library.health_check_interval_seconds` | `LIBRARY_HEALTH_CHECK_INTERVAL_SECONDS` | int | `60` | Periodic root-health interval; `0` disables background checks but leaves manual probes available |
+| `library.scanner.enabled` | `LIBRARY_SCANNER_ENABLED` | bool | `true` | Allow administrators to enqueue server-side scans |
+| `library.scanner.max_file_size_mb` | `LIBRARY_SCANNER_MAX_FILE_SIZE_MB` | int | `2048` | Maximum source file size, independent of browser upload limits |
+| `library.scanner.max_tag_size_mb` | `LIBRARY_SCANNER_MAX_TAG_SIZE_MB` | int | `16` | Metadata accepted before third-party parsing, `1`–`64` MiB; count and embedded-picture bounds are also checked |
+| `library.scanner.min_file_age_seconds` | `LIBRARY_SCANNER_MIN_FILE_AGE_SECONDS` | int | `30` | Skip files that may still be written; `0` disables the age wait |
+| `library.scanner.hash_recheck_hours` | `LIBRARY_SCANNER_HASH_RECHECK_HOURS` | int | `168` | Rehash even unchanged size/mtime after this interval; `0` disables periodic rehashing |
+| `library.scanner.retry_max_attempts` | `LIBRARY_SCANNER_RETRY_MAX_ATTEMPTS` | int | `5` | Maximum attempts for retryable storage failures |
+| `library.scanner.retry_initial_seconds` | `LIBRARY_SCANNER_RETRY_INITIAL_SECONDS` | int | `30` | Initial retry delay before exponential backoff |
+| `library.scanner.retry_max_seconds` | `LIBRARY_SCANNER_RETRY_MAX_SECONDS` | int | `900` | Maximum single retry delay |
+
+Scans are append-oriented: missing physical sources are marked unavailable without deleting the logical track or edited metadata. Byte-identical copies are retained as alternate sources, preparing analysis work in M5 to reuse artifacts by content hash and analyzer version. A root outage does not fail `/ready`; scans record structured reasons such as `mount_missing`, `mount_mismatch`, `stale_handle`, and `network_unreachable`, then use bounded exponential backoff. Kernel calls on a hard-mounted NFS filesystem may still block beyond a Go context deadline, so host mount options remain the real I/O timeout and recovery boundary. Native Windows probes prefer UNC paths; Windows exposes remote-drive availability but not the underlying NFS/SMB protocol, so a readable remote root is reported as degraded rather than falsely claiming protocol verification.
+
+Use NFS/SMB for read-only media sources, not for the SQLite database or writable `/data` volume: network locking and cache semantics can undermine SQLite guarantees. Keep SQLite local for the normal single-instance deployment and use PostgreSQL when multiple application instances must share a database.
+
 ### Database
 
 | YAML key | Environment variable | Type | Default | Description |
@@ -345,6 +384,20 @@ PostgreSQL requires non-empty `host`, `user`, and `name`, plus a valid port and 
 | `jwt.expire_hour` | `JWT_EXPIRE_HOUR` | int | `24` | Token lifetime in hours; must be positive |
 
 Passwords are stored with bcrypt hashes. Every new password must contain at least 8 Unicode code points and at most 72 UTF-8 bytes, matching bcrypt's input limit. Refresh-token support is not currently part of this configuration contract.
+
+### Access and MusicBee integration
+
+| YAML key | Environment variable | Type | Default | Description |
+|---|---|---|---:|---|
+| `access.library_mode` | `ACCESS_LIBRARY_MODE` | string | `"public"` | `public` allows anonymous browsing and playback; `authenticated` requires login for library reads and media |
+| `access.registration_mode` | `ACCESS_REGISTRATION_MODE` | string | `"open"` | `open` enables public registration; `admin` limits account creation to administrators |
+| `access.media_url_ttl_minutes` | `ACCESS_MEDIA_URL_TTL_MINUTES` | int | `60` | Lifetime of signed cover/audio URLs in a private library; must be positive |
+| `integrations.musicbee.submit_token` | `INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN` | string | `""` | Scoped MusicBee-compatible submission token; at least 32 bytes, and an empty value disables the endpoint |
+| `integrations.musicbee.submit_username` | `INTEGRATIONS_MUSICBEE_SUBMIT_USERNAME` | string | `""` | Enabled local user that owns submitted records; configure it together with the token |
+
+`GET /api/v1/instance` exposes the current access and registration capabilities. Public library mode applies only to reads; uploads, edits, likes, and administration still require authentication. Private mode uses short-lived signed media URLs rather than putting the long-lived JWT in audio or image URLs.
+
+When both MusicBee values are configured, clients submit the unified metadata JSON contract to `POST /api/v1/track/submit` with `Authorization: Bearer <submit_token>`. The credential has only the `track:submit` scope and never reads a client filesystem path. Prefer `INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN_FILE` in production and rotate or remove the token to revoke access.
 
 ### Metrics
 
@@ -403,6 +456,7 @@ Logs always go to stdout. If `server.log_file`, `MO_LOG_FILE`, or `--log-file` i
 | `DATABASE_PASSWORD_FILE` | Backend | Database-password file; mutually exclusive with `DATABASE_PASSWORD` |
 | `METRICS_TOKEN_FILE` | Backend | Metrics bearer-token file; mutually exclusive with `METRICS_TOKEN` |
 | `ADMIN_BOOTSTRAP_PASSWORD_FILE` | Backend | Bootstrap-admin password file; mutually exclusive with `ADMIN_BOOTSTRAP_PASSWORD` |
+| `INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN_FILE` | Backend | MusicBee submission-token file; mutually exclusive with `INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN` |
 | `MO_LOG_FILE` | Backend | File-log path; overrides `SERVER_LOG_FILE` and `server.log_file` |
 | `MO_LOG_MAX_SIZE` | Backend | Legacy positive-integer override for `logging.max_size_mb` |
 | `MO_LOG_MAX_BACKUPS` | Backend | Legacy positive-integer override for `logging.max_backups` |

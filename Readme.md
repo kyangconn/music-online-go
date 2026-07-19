@@ -1,6 +1,6 @@
 # Music Online
 
-全栈音乐管理平台，Go 后端 + Vue 3 前端，编译为单一静态二进制文件。
+面向个人、家庭或小团队的 self-hosted 小型音乐平台：管理、检索和播放自己的音乐库，离线运行不依赖外部服务，并兼容 MusicBrainz Picard 常用标签。Go 后端与 Vue 3 前端会编译为单一静态二进制；SQLite 是默认路径，PostgreSQL 可选。
 
 ## 技术栈
 
@@ -116,6 +116,41 @@ make docker-up
 `config-docker-example.yaml` 以只读方式映射到容器，数据库和上传文件位于命名卷
 `music-online-data`。`.env` 已被 Git 忽略，不要提交其中的 JWT、数据库或管理员密码。
 
+已有音乐目录用只读 Compose override 挂载。宿主路径必须预先存在；启动后在“管理面板 →
+媒体库”中登记同一个容器内路径并手动扫描：
+
+```bash
+# .env
+MEDIA_PATH=/srv/music
+MEDIA_CONTAINER_PATH=/media/music
+
+make docker-config-media
+make docker-up-media
+```
+
+`compose.media.yaml` 始终以只读方式挂载来源。需要多个目录时，新建一个本地 override，
+为每个宿主目录选择不同的容器目标，然后在管理面板逐个登记，例如：
+
+```yaml
+services:
+  app:
+    volumes:
+      - type: bind
+        source: /mnt/archive
+        target: /media/archive
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/shared
+        target: /media/shared
+        read_only: true
+        bind:
+          create_host_path: false
+```
+
+容器以 UID/GID `10001` 运行；宿主媒体目录无需对它可写，但必须允许该身份读取文件并遍历目录。
+
 PostgreSQL 部署需在 `.env` 中设置 `POSTGRES_PASSWORD`，然后叠加 override：
 
 ```bash
@@ -145,6 +180,17 @@ PowerShell 可先运行 `New-Item -ItemType Directory -Force secrets`，再用
 `compose.secrets.yaml` 挂载 JWT 文件；PostgreSQL 部署再叠加
 `compose.postgres-secrets.yaml`，同一个数据库密码文件会同时提供给应用与官方 PostgreSQL 镜像。
 
+启用 MusicBee 提交兼容时，可再把独立 token 作为 Compose secret 提供：
+
+```bash
+openssl rand -hex 32 > secrets/musicbee_submit_token
+# 同时在 .env 设置 INTEGRATIONS_MUSICBEE_SUBMIT_USERNAME
+make docker-config-musicbee-secrets
+make docker-up-musicbee-secrets
+```
+
+该目标组合基础 Compose、JWT secret 和 `compose.musicbee-secrets.yaml`；PostgreSQL 或其他自定义部署可按相同顺序叠加所需 override。
+
 默认 PostgreSQL 18 数据卷映射到 `/var/lib/postgresql`，由镜像在其下使用带主版本号的目录。
 不要只改 `POSTGRES_IMAGE` 跨主版本复用旧卷；先按 PostgreSQL 的 `pg_upgrade` 或导出/导入流程升级。
 
@@ -163,6 +209,8 @@ PowerShell 可先运行 `New-Item -ItemType Directory -Force secrets`，再用
 | `APP_CONTAINER_PORT` | `8080` | 容器内端口 fallback；Compose 会把它作为 `SERVER_PORT` 传给应用 |
 | `CONFIG_FILE` / `MO_CONFIG_FILE` | `./config-docker-example.yaml` / `/etc/music-online/config.yaml` | 宿主配置来源与容器内只读目标 |
 | `DATA_PATH` / `DATA_VOLUME_NAME` | `music-online-data` | `/data` 的来源及默认命名卷名称 |
+| `MEDIA_PATH` / `MEDIA_CONTAINER_PATH` | 无 / `/media/music` | `compose.media.yaml` 使用的现有宿主媒体目录及容器内只读目标；默认部署不挂载外部媒体 |
+| `MEDIA_BIND_PROPAGATION` | `rprivate` | 媒体 bind propagation；仅当 Linux 宿主会在容器启动后挂载/重挂 NFS 时按需改为 `rslave`，Docker Desktop 不应依赖此能力 |
 | `RESTART_POLICY` / `READ_ONLY_ROOTFS` | `unless-stopped` / `true` | 重启策略与只读根文件系统开关 |
 | `LOG_DRIVER`, `LOG_MAX_SIZE`, `LOG_MAX_FILE` | `local`, `10m`, `3` | Docker stdout/stderr 日志驱动和轮转上限；不同于应用文件日志 |
 | `TMPFS_SIZE` / `STOP_GRACE_PERIOD` | `256m` / `30s` | multipart 临时空间与停止宽限期；提高上传上限时也要相应提高 |
@@ -174,6 +222,7 @@ PowerShell 可先运行 `New-Item -ItemType Directory -Force secrets`，再用
 | `POSTGRES_STOP_GRACE_PERIOD` | `30s` | PostgreSQL 停止宽限期 |
 | `POSTGRES_HEALTHCHECK_INTERVAL`, `POSTGRES_HEALTHCHECK_TIMEOUT`, `POSTGRES_HEALTHCHECK_START_PERIOD`, `POSTGRES_HEALTHCHECK_RETRIES` | `10s`, `5s`, `10s`, `5` | PostgreSQL 健康检查参数 |
 | `JWT_SECRET_HOST_FILE` | `./secrets/jwt_secret` | `compose.secrets.yaml` 在宿主机读取的 JWT secret 文件 |
+| `MUSICBEE_SUBMIT_TOKEN_HOST_FILE` | `./secrets/musicbee_submit_token` | `compose.musicbee-secrets.yaml` 在宿主机读取的 MusicBee scoped token 文件 |
 | `POSTGRES_PASSWORD_HOST_FILE` | `./secrets/postgres_password` | `compose.postgres-secrets.yaml` 在宿主机读取的数据库密码文件 |
 
 `make docker` 也接受 Make 变量 `DOCKER_IMAGE`、`VERSION`、`VCS_REF`、`BUILD_DATE`。
@@ -186,9 +235,12 @@ PWA 安装和离线应用壳在 `localhost` 可直接使用；从其他设备访
 ## 配置
 
 程序使用 [Viper](https://github.com/spf13/viper) 加载配置。对配置值而言，优先级为
-**环境变量 > 第一个找到的 YAML 文件 > 代码默认值**；不会合并多个 YAML 文件。四个敏感字段还支持
+**环境变量 > 第一个找到的 YAML 文件 > 代码默认值**；不会合并多个 YAML 文件。五个敏感字段还支持
 `*_FILE`：直接环境值优先于 YAML，文件值也优先于 YAML；同时设置直接值与对应文件变量会拒绝启动。
 `--config-file` 和 `--log-file` 分别具有最高的路径覆盖优先级。
+
+配置会在私有解析器中完整构造和校验，只有成功后才作为启动快照交给各服务；不支持请求期间热修改。
+修改 YAML 或环境变量后需重启实例，失败的加载不会把半成品配置暴露给运行代码。
 
 ### 命令行参数
 
@@ -237,6 +289,7 @@ SERVER_PORT=8080 DATABASE_TYPE=sqlite DATABASE_PATH=/data/music.db ./music-onlin
 | `DATABASE_PASSWORD_FILE` | 数据库密码文件；不能与 `DATABASE_PASSWORD` 同时设置 |
 | `METRICS_TOKEN_FILE` | 指标 Bearer token 文件；不能与 `METRICS_TOKEN` 同时设置 |
 | `ADMIN_BOOTSTRAP_PASSWORD_FILE` | 首个管理员密码文件；不能与 `ADMIN_BOOTSTRAP_PASSWORD` 同时设置 |
+| `INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN_FILE` | MusicBee 提交凭证文件；不能与 `INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN` 同时设置 |
 | `MO_LOG_FILE` | 日志路径；优先级为 `--log-file` > `MO_LOG_FILE` > `SERVER_LOG_FILE`/YAML |
 | `MO_LOG_MAX_SIZE`, `MO_LOG_MAX_BACKUPS`, `MO_LOG_MAX_AGE` | 旧版日志轮转兼容别名，有值时覆盖 `LOGGING_*` 对应项 |
 | `XDG_CONFIG_HOME` / `HOME` | 决定用户级配置搜索目录 |
@@ -287,6 +340,55 @@ JSON 请求在进入 handler 前最多缓冲 `max_json_body_size_mb`，已知和
 `["https://music-ui.example.com"]`；不支持通配符或带路径的地址。
 
 默认不信任任何代理地址，也不会采信任意客户端伪造的 `X-Forwarded-*`。反向代理部署时只配置直接代理的 IP/CIDR；不要为了省事使用 `0.0.0.0/0`。
+
+#### library.scanner 与媒体库
+
+| YAML 字段 | 环境变量 | 默认值 | 说明 |
+|---|---|---|---|
+| `library.health_check_interval_seconds` | `LIBRARY_HEALTH_CHECK_INTERVAL_SECONDS` | `60` | 后台复核媒体根可用性的间隔；`0` 关闭周期检查，但保留管理界面的手动探测 |
+| `library.scanner.enabled` | `LIBRARY_SCANNER_ENABLED` | `true` | 是否允许管理员创建服务端媒体库扫描任务；关闭不会删除目录配置或历史 |
+| `library.scanner.max_file_size_mb` | `LIBRARY_SCANNER_MAX_FILE_SIZE_MB` | `2048` | 扫描单个来源文件的上限（MiB）；必须大于零，独立于浏览器上传上限 |
+| `library.scanner.max_tag_size_mb` | `LIBRARY_SCANNER_MAX_TAG_SIZE_MB` | `16` | 进入标签解析器前允许的元数据上限（MiB），范围 `1`–`64`；还会校验 Vorbis/APE 条目数量和内嵌图片长度 |
+| `library.scanner.min_file_age_seconds` | `LIBRARY_SCANNER_MIN_FILE_AGE_SECONDS` | `30` | 跳过修改时间距今不足此秒数的文件；`0` 表示不等待 |
+| `library.scanner.hash_recheck_hours` | `LIBRARY_SCANNER_HASH_RECHECK_HOURS` | `168` | 即使大小和修改时间未变，也周期性重算内容哈希；`0` 关闭周期复核 |
+| `library.scanner.retry_max_attempts` | `LIBRARY_SCANNER_RETRY_MAX_ATTEMPTS` | `5` | 可重试存储故障的最多扫描尝试次数，必须大于零 |
+| `library.scanner.retry_initial_seconds` | `LIBRARY_SCANNER_RETRY_INITIAL_SECONDS` | `30` | 首次重试等待时间，之后指数退避 |
+| `library.scanner.retry_max_seconds` | `LIBRARY_SCANNER_RETRY_MAX_SECONDS` | `900` | 单次退避上限，不能小于初始等待时间 |
+
+`server.upload_dir` 同时是默认托管媒体库：用户上传、扫描提取的封面和数据库可控文件写入这里。
+管理员添加的其他绝对路径一律是只读来源，音频原地播放；应用不会修改、移动或删除来源文件。
+目录路径是服务进程看到的路径，因此 Docker 管理界面中应填写 `/media/music` 之类的容器路径，
+而不是宿主机的 `/srv/music`。
+
+扫描仅由管理员手动触发，采用附加语义：已存在且未变化的来源直接跳过；发现新文件才加入；
+文件暂时缺失只把物理来源标记为 missing，不会删除逻辑曲目；同一路径内容发生变化时保留原记录和人工元数据，
+把来源标记为 changed 并在扫描详情中提示复核。同一内容出现在多个目录时会保存多个物理来源，而不是丢弃副本；
+播放可使用仍在线的副本，未来 M5 的分析产物可按内容哈希和分析器版本复用。
+扫描会读取常见内嵌标签，包括 MusicBrainz Picard 常用标识，并在安全可用时复制内嵌封面到托管目录，
+但不会调用外部 MusicBrainz 服务。外部根目录互相之间以及与托管目录都不能重叠；已有曲目引用某个
+外部根目录时，不能修改它的路径或删除它，可先停用以暂停扫描和播放解析。
+
+后台只有一个扫描 worker，缓慢目录不会堆叠并发 I/O。每个根可选择 `auto/local/nfs/smb`、预期文件系统
+和根内相对探针文件；Linux 会读取 `/proc/self/mountinfo` 并实际打开目录/探针，区分 `mount_missing`、
+`mount_mismatch`、`permission_denied`、`stale_handle`、`network_unreachable`、`io_timeout` 与 `read_failed`。
+应用不会把 ping 当作 NFS 证据，也不会自行 mount、`net use` 或修复网络存储；只有配置为 NFS 且探测证据
+支持时，界面才明确显示“NFS 离线”。可重试故障采用有上限的指数退避，任务状态和原因保存在数据库中。
+Windows 原生部署优先使用 UNC 路径；Windows 能判断远程路径是否可读，却不会向此进程可靠暴露底层 NFS/SMB
+协议，因此可读的远程根会显示为“降级可用”，而不会伪造协议已核实的结论。映射盘还会额外提示其登录会话作用域。
+
+外部目录不参加 `/ready` 探测，NFS 暂时不可用不会让 HTTP 服务退出就绪状态；但扫描或播放触发的
+内核网络文件系统调用未必能被 Go context 中断。应在宿主机完成 NFS 挂载，并按所用操作系统和存储端
+设置合理的连接、重试和故障恢复参数，再只读 bind mount 到容器。Linux 默认 `rprivate` 要求先挂载后启动
+容器；如确实需要把容器启动后的宿主重挂事件传播进去，可在确认运行时支持后设置
+`MEDIA_BIND_PROPAGATION=rslave`。NFS `hard` 挂载通常更保护数据完整性，但服务线程可能长期等待；`soft`
+挂载可能返回 I/O 错误甚至带来数据完整性风险，不能只为了更快超时而盲目启用。
+
+Windows 原生运行优先登记 UNC（如 `\\server\music`）；映射盘符依赖登录会话，服务账户可能看不到，
+因此会显示降级告警。Windows 上的 Docker 仍应登记容器内路径，不要让应用执行 `net use`。扫描被取消或
+服务停止时，已经导入的曲目会保留；运行任务由数据库租约在过期后安全恢复。
+
+NFS/SMB 只用于媒体来源，不建议承载 SQLite 数据库文件或 `/data` 写入卷；网络文件系统的锁与缓存语义
+可能破坏 SQLite 的可靠性。单实例默认使用本地 SQLite；需要多个应用实例或共享数据库时改用 PostgreSQL。
 
 #### database
 
@@ -346,6 +448,56 @@ DATABASE_TYPE=postgres DATABASE_HOST=localhost DATABASE_PORT=5432 DATABASE_USER=
 
 初始化完成后，建议关闭 `admin.bootstrap.enabled` 并重启；如果保留启用状态，程序也只会确保该用户仍是 admin，不会重复创建账号。生产环境不要把管理员密码提交到仓库，优先用环境变量或只读部署配置提供。
 
+#### access 与 integrations.musicbee
+
+| YAML 字段 | 环境变量 | 默认值 | 说明 |
+|---|---|---|---|
+| `access.library_mode` | `ACCESS_LIBRARY_MODE` | `"public"` | `public` 允许匿名浏览和播放；`authenticated` 要求登录后访问音乐列表、详情、用户音乐、标签查询、封面和音频流 |
+| `access.registration_mode` | `ACCESS_REGISTRATION_MODE` | `"open"` | `open` 开放注册；`admin` 关闭公开注册，由管理员在管理面板创建用户 |
+| `access.media_url_ttl_minutes` | `ACCESS_MEDIA_URL_TTL_MINUTES` | `60` | 私有库签名封面/音频 URL 的有效分钟数；必须大于零，前端会在播放前续签 |
+| `integrations.musicbee.submit_token` | `INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN` | `""` | MusicBee 兼容提交凭证；至少 32 字节，留空时提交端点不存在 |
+| `integrations.musicbee.submit_username` | `INTEGRATIONS_MUSICBEE_SUBMIT_USERNAME` | `""` | 提交记录归属的已启用本地用户；必须与 token 同时配置 |
+
+`GET /api/v1/instance` 公开返回当前访问与注册能力，前端据此隐藏注册入口并保护私有库页面。`public` 仅表示音乐库读取公开；上传、修改、点赞和管理操作仍要求登录。`authenticated` 模式下 API 返回短期签名媒体 URL，避免把长期 JWT 放入 `<audio>` 或 `<img>` 查询参数；私有库读取和媒体响应带 `Cache-Control: private, no-store`，登出或会话失效时前端也会清除持久化播放队列。
+
+关闭公开注册前，应先通过 `admin.bootstrap` 建立首个管理员。之后管理员可以在“管理面板 → 用户管理”创建普通用户或管理员；系统不会生成或发送邮件邀请。
+
+MusicBee 兼容写入口默认关闭。配置两项后，客户端以 `Authorization: Bearer <submit_token>` 调用 `POST /api/v1/track/submit`，凭证只具有 `track:submit` 范围，创建的记录归属 `submit_username`。提交体使用与统一曲目元数据相同的 JSON 字段；撤销时删除或轮换 token 并重启实例。读取端点仍遵守 `access.library_mode`。生产环境优先使用 `INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN_FILE`，并通过自定义 Compose override 将只读 secret 文件挂入容器。
+
+提交契约为 `Content-Type: application/json`，`title` 与 `artist` 必填；调用只创建元数据记录，不上传或读取客户端文件路径。成功返回 HTTP 201 和未包裹的曲目对象。常用字段如下：
+
+```json
+{
+  "title": "Track",
+  "artist": "Artist feat. Guest",
+  "artists": ["Artist", "Guest"],
+  "album": "Release",
+  "album_artist": "Album Artist",
+  "album_artists": ["Album Artist"],
+  "track_number": 2,
+  "track_total": 12,
+  "disc_number": 1,
+  "disc_total": 2,
+  "year": 2024,
+  "release_date": "2024-03-02",
+  "original_release_date": "2023",
+  "genres": ["Ambient", "Chillout"],
+  "comment": "tag comment",
+  "isrcs": ["USABC2412345"],
+  "duration": 201,
+  "musicbrainz_recording_id": "00000000-0000-4000-8000-000000000001",
+  "musicbrainz_track_id": "00000000-0000-4000-8000-000000000002",
+  "musicbrainz_release_id": "00000000-0000-4000-8000-000000000003",
+  "musicbrainz_release_group_id": "00000000-0000-4000-8000-000000000004",
+  "musicbrainz_artist_ids": ["00000000-0000-4000-8000-000000000005"],
+  "musicbrainz_album_artist_ids": ["00000000-0000-4000-8000-000000000006"]
+}
+```
+
+日期接受 `YYYY`、`YYYY-MM` 或 `YYYY-MM-DD`；MusicBrainz 字段必须是对应实体的 UUID；ISRC 可带常见连字符，入库时规范为 12 位大写形式。旧客户端的 `musicbrainz_id` 和 `musicbrainz_artist_id` 仍分别作为 recording ID 和单个 artist ID 的输入别名，但响应只使用语义明确的新字段。`POST /api/v1/track/search` 不接受提交 token：公开库可匿名读取，私有库需正常用户 JWT，以免提交凭证扩张成通用会话。
+
+`genres` 按来源保留多值及展示大小写，兼容字段 `genre` 由它拼接；响应中的只读 `genre_tokens` 才会拆分常见分隔符并折叠大小写，供检索和后续场景分类复用。`metadata_revision` 只在规范化后的曲目元数据实际变化时递增，音频替换则继续由内部 `file_hash` 单独标识。未来的音频分析与预设分类会放在独立派生表中，以这两个值判断规则层或音频层是否过期，不把分类结果写回原始标签字段。
+
 #### rate_limit 与 logging
 
 | YAML 字段 | 环境变量 | 默认值 | 说明 |
@@ -381,6 +533,10 @@ DATABASE_TYPE=postgres DATABASE_HOST=localhost DATABASE_PORT=5432 DATABASE_USER=
 
 SQLite 单机部署只需要备份三类内容：`config.yaml`、SQLite 数据库文件（默认 `music.db` 或 `database.path` 指向的文件）、上传目录（默认 `uploads/` 或 `server.upload_dir`）。备份前最好停止服务，或至少确保没有上传正在进行。
 
+管理员登记的只读媒体根不由应用复制或管理，必须按原存储系统单独备份；应用备份只包含它们的索引、
+人工元数据和已提取到托管目录的封面。恢复到另一台主机或容器路径变化时，应先以原容器路径重新挂载，
+否则已有曲目会保留但音频暂时无法播放。
+
 ```bash
 # 示例：把当前目录部署的数据打包
 tar -czf music-online-backup.tgz config.yaml music.db uploads/
@@ -404,6 +560,8 @@ tar -czf music-online-files.tgz config.yaml uploads/
 ### 数据库升级与回滚
 
 服务启动时会按版本顺序自动执行尚未应用的数据库迁移，并将结果记录在 `schema_migrations` 表中。每条迁移及其记录位于同一个事务内；任一迁移失败都会阻止服务启动，且不会被标记为已应用，修复原因后可直接重试。
+
+统一元数据迁移会把旧 `music_tags` 中能以“标题 + 艺术家（以及存在时的专辑）”唯一对应到曲目的空缺字段合并进 `vinyl`。无法唯一对应的行不会猜测或丢弃；包含旧行的整张表随后保留为历史归档表 `legacy_music_tags_v1`，应用不再读写它。旧表为空时直接移除，不会给新实例留下第二套元数据表。旧 `use_count`、搜索向量和模糊匹配不再参与运行时行为；ID 空间无法安全映射的 `/music-tags` 按 ID 增删改查端点也会移除，避免旧 tag ID 误操作同号曲目。`/music-tags/search`、`/music-tags/match`、MBID 查询和 `/track` 客户端端点改为使用统一曲目模型。确认升级结果并保留过一次完整备份周期后，管理员可自行归档该历史表；应用不会自动删除它。
 
 升级前请按上面的方式同时备份数据库、上传目录和配置。项目不提供自动向下迁移：需要回滚程序版本时，先停止服务，恢复升级前的完整备份，再部署旧版本程序。不要让旧版本程序直接使用已经执行过新迁移的数据库；旧程序检测到未知迁移版本时会拒绝启动。
 
