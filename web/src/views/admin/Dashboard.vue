@@ -7,6 +7,7 @@ import DashboardOverview from "@/components/admin/DashboardOverview.vue";
 import DatabaseInfo from "@/components/admin/DatabaseInfo.vue";
 import MusicInfo from "@/components/admin/MusicInfo.vue";
 import MusicManagement from "@/components/admin/MusicManagement.vue";
+import MediaLibraryManagement from "@/components/admin/MediaLibraryManagement.vue";
 import RuntimeInfo from "@/components/admin/RuntimeInfo.vue";
 import ServerInfo from "@/components/admin/ServerInfo.vue";
 import UserManagement from "@/components/admin/UserManagement.vue";
@@ -32,6 +33,7 @@ const tabs = computed<TabItem[]>(() => [
   { id: "music", label: t("admin.music") },
   { id: "user-management", label: t("admin.user_management") },
   { id: "music-management", label: t("admin.music_management") },
+  { id: "media-library", label: t("admin.media_library") },
 ]);
 
 /** 获取系统信息 */
@@ -91,6 +93,10 @@ onMounted(fetchInfo);
 
     <template #music-management>
       <MusicManagement />
+    </template>
+
+    <template #media-library>
+      <MediaLibraryManagement />
     </template>
   </SideNavLayout>
 </template>
