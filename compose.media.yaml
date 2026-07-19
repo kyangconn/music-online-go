@@ -1,0 +1,10 @@
+services:
+  app:
+    volumes:
+      - type: bind
+        source: "${MEDIA_PATH:?Set MEDIA_PATH to an existing host media directory}"
+        target: "${MEDIA_CONTAINER_PATH:-/media/music}"
+        read_only: true
+        bind:
+          create_host_path: false
+          propagation: "${MEDIA_BIND_PROPAGATION:-rprivate}"

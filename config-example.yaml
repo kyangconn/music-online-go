@@ -41,6 +41,39 @@ jwt:
   secret: "your-secret-key-change-in-production"
   expire_hour: 24
 
+access:
+  # public: 匿名可浏览和播放；authenticated: 列表、详情、封面和音频都需要登录。
+  library_mode: "public"
+  # open: 允许公开注册；admin: 仅管理员可从管理面板创建用户。
+  registration_mode: "open"
+  # 私有音乐库中签名媒体 URL 的有效期。前端会在播放前自动续签。
+  media_url_ttl_minutes: 60
+
+library:
+  # 周期性检查媒体根健康；0 关闭后台检查，管理员仍可手动探测。
+  health_check_interval_seconds: 60
+  scanner:
+    # 关闭后保留目录与扫描历史，但管理员不能创建新的扫描任务。
+    enabled: true
+    # 扫描器独立于浏览器上传限制；用于跳过异常大的来源文件。
+    max_file_size_mb: 2048
+    # 进入第三方标签解析器前允许的元数据上限；硬上限为 64 MiB。
+    max_tag_size_mb: 16
+    # 跳过仍可能在写入中的新文件，避免索引不完整的 NFS/同步文件。
+    min_file_age_seconds: 30
+    # 即使大小和修改时间不变，也按周期重新校验内容哈希；0 关闭周期复核。
+    hash_recheck_hours: 168
+    # 网络存储离线时使用有上限的指数退避，不会用 ping 代替文件系统证据。
+    retry_max_attempts: 5
+    retry_initial_seconds: 30
+    retry_max_seconds: 900
+
+integrations:
+  musicbee:
+    # 两项需同时设置。启用后 POST /api/v1/track/submit 仅接受此 scoped Bearer token。
+    submit_token: ""
+    submit_username: ""
+
 metrics:
   enabled: false
   token: ""

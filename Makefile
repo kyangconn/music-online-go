@@ -1,4 +1,4 @@
-.PHONY: help install-fe install-fe-dev build build-fe build-be build-silent dev dev-fe dev-be test test-be test-fe test-cover test-cover-fe check verify check-fe check-be typecheck-fe lint lint-fe lint-be audit-be docker docker-config docker-config-postgres docker-up docker-up-postgres docker-down clean
+.PHONY: help install-fe install-fe-dev build build-fe build-be build-silent dev dev-fe dev-be test test-be test-fe test-cover test-cover-fe check verify check-fe check-be typecheck-fe lint lint-fe lint-be audit-be docker docker-config docker-config-media docker-config-postgres docker-config-secrets docker-config-musicbee-secrets docker-config-postgres-secrets docker-up docker-up-media docker-up-postgres docker-up-secrets docker-up-musicbee-secrets docker-up-postgres-secrets docker-down clean
 
 .DEFAULT_GOAL := help
 
@@ -50,12 +50,16 @@ help: ## Show available commands
 	@echo "=== Docker ==="
 	@echo "  make docker                 Build Docker image"
 	@echo "  make docker-config          Validate the SQLite Compose configuration"
+	@echo "  make docker-config-media    Validate Compose with a read-only media mount"
 	@echo "  make docker-config-postgres Validate the PostgreSQL Compose configuration"
 	@echo "  make docker-config-secrets  Validate the SQLite Compose secrets override"
+	@echo "  make docker-config-musicbee-secrets Validate JWT + MusicBee secret overrides"
 	@echo "  make docker-config-postgres-secrets Validate PostgreSQL + secrets overrides"
 	@echo "  make docker-up              Start the SQLite Compose deployment"
+	@echo "  make docker-up-media        Start SQLite with a read-only media mount"
 	@echo "  make docker-up-postgres     Start the PostgreSQL Compose deployment"
 	@echo "  make docker-up-secrets      Start SQLite with a Docker secret"
+	@echo "  make docker-up-musicbee-secrets Start SQLite with JWT + MusicBee secrets"
 	@echo "  make docker-up-postgres-secrets Start PostgreSQL with Docker secrets"
 	@echo "  make docker-down            Stop Compose services (preserves data volumes)"
 	@echo "  make clean          Remove build artifacts"
@@ -146,11 +150,18 @@ docker: ## Build multi-stage Docker image
 docker-config: ## Validate the default SQLite Compose configuration
 	docker compose -f compose.yaml config --quiet
 
+docker-config-media: export MEDIA_PATH := $(CURDIR)
+docker-config-media: ## Validate the default deployment with a read-only media mount
+	docker compose -f compose.yaml -f compose.media.yaml config --quiet
+
 docker-config-postgres: ## Validate the PostgreSQL Compose override
 	docker compose -f compose.yaml -f compose.postgres.yaml config --quiet
 
 docker-config-secrets: ## Validate the default deployment with the JWT secret override
 	docker compose -f compose.yaml -f compose.secrets.yaml config --quiet
+
+docker-config-musicbee-secrets: ## Validate SQLite with JWT and MusicBee secrets
+	docker compose -f compose.yaml -f compose.secrets.yaml -f compose.musicbee-secrets.yaml config --quiet
 
 docker-config-postgres-secrets: ## Validate PostgreSQL with JWT and database secrets
 	docker compose -f compose.yaml -f compose.postgres.yaml -f compose.secrets.yaml -f compose.postgres-secrets.yaml config --quiet
@@ -158,11 +169,17 @@ docker-config-postgres-secrets: ## Validate PostgreSQL with JWT and database sec
 docker-up: ## Start the default SQLite Compose deployment
 	docker compose -f compose.yaml up -d --build
 
+docker-up-media: ## Start SQLite with a read-only media mount
+	docker compose -f compose.yaml -f compose.media.yaml up -d --build
+
 docker-up-postgres: ## Start the PostgreSQL Compose deployment
 	docker compose -f compose.yaml -f compose.postgres.yaml up -d --build
 
 docker-up-secrets: ## Start SQLite with JWT supplied as a Docker secret
 	docker compose -f compose.yaml -f compose.secrets.yaml up -d --build
+
+docker-up-musicbee-secrets: ## Start SQLite with JWT and MusicBee credentials supplied as Docker secrets
+	docker compose -f compose.yaml -f compose.secrets.yaml -f compose.musicbee-secrets.yaml up -d --build
 
 docker-up-postgres-secrets: ## Start PostgreSQL with JWT and database passwords supplied as Docker secrets
 	docker compose -f compose.yaml -f compose.postgres.yaml -f compose.secrets.yaml -f compose.postgres-secrets.yaml up -d --build

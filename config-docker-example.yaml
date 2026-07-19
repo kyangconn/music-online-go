@@ -37,6 +37,29 @@ jwt:
   secret: ""
   expire_hour: 24
 
+access:
+  library_mode: "public"
+  registration_mode: "open"
+  media_url_ttl_minutes: 60
+
+library:
+  health_check_interval_seconds: 60
+  scanner:
+    enabled: true
+    max_file_size_mb: 2048
+    max_tag_size_mb: 16
+    min_file_age_seconds: 30
+    hash_recheck_hours: 168
+    retry_max_attempts: 5
+    retry_initial_seconds: 30
+    retry_max_seconds: 900
+
+integrations:
+  musicbee:
+    # Prefer INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN or its _FILE form at runtime.
+    submit_token: ""
+    submit_username: ""
+
 metrics:
   enabled: false
   token: ""
