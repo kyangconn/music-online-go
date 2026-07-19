@@ -6,7 +6,12 @@ import type { CreateMusicData, CreateMusicRequest, MusicMetadataFields } from "@
 import { useApiError } from "@/composables/useApiError";
 import { useUploadPolicy } from "@/composables/useUploadPolicy";
 import request from "@/utils/request";
-import { getUploadValidationMessage, metadataToData, validateUploadFile } from "@/utils/upload";
+import {
+  emptyMusicMetadataFields,
+  getUploadValidationMessage,
+  metadataToData,
+  validateUploadFile,
+} from "@/utils/upload";
 
 export interface UploadSingleOptions {
   title: string;
@@ -85,7 +90,7 @@ export function useMusicUpload() {
       if (!musicId) {
         const parsedMetadata = metadata
           ? metadataToData(metadata, title, artist)
-          : { title, artist, album: "", year: 0, track_number: 0, genre: "", duration: 0 };
+          : metadataToData(emptyMusicMetadataFields(), title, artist);
         const payload: CreateMusicRequest = {
           ...parsedMetadata,
           title,

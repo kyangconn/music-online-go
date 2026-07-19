@@ -2,7 +2,7 @@ import type { Ref } from "vue";
 import { watch } from "vue";
 import type { MusicMetadataFields } from "@/types/api";
 
-const DRAFT_STORAGE_KEY = "music-upload-draft:v1";
+const DRAFT_STORAGE_KEY = "music-upload-draft:v2";
 
 interface UploadDraft extends MusicMetadataFields {
   description: string;
@@ -22,9 +22,13 @@ export function useUploadDraft(
     if (isRecord(parsed)) {
       for (const key of Object.keys(form) as (keyof MusicMetadataFields)[]) {
         const value = parsed[key];
-        if (typeof value !== "string") continue;
-        form[key] = value;
-        touched[key] = value.length > 0;
+        if (typeof value === "string") {
+          Object.assign(form, { [key]: value });
+          touched[key] = value.length > 0;
+        } else if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+          Object.assign(form, { [key]: [...value] });
+          touched[key] = value.length > 0;
+        }
       }
       if (typeof parsed.description === "string") description.value = parsed.description;
     }

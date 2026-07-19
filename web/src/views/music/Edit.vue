@@ -6,16 +6,18 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
-import type { Music, UpdateMusicRequest } from "@/types/api";
+import type { Music, MusicMetadataFields, UpdateMusicRequest } from "@/types/api";
 import MusicCover from "@/components/music/MusicCover.vue";
+import MusicMetadataEditor from "@/components/music/MusicMetadataEditor.vue";
 import { useUploadPolicy } from "@/composables/useUploadPolicy";
 import { useUserStore } from "@/store/user";
 import request from "@/utils/request";
 import {
+  emptyMusicMetadataFields,
   formatFileSize,
-  formatDuration,
   getUploadValidationMessage,
-  parseDurationSeconds,
+  metadataToData,
+  musicToMetadataFields,
   validateUploadFile,
 } from "@/utils/upload";
 
@@ -38,27 +40,8 @@ const coverFile = ref<File | null>(null);
 const audioFile = ref<File | null>(null);
 const coverPreviewUrl = ref("");
 
-interface EditMusicForm {
-  title: string;
-  artist: string;
-  album: string;
-  year?: number;
-  trackNumber?: number;
-  genre: string;
-  duration: string;
-  intro: string;
-}
-
-const form = reactive<EditMusicForm>({
-  title: "",
-  artist: "",
-  album: "",
-  year: undefined,
-  trackNumber: undefined,
-  genre: "",
-  duration: "",
-  intro: "",
-});
+const form = reactive<MusicMetadataFields>(emptyMusicMetadataFields());
+const intro = ref("");
 
 const rules = reactive<FormRules>({
   title: [{ required: true, message: t("music.title_artist_required"), trigger: "blur" }],
@@ -81,7 +64,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
 const canManage = computed(() => {
   if (!music.value || !userStore.user) return false;
-  return userStore.isAdmin || music.value.user_id === userStore.user.id;
+  return userStore.isAdmin || (music.value.user_id === userStore.user.id && !music.value.source_read_only);
 });
 
 const coverSrc = computed(() => coverPreviewUrl.value || music.value?.img || music.value?.cover_url || "");
@@ -98,14 +81,8 @@ const fetchMusic = async () => {
   try {
     const res = await request.get<Music>(`/musics/${id}`);
     music.value = res.data;
-    form.title = res.data.title;
-    form.artist = res.data.artist;
-    form.album = res.data.album || "";
-    form.year = res.data.year || undefined;
-    form.trackNumber = res.data.track_number || undefined;
-    form.genre = res.data.genre || "";
-    form.duration = res.data.duration ? formatDuration(res.data.duration) : "";
-    form.intro = res.data.intro || "";
+    Object.assign(form, musicToMetadataFields(res.data));
+    intro.value = res.data.intro || "";
 
     if (!canManage.value) {
       ElMessage.warning(t("music.permission_denied"));
@@ -185,14 +162,8 @@ const handleSave = async (formEl: FormInstance | undefined) => {
     saving.value = true;
     try {
       const payload: UpdateMusicRequest = {
-        title: form.title.trim(),
-        artist: form.artist.trim(),
-        album: form.album.trim(),
-        year: form.year,
-        track_number: form.trackNumber,
-        genre: form.genre.trim(),
-        duration: parseDurationSeconds(form.duration),
-        intro: form.intro.trim(),
+        ...metadataToData(form),
+        intro: intro.value.trim(),
         type: music.value?.type || "single",
       };
       const updateRes = await request.put<Music>(`/musics/${id}`, payload);
@@ -283,49 +254,9 @@ onUnmounted(revokeCoverPreview);
         <input ref="audioInputRef" class="hidden-input" type="file" accept="audio/*" @change="handleAudioSelected" />
 
         <el-form ref="formRef" class="edit-form" :model="form" :rules="rules" label-position="top">
-          <el-row :gutter="20">
-            <el-col :xs="24" :sm="12">
-              <el-form-item :label="$t('add.music_title')" prop="title">
-                <el-input v-model="form.title" />
-              </el-form-item>
-            </el-col>
-            <el-col :xs="24" :sm="12">
-              <el-form-item :label="$t('add.music_artist')" prop="artist">
-                <el-input v-model="form.artist" />
-              </el-form-item>
-            </el-col>
-          </el-row>
-          <el-row :gutter="20">
-            <el-col :xs="24" :sm="12">
-              <el-form-item :label="$t('add.music_album')">
-                <el-input v-model="form.album" />
-              </el-form-item>
-            </el-col>
-            <el-col :xs="12" :sm="6">
-              <el-form-item :label="$t('add.music_year')">
-                <el-input-number v-model="form.year" :min="1000" :max="9999" controls-position="right" />
-              </el-form-item>
-            </el-col>
-            <el-col :xs="12" :sm="6">
-              <el-form-item :label="$t('add.music_track')">
-                <el-input-number v-model="form.trackNumber" :min="1" controls-position="right" />
-              </el-form-item>
-            </el-col>
-          </el-row>
-          <el-row :gutter="20">
-            <el-col :xs="24" :sm="12">
-              <el-form-item :label="$t('add.music_genre')">
-                <el-input v-model="form.genre" />
-              </el-form-item>
-            </el-col>
-            <el-col :xs="24" :sm="12">
-              <el-form-item :label="$t('add.music_duration')">
-                <el-input v-model="form.duration" placeholder="03:45" />
-              </el-form-item>
-            </el-col>
-          </el-row>
-          <el-form-item :label="$t('add.music_description')" prop="intro">
-            <el-input v-model="form.intro" type="textarea" :rows="4" />
+          <MusicMetadataEditor :model-value="form" @update:model-value="Object.assign(form, $event)" />
+          <el-form-item :label="$t('add.music_description')">
+            <el-input v-model="intro" type="textarea" :rows="4" />
           </el-form-item>
 
           <div v-if="uploadPercent > 0" class="upload-progress">

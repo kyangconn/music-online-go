@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { Headset, PictureFilled, QuestionFilled } from "@element-plus/icons-vue";
+import { Headset, PictureFilled } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import type { UploadFile, UploadInstance } from "element-plus";
 import { onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import FileCard from "@/components/upload/FileCard.vue";
+import MusicMetadataEditor from "@/components/music/MusicMetadataEditor.vue";
 import { useAudioMetadata } from "@/composables/useAudioMetadata";
 import { useAudioPreprocessor } from "@/composables/useAudioPreprocessor";
 import { useApiError } from "@/composables/useApiError";
@@ -219,53 +220,13 @@ const handleSubmit = async () => {
     </div>
 
     <el-form class="upload-form" label-position="top" :model="form">
+      <MusicMetadataEditor
+        :model-value="form"
+        @update:model-value="Object.assign(form, $event)"
+        @touch="touched[$event] = true"
+      />
       <el-row :gutter="20">
-        <el-col :span="12">
-          <el-form-item :label="$t('add.music_title')">
-            <el-input v-model="form.title" @input="touched.title = true" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item :label="$t('add.music_artist')">
-            <el-input v-model="form.artist" @input="touched.artist = true" />
-          </el-form-item>
-        </el-col>
-      </el-row>
-      <el-row :gutter="20">
-        <el-col :span="8">
-          <el-form-item :label="$t('add.music_album')">
-            <el-input v-model="form.album" @input="touched.album = true" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="4">
-          <el-form-item :label="$t('add.music_year')">
-            <el-input v-model="form.year" placeholder="e.g. 2024" @input="touched.year = true" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="4">
-          <el-form-item>
-            <template #label>
-              {{ $t("add.music_track") }}
-              <el-tooltip :content="$t('add.music_track_help')" placement="top">
-                <el-icon class="help-icon" :size="14"><QuestionFilled /></el-icon>
-              </el-tooltip>
-            </template>
-            <el-input v-model="form.track" placeholder="e.g. 1" @input="touched.track = true" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="8">
-          <el-form-item :label="$t('add.music_genre')">
-            <el-input v-model="form.genre" placeholder="e.g. Rock; Alternative" @input="touched.genre = true" />
-          </el-form-item>
-        </el-col>
-      </el-row>
-      <el-row :gutter="20">
-        <el-col :span="6">
-          <el-form-item :label="$t('add.music_duration')">
-            <el-input v-model="form.duration" placeholder="e.g. 03:45" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="18">
+        <el-col :span="24">
           <el-form-item :label="$t('add.music_description')">
             <el-input type="textarea" v-model="description" :rows="2" />
           </el-form-item>
@@ -329,12 +290,6 @@ const handleSubmit = async () => {
 
 .upload-progress {
   margin-top: $spacing-sm;
-}
-
-.help-icon {
-  color: var(--text-light);
-  margin-left: $spacing-xs;
-  cursor: help;
 }
 
 @include mobile {

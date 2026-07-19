@@ -3,20 +3,43 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Music } from "@/types/api";
 import { usePlayerStore } from "../player";
 
+const requestMock = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock("@/utils/request", () => ({ default: requestMock }));
+
 const makeTrack = (id: number, overrides: Partial<Music> = {}): Music => ({
   id,
   album: "",
   album_id: null,
+  album_artist: "",
+  album_artists: [],
   artist: `Artist ${id}`,
+  artists: [`Artist ${id}`],
+  comment: "",
   created_at: "2026-01-01T00:00:00Z",
+  disc_number: 0,
+  disc_total: 0,
   duration: 180,
   genre: "",
+  genres: [],
+  genre_tokens: [],
   img: "",
   intro: "",
+  isrcs: [],
   issuing_date: "2026-01-01T00:00:00Z",
+  metadata_revision: 1,
+  musicbrainz_album_artist_ids: [],
+  musicbrainz_artist_ids: [],
+  musicbrainz_recording_id: "",
+  musicbrainz_release_group_id: "",
+  musicbrainz_release_id: "",
+  musicbrainz_track_id: "",
+  original_release_date: "",
   path: `/api/v1/musics/${id}/stream`,
+  release_date: "2026",
+  source_read_only: false,
   title: `Track ${id}`,
   track_number: id,
+  track_total: 0,
   type: "single",
   updated_at: "2026-01-01T00:00:00Z",
   user_id: 1,
@@ -50,6 +73,7 @@ const makeAudio = (duration = 180) => {
 describe("usePlayerStore", () => {
   beforeEach(() => {
     localStorage.clear();
+    requestMock.get.mockReset();
     setActivePinia(createPinia());
   });
 
@@ -92,6 +116,27 @@ describe("usePlayerStore", () => {
     await expect(store.playTrack(makeTrack(1, { path: "" }))).resolves.toBe(false);
 
     expect(store.queue).toEqual([]);
+  });
+
+  it("renews an expired private media URL before playback", async () => {
+    const store = usePlayerStore();
+    const audio = makeAudio();
+    const expired = makeTrack(1, {
+      media_url_expires_at: "2020-01-01T00:00:00Z",
+      path: "/api/v1/musics/1/stream?media_token=expired",
+    });
+    const renewed = makeTrack(1, {
+      media_url_expires_at: "2099-01-01T00:00:00Z",
+      path: "/api/v1/musics/1/stream?media_token=renewed",
+    });
+    requestMock.get.mockResolvedValue({ data: renewed });
+    store.attachAudio(audio);
+
+    await expect(store.playTrack(expired)).resolves.toBe(true);
+
+    expect(requestMock.get).toHaveBeenCalledWith("/musics/1");
+    expect(store.currentTrack?.path).toBe(renewed.path);
+    expect(audio.src).toBe(renewed.path);
   });
 
   it("clamps seeking to the loaded duration and persists progress", async () => {

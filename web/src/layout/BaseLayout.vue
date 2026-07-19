@@ -8,6 +8,7 @@ import GlobalPlayer from "@/components/player/GlobalPlayer.vue";
 import { useKeyboardShortcuts } from "@/composables/useKeyboardShortcuts";
 import { usePwaInstall } from "@/composables/usePwaInstall";
 import { usePlayerStore } from "@/store/player";
+import { useInstanceStore } from "@/store/instance";
 import { useThemeStore } from "@/store/theme";
 import { useUserStore } from "@/store/user";
 
@@ -17,6 +18,7 @@ const { t } = useI18n();
 const userStore = useUserStore();
 const themeStore = useThemeStore();
 const playerStore = usePlayerStore();
+const instanceStore = useInstanceStore();
 const { canInstall, install } = usePwaInstall();
 
 const searchQuery = ref("");
@@ -31,6 +33,10 @@ const copyright = computed(() => t("common.copyright", { year: new Date().getFul
 
 const handleLogout = () => {
   userStore.logout();
+  if (instanceStore.libraryRequiresAuth) {
+    playerStore.clear();
+    playerStore.clearRecent();
+  }
   router.push("/");
 };
 
@@ -84,7 +90,9 @@ useKeyboardShortcuts({
           </template>
           <template v-else>
             <el-button type="primary" plain @click="router.push('/login')">{{ $t("common.login") }}</el-button>
-            <el-button plain @click="router.push('/register')">{{ $t("common.register") }}</el-button>
+            <el-button v-if="instanceStore.registrationOpen" plain @click="router.push('/register')">
+              {{ $t("common.register") }}
+            </el-button>
           </template>
         </div>
       </div>

@@ -2,7 +2,13 @@ import { reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { useI18n } from "vue-i18n";
 import type { MusicMetadataFields } from "@/types/api";
-import { loadCachedMeta, parseAudioFile, removeCachedMeta, saveCachedMeta } from "@/utils/upload";
+import {
+  emptyMusicMetadataFields,
+  loadCachedMeta,
+  parseAudioFile,
+  removeCachedMeta,
+  saveCachedMeta,
+} from "@/utils/upload";
 
 /**
  * 音频元数据解析 composable。
@@ -17,36 +23,26 @@ export function useAudioMetadata() {
   const parsing = ref(false);
 
   /** 表单字段，由调用方绑定到 v-model */
-  const form = reactive<MusicMetadataFields>({
-    title: "",
-    artist: "",
-    album: "",
-    year: "",
-    track: "",
-    genre: "",
-    duration: "",
-  });
+  const form = reactive<MusicMetadataFields>(emptyMusicMetadataFields());
 
   /** 记录哪些字段已被用户手动编辑过，避免解析结果覆盖用户输入 */
-  const touched = reactive<Record<keyof MusicMetadataFields, boolean>>({
-    title: false,
-    artist: false,
-    album: false,
-    year: false,
-    track: false,
-    genre: false,
-    duration: false,
-  });
+  const touched = reactive(
+    Object.fromEntries(Object.keys(emptyMusicMetadataFields()).map((key) => [key, false])) as Record<
+      keyof MusicMetadataFields,
+      boolean
+    >,
+  );
 
   /** 将解析的元数据填入表单（跳过已 touched 的字段） */
   const applyMeta = (meta: MusicMetadataFields) => {
     (Object.keys(meta) as (keyof MusicMetadataFields)[]).forEach((key) => {
       const value = meta[key];
-      if (key === "duration") {
-        if (value) form[key] = value;
-        return;
+      if (touched[key] || (Array.isArray(value) ? value.length === 0 : !value)) return;
+      if (Array.isArray(value)) {
+        Object.assign(form, { [key]: [...value] });
+      } else {
+        Object.assign(form, { [key]: value });
       }
-      if (!touched[key] && value) form[key] = value;
     });
   };
 
@@ -57,9 +53,7 @@ export function useAudioMetadata() {
   };
 
   const resetForm = () => {
-    (Object.keys(form) as (keyof MusicMetadataFields)[]).forEach((key) => {
-      form[key] = "";
-    });
+    Object.assign(form, emptyMusicMetadataFields());
     resetTouched();
   };
 

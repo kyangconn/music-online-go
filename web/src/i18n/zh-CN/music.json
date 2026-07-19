@@ -14,7 +14,8 @@
   "save_failed": "保存失败",
   "delete_success": "音乐已删除",
   "delete_failed": "删除失败",
-  "permission_denied": "只能编辑自己上传的音乐",
+  "permission_denied": "只能编辑自己上传且未受只读媒体库管理的音乐",
+  "library_read_only": "管理员已将此曲目关联到只读媒体库源，因此只有管理员可以修改。",
   "title_artist_required": "标题和作者不能为空",
   "load_detail_failed": "加载音乐详情失败",
   "filter_artist": "按作者筛选",
@@ -25,5 +26,14 @@
   "filter_options_failed": "筛选选项加载失败，仍可直接输入作者",
   "year": "年份",
   "track_number": "曲目编号",
-  "genre": "流派"
+  "genre": "流派",
+  "artists": "艺术家",
+  "album_artist": "专辑艺术家",
+  "album_artists": "专辑艺术家列表",
+  "release_date": "发行日期",
+  "original_release_date": "原始发行日期",
+  "disc_number": "碟片编号",
+  "comment": "标签备注",
+  "isrc": "ISRC",
+  "musicbrainz_ids": "MusicBrainz 标识"
 }

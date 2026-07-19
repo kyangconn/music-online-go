@@ -1,18 +1,49 @@
 <script setup lang="ts">
-import { Search, Refresh } from "@element-plus/icons-vue";
+import { Plus, Search, Refresh } from "@element-plus/icons-vue";
+import type { FormInstance, FormRules } from "element-plus";
 import { ElMessage } from "element-plus";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import type { UserInfo } from "@/types/api";
+import type { AdminCreateUserRequest, UserInfo } from "@/types/api";
 import { useApiError } from "@/composables/useApiError";
 import { usePaginatedFetch } from "@/composables/usePaginatedFetch";
 import { useUserStore } from "@/store/user";
 import request from "@/utils/request";
+import { validateNewPassword } from "@/utils/password";
 
 const { t } = useI18n();
 const userStore = useUserStore();
 const { handleError } = useApiError();
 const query = ref("");
+const createDialogVisible = ref(false);
+const creating = ref(false);
+const createFormRef = ref<FormInstance>();
+const createForm = reactive<AdminCreateUserRequest>({
+  username: "",
+  email: "",
+  password: "",
+  full_name: "",
+  role: "user",
+});
+
+const validatePassword = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+  const validationError = validateNewPassword(value);
+  if (validationError === "too_short") callback(new Error(t("auth.password_min_length")));
+  else if (validationError === "too_long") callback(new Error(t("auth.password_max_bytes")));
+  else callback();
+};
+
+const createRules = reactive<FormRules>({
+  username: [{ required: true, message: t("auth.username_required"), trigger: "blur" }],
+  email: [
+    { required: true, message: t("auth.email_required"), trigger: "blur" },
+    { type: "email", message: t("auth.email_invalid"), trigger: "blur" },
+  ],
+  password: [
+    { required: true, message: t("auth.password_required"), trigger: "blur" },
+    { validator: validatePassword, trigger: "blur" },
+  ],
+});
 
 const { items: users, loading, total, currentPage, pageSize, fetch: fetchUsers, resetAndFetch } =
   usePaginatedFetch<UserInfo>("/users/admin/users", {
@@ -44,6 +75,30 @@ const updateUserRole = async (user: UserInfo) => {
   }
 };
 
+const resetCreateForm = () => {
+  Object.assign(createForm, { username: "", email: "", password: "", full_name: "", role: "user" });
+  createFormRef.value?.clearValidate();
+};
+
+const createUser = async () => {
+  if (!createFormRef.value) return;
+  await createFormRef.value.validate(async (valid) => {
+    if (!valid) return;
+    creating.value = true;
+    try {
+      await request.post<UserInfo>("/users/admin/users", createForm);
+      ElMessage.success(t("admin.user_created"));
+      createDialogVisible.value = false;
+      resetCreateForm();
+      resetAndFetch();
+    } catch (error) {
+      handleError(error, t("admin.user_create_failed"));
+    } finally {
+      creating.value = false;
+    }
+  });
+};
+
 onMounted(fetchUsers);
 </script>
 
@@ -64,6 +119,9 @@ onMounted(fetchUsers);
       </el-input>
       <el-button type="primary" :icon="Search" @click="handleSearch">{{ $t("admin.search") }}</el-button>
       <el-button :icon="Refresh" @click="fetchUsers">{{ $t("admin.refresh") }}</el-button>
+      <el-button type="success" :icon="Plus" @click="createDialogVisible = true">
+        {{ $t("admin.create_user") }}
+      </el-button>
     </div>
 
     <el-table v-loading="loading" :data="users" size="small" class="admin-table">
@@ -110,6 +168,38 @@ onMounted(fetchUsers);
         @current-change="fetchUsers"
       />
     </div>
+
+    <el-dialog
+      v-model="createDialogVisible"
+      :title="$t('admin.create_user')"
+      width="min(520px, 92vw)"
+      @closed="resetCreateForm"
+    >
+      <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-position="top">
+        <el-form-item :label="$t('auth.username')" prop="username">
+          <el-input v-model="createForm.username" autocomplete="off" />
+        </el-form-item>
+        <el-form-item :label="$t('auth.full_name')" prop="full_name">
+          <el-input v-model="createForm.full_name" autocomplete="off" />
+        </el-form-item>
+        <el-form-item :label="$t('auth.email')" prop="email">
+          <el-input v-model="createForm.email" autocomplete="off" />
+        </el-form-item>
+        <el-form-item :label="$t('auth.password_label')" prop="password">
+          <el-input v-model="createForm.password" type="password" show-password autocomplete="new-password" />
+        </el-form-item>
+        <el-form-item :label="$t('admin.role')" prop="role">
+          <el-select v-model="createForm.role">
+            <el-option label="user" value="user" />
+            <el-option label="admin" value="admin" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createDialogVisible = false">{{ $t("common.cancel") }}</el-button>
+        <el-button type="primary" :loading="creating" @click="createUser">{{ $t("admin.create_user") }}</el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 

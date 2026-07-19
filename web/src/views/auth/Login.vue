@@ -7,12 +7,14 @@ import { useRouter } from "vue-router";
 import type { LoginData } from "@/types/api";
 import { useApiError } from "@/composables/useApiError";
 import { useUserStore } from "@/store/user";
+import { useInstanceStore } from "@/store/instance";
 import request from "@/utils/request";
 
 const router = useRouter();
 const { t } = useI18n();
 const { getErrorMessage } = useApiError();
 const userStore = useUserStore();
+const instanceStore = useInstanceStore();
 const formRef = ref<FormInstance>();
 const loading = ref(false);
 const totpRequired = ref(false);
@@ -113,7 +115,7 @@ const handleLogin = async (formEl: FormInstance | undefined) => {
         </el-form-item>
       </el-form>
 
-      <div class="auth-footer-link">
+      <div v-if="instanceStore.registrationOpen" class="auth-footer-link">
         <p>
           {{ $t("auth.no_account") }} <router-link to="/register">{{ $t("auth.register_now") }}</router-link>
         </p>

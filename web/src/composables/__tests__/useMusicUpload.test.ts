@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMusicUpload } from "../useMusicUpload";
+import { emptyMusicMetadataFields } from "@/utils/upload";
 
 const requestMock = vi.hoisted(() => ({ post: vi.fn() }));
 const messageMock = vi.hoisted(() => ({ error: vi.fn() }));
@@ -59,7 +60,17 @@ describe("useMusicUpload", () => {
 
     const result = await uploadOne({
       artist: "Artist",
-      metadata: { album: "Album", artist: "Artist", duration: "3:20", genre: "Rock", title: "Title", track: "2", year: "2026" },
+      metadata: {
+        ...emptyMusicMetadataFields(),
+        album: "Album",
+        artist: "Artist",
+        duration: "3:20",
+        genre: "Rock",
+        genres: ["Rock"],
+        title: "Title",
+        track: "2",
+        year: "2026",
+      },
       title: "Title",
     });
 

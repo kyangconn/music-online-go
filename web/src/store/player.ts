@@ -1,6 +1,8 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import type { Music } from "@/types/api";
+import { useInstanceStore } from "@/store/instance";
+import request from "@/utils/request";
 
 const DEFAULT_VOLUME = 0.8;
 const VOLUME_STORAGE_KEY = "player-volume";
@@ -8,6 +10,7 @@ const PLAYER_STATE_STORAGE_KEY = "player-state:v1";
 const PLAYER_STATE_VERSION = 1;
 const MAX_RECENT_TRACKS = 12;
 const PERSIST_INTERVAL_MS = 5000;
+const MEDIA_URL_REFRESH_WINDOW_MS = 60_000;
 
 export interface RecentTrackEntry {
   track: Music;
@@ -89,6 +92,7 @@ const normalizeQueue = (tracks: Music[]) => {
 };
 
 export const usePlayerStore = defineStore("player", () => {
+  const instanceStore = useInstanceStore();
   const restoredState = loadPlayerState();
   const queue = ref<Music[]>(restoredState?.queue ?? []);
   const currentIndex = ref(restoredState?.currentIndex ?? -1);
@@ -153,9 +157,40 @@ export const usePlayerStore = defineStore("player", () => {
     }
   };
 
+  const mediaURLIsFresh = (track: Music) => {
+    // Public libraries intentionally use unsigned URLs. In a private library,
+    // an unsigned persisted queue entry comes from an older session/version
+    // and must be refreshed before it can be handed to <audio>.
+    if (!track.media_url_expires_at) return !instanceStore.libraryRequiresAuth;
+    const expiresAt = Date.parse(track.media_url_expires_at);
+    return Number.isFinite(expiresAt) && expiresAt > Date.now() + MEDIA_URL_REFRESH_WINDOW_MS;
+  };
+
+  const refreshTrackAtIndex = async (index: number) => {
+    const track = queue.value[index];
+    if (!track || mediaURLIsFresh(track)) return track;
+    try {
+      const response = await request.get<Music>(`/musics/${track.id}`);
+      queue.value[index] = response.data;
+      recentTracks.value = recentTracks.value.map((entry) =>
+        entry.track.id === response.data.id ? { ...entry, track: response.data } : entry,
+      );
+      return response.data;
+    } catch {
+      return track;
+    }
+  };
+
   const play = async () => {
-    const track = currentTrack.value;
+    const previousSource = currentTrack.value?.path;
+    const track = await refreshTrackAtIndex(currentIndex.value);
     if (!audioElement || !track) return false;
+
+    if (track.path && track.path !== previousSource) {
+      pendingSeek = currentTime.value;
+      audioElement.src = track.path;
+      audioElement.load();
+    }
 
     try {
       await audioElement.play();
@@ -176,16 +211,17 @@ export const usePlayerStore = defineStore("player", () => {
   const activateIndex = async (index: number, resumeAt = 0) => {
     if (index < 0 || index >= queue.value.length) return false;
 
+    const refreshedTrack = await refreshTrackAtIndex(index);
     currentIndex.value = index;
     currentTime.value = Math.max(resumeAt, 0);
     duration.value = 0;
     pendingSeek = currentTime.value;
-    const source = queue.value[index]?.path;
+    const source = refreshedTrack?.path;
     if (audioElement && source && audioElement.getAttribute("src") !== source) {
       audioElement.src = source;
       audioElement.load();
     }
-    const track = queue.value[index];
+    const track = refreshedTrack;
     if (track) updateRecent(track, currentTime.value);
     persistState();
     return play();

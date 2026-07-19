@@ -8,6 +8,8 @@ import { nextTick } from "vue";
 import { createRouter, createWebHistory } from "vue-router";
 import i18n from "@/i18n";
 import BaseLayout from "@/layout/BaseLayout.vue";
+import { useInstanceStore } from "@/store/instance";
+import { usePlayerStore } from "@/store/player";
 import { useUserStore } from "@/store/user";
 import Home from "@/views/Home.vue";
 
@@ -24,6 +26,7 @@ const routes = [
         path: "",
         name: "Home",
         component: Home,
+        meta: { libraryRead: true },
       },
       {
         path: "/login",
@@ -51,6 +54,7 @@ const routes = [
         path: "/music/:id",
         name: "MusicDetail",
         component: () => import("@/views/music/Detail.vue"),
+        meta: { libraryRead: true },
       },
       {
         path: "/music/:id/edit",
@@ -138,13 +142,32 @@ router.onError((error) => {
  * 在每次路由跳转前执行，用于权限控制和访问限制
  * @param to - 目标路由
  */
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const userStore = useUserStore();
-  const requiresAuth = Boolean(to.meta.requiresAuth || to.meta.requiresAdmin);
+  const instanceStore = useInstanceStore();
+  await instanceStore.load();
+
+  if (to.name === "Register" && !instanceStore.registrationOpen) {
+    return "/login";
+  }
+
+  const requiresAuth = Boolean(
+    to.meta.requiresAuth ||
+      to.meta.requiresAdmin ||
+      (to.meta.libraryRead && instanceStore.libraryRequiresAuth),
+  );
   const redirect = { path: "/login", query: { redirect: to.fullPath } };
+  const sessionUnavailable = !userStore.isLoggedIn || isTokenExpired(userStore.token);
+
+  if (instanceStore.libraryRequiresAuth && sessionUnavailable) {
+    userStore.logout();
+    const playerStore = usePlayerStore();
+    if (playerStore.hasTrack) playerStore.clear();
+    if (playerStore.recentTracks.length) playerStore.clearRecent();
+  }
 
   // 检查是否需要认证
-  if (requiresAuth && (!userStore.isLoggedIn || isTokenExpired(userStore.token))) {
+  if (requiresAuth && sessionUnavailable) {
     userStore.logout();
     return redirect;
   }

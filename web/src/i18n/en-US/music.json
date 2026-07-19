@@ -14,7 +14,8 @@
   "save_failed": "Save failed",
   "delete_success": "Music deleted",
   "delete_failed": "Delete failed",
-  "permission_denied": "You can only edit music you uploaded",
+  "permission_denied": "You can only edit your own music when it is not managed by a read-only library source",
+  "library_read_only": "An administrator linked this track to a read-only media library source, so only administrators can change it.",
   "title_artist_required": "Title and artist are required",
   "load_detail_failed": "Failed to load music detail",
   "filter_artist": "Filter by artist",
@@ -25,5 +26,14 @@
   "filter_options_failed": "Filter options failed to load; you can still enter an artist",
   "year": "Year",
   "track_number": "Track Number",
-  "genre": "Genre"
+  "genre": "Genre",
+  "artists": "Artists",
+  "album_artist": "Album Artist",
+  "album_artists": "Album Artists",
+  "release_date": "Release Date",
+  "original_release_date": "Original Release Date",
+  "disc_number": "Disc Number",
+  "comment": "Tag Comment",
+  "isrc": "ISRC",
+  "musicbrainz_ids": "MusicBrainz IDs"
 }

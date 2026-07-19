@@ -12,6 +12,7 @@ import type { MusicMetadataFields, ScannedFileItem } from "@/types/api";
 import type { BatchUploadResultItem } from "@/types/upload";
 import {
   applyMetadataSuggestion,
+  emptyMusicMetadataFields,
   formatFileSize,
   isSupportedAudioFileName,
   validateUploadFile,
@@ -43,15 +44,7 @@ const batchProgress = ref(0);
 const uploadResults = ref<BatchUploadResultItem[]>([]);
 const defaultArtist = computed(() => t("add.unknown_artist"));
 
-const emptyMetadata = (): MusicMetadataFields => ({
-  title: "",
-  artist: "",
-  album: "",
-  year: "",
-  track: "",
-  genre: "",
-  duration: "",
-});
+const emptyMetadata = (): MusicMetadataFields => emptyMusicMetadataFields();
 
 const metadataForItem = (item: ScannedFileItem) => {
   if (!item.metadata) item.metadata = emptyMetadata();

@@ -78,6 +78,10 @@ const request = {
   put<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
     return service.put(url, data, config) as Promise<ApiResponse<T>>;
   },
+  /** PATCH 请求 */
+  patch<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+    return service.patch(url, data, config) as Promise<ApiResponse<T>>;
+  },
   /** DELETE 请求 */
   delete<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
     return service.delete(url, config) as Promise<ApiResponse<T>>;

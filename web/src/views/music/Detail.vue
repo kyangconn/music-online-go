@@ -32,6 +32,14 @@ const musicId = computed(() => {
 });
 
 const isCurrentTrack = computed(() => currentTrack.value?.id === music.value?.id);
+const structuredArtists = computed(() => {
+  const artists = music.value?.artists || [];
+  return artists.length === 1 && artists[0] === music.value?.artist ? [] : artists;
+});
+const structuredAlbumArtists = computed(() => {
+  const artists = music.value?.album_artists || [];
+  return artists.length === 1 && artists[0] === music.value?.album_artist ? [] : artists;
+});
 const displayedDuration = computed(() => {
   if (isCurrentTrack.value && duration.value) return duration.value;
   return metadataDuration.value;
@@ -39,8 +47,20 @@ const displayedDuration = computed(() => {
 
 const canManage = computed(() => {
   if (!music.value || !userStore.user) return false;
-  return userStore.isAdmin || music.value.user_id === userStore.user.id;
+  return userStore.isAdmin || (music.value.user_id === userStore.user.id && !music.value.source_read_only);
 });
+
+const isOwnerOfReadOnlySource = computed(
+  () =>
+    !userStore.isAdmin &&
+    music.value !== null &&
+    music.value.user_id === userStore.user?.id &&
+    music.value.source_read_only,
+);
+
+const sequenceLabel = (number: number, total: number) => (total > 0 ? `${number || "–"} / ${total}` : String(number));
+const musicBrainzURL = (entity: "artist" | "recording" | "release" | "release-group" | "track", id: string) =>
+  `https://musicbrainz.org/${entity}/${encodeURIComponent(id)}`;
 
 const fetchDetail = async () => {
   const requestedId = musicId.value;
@@ -123,15 +143,99 @@ watch(musicId, fetchDetail, { immediate: true });
                 {{ music?.type === "album" ? $t("common.album") : $t("common.single") }}
               </el-descriptions-item>
               <el-descriptions-item v-if="music?.album" :label="$t('common.album')">{{ music.album }}</el-descriptions-item>
-              <el-descriptions-item v-if="music?.year" :label="$t('music.year')">{{ music.year }}</el-descriptions-item>
-              <el-descriptions-item v-if="music?.track_number" :label="$t('music.track_number')">
-                {{ music.track_number }}
+              <el-descriptions-item v-if="structuredArtists.length" :label="$t('music.artists')">
+                <el-tag v-for="artist in structuredArtists" :key="artist" class="metadata-tag" effect="plain">{{ artist }}</el-tag>
               </el-descriptions-item>
-              <el-descriptions-item v-if="music?.genre" :label="$t('music.genre')">{{ music.genre }}</el-descriptions-item>
+              <el-descriptions-item v-if="music?.album_artist" :label="$t('music.album_artist')">
+                {{ music.album_artist }}
+              </el-descriptions-item>
+              <el-descriptions-item v-if="structuredAlbumArtists.length" :label="$t('music.album_artists')">
+                <el-tag v-for="artist in structuredAlbumArtists" :key="artist" class="metadata-tag" effect="plain">{{ artist }}</el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item v-if="music?.year" :label="$t('music.year')">{{ music.year }}</el-descriptions-item>
+              <el-descriptions-item v-if="music?.release_date" :label="$t('music.release_date')">
+                {{ music.release_date }}
+              </el-descriptions-item>
+              <el-descriptions-item v-if="music?.original_release_date" :label="$t('music.original_release_date')">
+                {{ music.original_release_date }}
+              </el-descriptions-item>
+              <el-descriptions-item v-if="music?.track_number || music?.track_total" :label="$t('music.track_number')">
+                {{ sequenceLabel(music.track_number, music.track_total) }}
+              </el-descriptions-item>
+              <el-descriptions-item v-if="music?.disc_number || music?.disc_total" :label="$t('music.disc_number')">
+                {{ sequenceLabel(music.disc_number, music.disc_total) }}
+              </el-descriptions-item>
+              <el-descriptions-item v-if="music?.genres?.length" :label="$t('music.genre')">
+                <el-tag v-for="genre in music.genres" :key="genre" class="metadata-tag" effect="plain">{{ genre }}</el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item v-else-if="music?.genre" :label="$t('music.genre')">{{ music.genre }}</el-descriptions-item>
+              <el-descriptions-item v-if="music?.isrcs?.length" :label="$t('music.isrc')">
+                {{ music.isrcs.join(", ") }}
+              </el-descriptions-item>
+              <el-descriptions-item v-if="music?.comment" :label="$t('music.comment')">
+                <span class="metadata-comment">{{ music.comment }}</span>
+              </el-descriptions-item>
+              <el-descriptions-item v-if="music?.intro" :label="$t('add.music_description')">
+                <span class="metadata-comment">{{ music.intro }}</span>
+              </el-descriptions-item>
               <el-descriptions-item :label="$t('common.duration')">{{
                 formatPlaybackTime(displayedDuration)
               }}</el-descriptions-item>
             </el-descriptions>
+
+            <details
+              v-if="
+                music?.musicbrainz_recording_id ||
+                music?.musicbrainz_track_id ||
+                music?.musicbrainz_release_id ||
+                music?.musicbrainz_release_group_id ||
+                music?.musicbrainz_artist_ids?.length ||
+                music?.musicbrainz_album_artist_ids?.length
+              "
+              class="musicbrainz-metadata"
+            >
+              <summary>{{ $t("music.musicbrainz_ids") }}</summary>
+              <div class="musicbrainz-links">
+                <a
+                  v-if="music.musicbrainz_recording_id"
+                  :href="musicBrainzURL('recording', music.musicbrainz_recording_id)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >{{ $t("add.mb_recording_id") }}: {{ music.musicbrainz_recording_id }}</a>
+                <a
+                  v-if="music.musicbrainz_track_id"
+                  :href="musicBrainzURL('track', music.musicbrainz_track_id)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >{{ $t("add.mb_track_id") }}: {{ music.musicbrainz_track_id }}</a>
+                <a
+                  v-if="music.musicbrainz_release_id"
+                  :href="musicBrainzURL('release', music.musicbrainz_release_id)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >{{ $t("add.mb_release_id") }}: {{ music.musicbrainz_release_id }}</a>
+                <a
+                  v-if="music.musicbrainz_release_group_id"
+                  :href="musicBrainzURL('release-group', music.musicbrainz_release_group_id)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >{{ $t("add.mb_release_group_id") }}: {{ music.musicbrainz_release_group_id }}</a>
+                <a
+                  v-for="artistID in music.musicbrainz_artist_ids"
+                  :key="artistID"
+                  :href="musicBrainzURL('artist', artistID)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >{{ $t("add.mb_artist_ids") }}: {{ artistID }}</a>
+                <a
+                  v-for="artistID in music.musicbrainz_album_artist_ids"
+                  :key="`album-${artistID}`"
+                  :href="musicBrainzURL('artist', artistID)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >{{ $t("add.mb_album_artist_ids") }}: {{ artistID }}</a>
+              </div>
+            </details>
             <div class="likes-row">
               <el-button
                 :type="isLiked ? 'warning' : 'default'"
@@ -142,6 +246,13 @@ watch(musicId, fetchDetail, { immediate: true });
               </el-button>
             </div>
             <div class="actions">
+			  <el-alert
+				v-if="isOwnerOfReadOnlySource"
+				:title="$t('music.library_read_only')"
+				type="info"
+				:closable="false"
+				show-icon
+			  />
               <el-button
                 v-if="canManage"
                 type="primary"
@@ -215,6 +326,34 @@ watch(musicId, fetchDetail, { immediate: true });
 .likes-row {
   margin-top: $spacing-md;
   @include inline-flex;
+}
+
+.metadata-tag {
+  margin: 2px $spacing-xs 2px 0;
+}
+
+.metadata-comment {
+  white-space: pre-wrap;
+}
+
+.musicbrainz-metadata {
+  margin-top: $spacing-md;
+  padding: $spacing-sm $spacing-md;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+
+  summary {
+    cursor: pointer;
+    font-weight: $fw-semibold;
+  }
+}
+
+.musicbrainz-links {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  margin-top: $spacing-sm;
+  overflow-wrap: anywhere;
 }
 .actions {
   margin-top: $spacing-lg;
