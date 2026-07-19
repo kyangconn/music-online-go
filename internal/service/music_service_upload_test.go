@@ -148,6 +148,40 @@ func TestUploadFilesRemovesPreviousExtensionOnlyAfterCommit(t *testing.T) {
 	assertNoStagingFiles(t, musicDir)
 }
 
+func TestUploadFilesNeverDeletesReadOnlyLibrarySource(t *testing.T) {
+	uploadDir := configureUploadTest(t)
+	externalDir := t.TempDir()
+	externalPath := filepath.Join(externalDir, "source.flac")
+	externalContent := append([]byte("fLaC"), []byte("read-only source")...)
+	writeTestFile(t, externalPath, externalContent)
+	sourceKey := mediaSourceKey(12, "source.flac", domain.MediaPathSemanticsAuto)
+	repo := &uploadMusicRepositoryStub{music: &domain.Music{
+		ID: 1, UserID: 0, Path: externalPath, MediaRootID: 12,
+		MediaRelativePath: "source.flac", MediaSourceKey: &sourceKey, SourceReadOnly: true,
+	}}
+	svc := NewMusicService(repo)
+	replacement := append([]byte("fLaC"), []byte("managed replacement")...)
+
+	if _, err := svc.UploadFiles(
+		context.Background(),
+		7,
+		"admin",
+		1,
+		makeMultipartFileHeader(t, "file", "track.flac", replacement),
+		nil,
+	); err != nil {
+		t.Fatalf("replace read-only source: %v", err)
+	}
+
+	assertFileContent(t, externalPath, externalContent)
+	managedPath := filepath.Join(uploadDir, "1", "audio.flac")
+	assertFileContent(t, managedPath, replacement)
+	if repo.music.Path != managedPath || repo.music.MediaRootID != domain.ManagedMediaRootID ||
+		repo.music.MediaRelativePath != "1/audio.flac" || repo.music.SourceReadOnly {
+		t.Fatalf("replacement did not become a managed source: %#v", repo.music)
+	}
+}
+
 func configureUploadTest(t *testing.T) string {
 	t.Helper()
 	originalConfig := config.AppConfig

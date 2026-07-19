@@ -13,6 +13,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/kyangconn/music-online-go/internal/config"
 	"github.com/kyangconn/music-online-go/internal/domain"
 	pklog "github.com/kyangconn/music-online-go/internal/pkg/log"
 	"github.com/kyangconn/music-online-go/internal/repository"
@@ -23,15 +24,29 @@ const multipartFormMemoryBytes = 8 << 20
 
 // MusicHandler handles HTTP requests related to music operations.
 type MusicHandler struct {
-	service service.MusicService
+	service      service.MusicService
+	privateMedia bool
 }
 
 func NewMusicHandler(musicService service.MusicService) *MusicHandler {
-	return &MusicHandler{service: musicService}
+	access := config.AccessConfig{}
+	if config.AppConfig != nil {
+		access = config.AppConfig.Access
+	}
+	return NewMusicHandlerWithAccess(musicService, access)
+}
+
+// NewMusicHandlerWithAccess snapshots the cache policy at startup instead of
+// consulting mutable process-global configuration for every media response.
+func NewMusicHandlerWithAccess(musicService service.MusicService, access config.AccessConfig) *MusicHandler {
+	return &MusicHandler{
+		service:      musicService,
+		privateMedia: access.LibraryMode == config.LibraryAccessAuthenticated,
+	}
 }
 
 func (h *MusicHandler) UploadPolicy(c *gin.Context) {
-	Success(c, service.CurrentUploadPolicy())
+	Success(c, h.service.GetUploadPolicy())
 }
 
 // Create godoc
@@ -53,6 +68,10 @@ func (h *MusicHandler) Create(c *gin.Context) {
 	userID := c.GetUint("userID")
 	music, err := h.service.Create(c.Request.Context(), userID, &req)
 	if err != nil {
+		if errors.Is(err, service.ErrInvalidMusicMetadata) {
+			BadRequest(c, err.Error())
+			return
+		}
 		InternalServerError(c, "Failed to create music")
 		return
 	}
@@ -78,7 +97,7 @@ func (h *MusicHandler) UploadFile(c *gin.Context) {
 		return
 	}
 
-	requestBodyLimit := service.UploadRequestBodyLimit()
+	requestBodyLimit := h.service.UploadBodyLimit()
 	if c.Request.ContentLength > requestBodyLimit {
 		Error(c, http.StatusRequestEntityTooLarge, "Upload request body is too large")
 		return
@@ -223,6 +242,10 @@ func (h *MusicHandler) CheckDuplicates(c *gin.Context) {
 		&req,
 	)
 	if err != nil {
+		if errors.Is(err, service.ErrInvalidMusicMetadata) {
+			BadRequest(c, err.Error())
+			return
+		}
 		InternalServerError(c, "Failed to check duplicate music")
 		return
 	}
@@ -256,6 +279,10 @@ func (h *MusicHandler) Update(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, service.ErrForbidden) {
 			Forbidden(c, "You can only update your own music")
+			return
+		}
+		if errors.Is(err, service.ErrInvalidMusicMetadata) {
+			BadRequest(c, err.Error())
 			return
 		}
 		InternalServerError(c, "Failed to update music")
@@ -436,6 +463,10 @@ func (h *MusicHandler) Stream(c *gin.Context) {
 
 	audioPath, err := h.service.GetAudioPath(c.Request.Context(), uint(id))
 	if err != nil {
+		if errors.Is(err, service.ErrMediaStorageUnavailable) {
+			Error(c, http.StatusServiceUnavailable, "Audio storage is temporarily unavailable")
+			return
+		}
 		NotFound(c, "No audio file available")
 		return
 	}
@@ -498,18 +529,26 @@ func parseMusicSearchParams(c *gin.Context) (*domain.MusicSearchParams, error) {
 func (h *MusicHandler) serveMediaFile(c *gin.Context, mediaPath string, missingMessage string) {
 	file, err := os.Open(filepath.Clean(mediaPath))
 	if err != nil {
+		if service.IsTransientMediaStorageError(err) {
+			Error(c, http.StatusServiceUnavailable, "Media storage is temporarily unavailable")
+			return
+		}
 		NotFound(c, missingMessage)
 		return
 	}
 	defer func() {
 		fileErr := file.Close()
 		if fileErr != nil && !errors.Is(fileErr, io.EOF) && !errors.Is(fileErr, io.ErrUnexpectedEOF) {
-			pklog.Errorf("Failed to close media file %s: %v", mediaPath, fileErr)
+			pklog.Errorf("Failed to close media file: %v", fileErr)
 		}
 	}()
 
 	stat, err := file.Stat()
 	if err != nil {
+		if service.IsTransientMediaStorageError(err) {
+			Error(c, http.StatusServiceUnavailable, "Media storage is temporarily unavailable")
+			return
+		}
 		InternalServerError(c, "Failed to read file info")
 		return
 	}
@@ -522,6 +561,9 @@ func (h *MusicHandler) serveMediaFile(c *gin.Context, mediaPath string, missingM
 
 	c.Header("Content-Type", contentType)
 	c.Header("Accept-Ranges", "bytes")
+	if h.privateMedia {
+		c.Header("Cache-Control", "private, no-store")
+	}
 
 	http.ServeContent(c.Writer, c.Request, stat.Name(), stat.ModTime(), file)
 }

@@ -36,8 +36,11 @@ func TestMain(m *testing.M) {
 			ConnectionMaxLifetimeMinutes: 60,
 			ConnectionMaxIdleTimeMinutes: 10,
 		},
-		Server: config.ServerConfig{UploadDir: testUploadDir},
+		Server: config.ServerConfig{UploadDir: testUploadDir, MaxAudioSizeMB: 1, MaxCoverSizeMB: 1},
 		JWT:    config.JWTConfig{Secret: "test-secret", ExpireHour: 24},
+		Library: config.LibraryConfig{Scanner: config.LibraryScannerConfig{
+			Enabled: true, MaxFileSizeMB: 1,
+		}},
 	}
 
 	gin.SetMode(gin.TestMode)
@@ -53,15 +56,14 @@ func TestMain(m *testing.M) {
 	userService := service.NewUserService(userRepo)
 
 	musicRepo := repository.NewMusicRepository(database.DB)
-	musicService := service.NewMusicService(musicRepo)
-
-	musicTagRepo := repository.NewMusicTagRepository(database.DB)
-	musicTagService := service.NewMusicTagService(musicTagRepo)
+	mediaLibraryRepo := repository.NewMediaLibraryRepository(database.DB)
+	mediaLibraryService := service.NewMediaLibraryService(mediaLibraryRepo, musicRepo, config.AppConfig.Library)
+	musicService := service.NewMusicService(musicRepo, mediaLibraryService)
 
 	userHandler := handler.NewUserHandler(userService)
 	musicHandler := handler.NewMusicHandler(musicService)
-	musicTagHandler := handler.NewMusicTagHandler(musicTagService)
-	adminHandler := handler.NewAdminHandler(userService, musicService, musicTagService)
+	musicTagHandler := handler.NewMusicTagHandler(musicService)
+	adminHandler := handler.NewAdminHandler(userService, musicService, mediaLibraryService)
 
 	testRouter = gin.New()
 	testRouter.Use(gin.Recovery())
@@ -107,10 +109,19 @@ func TestMain(m *testing.M) {
 		admin.Use(middleware.StrictAdminMiddleware(database.DB))
 		{
 			admin.GET("/users", adminHandler.ListUsers)
+			admin.POST("/users", adminHandler.CreateUser)
 			admin.PUT("/users/:id/status", adminHandler.UpdateUserStatus)
 			admin.PUT("/users/:id/role", adminHandler.UpdateUserRole)
 			admin.DELETE("/musics/:id", adminHandler.DeleteMusic)
 			admin.GET("/system-info", adminHandler.SystemInfo)
+			admin.GET("/media-library/roots", adminHandler.ListMediaLibraryRoots)
+			admin.POST("/media-library/roots", adminHandler.CreateMediaLibraryRoot)
+			admin.PATCH("/media-library/roots/:id", adminHandler.UpdateMediaLibraryRoot)
+			admin.DELETE("/media-library/roots/:id", adminHandler.DeleteMediaLibraryRoot)
+			admin.POST("/media-library/roots/:id/scans", adminHandler.StartMediaLibraryScan)
+			admin.GET("/media-library/scans", adminHandler.ListMediaLibraryScans)
+			admin.GET("/media-library/scans/:id", adminHandler.GetMediaLibraryScan)
+			admin.POST("/media-library/scans/:id/cancel", adminHandler.CancelMediaLibraryScan)
 		}
 	}
 
@@ -139,19 +150,12 @@ func TestMain(m *testing.M) {
 		musicProtected.DELETE("/:id/like", musicHandler.Unlike)
 	}
 
-	musicTags := api.Group("/music-tags")
+	musicTagReads := api.Group("/music-tags")
+	musicTagReads.Use(middleware.OptionalAuthMiddleware())
 	{
-		musicTags.POST("/search", musicTagHandler.SearchMusicTags)
-		musicTags.GET("/:id", musicTagHandler.GetMusicTag)
-		musicTags.GET("/mbid/lookup", musicTagHandler.LookupByMBID)
-
-		musicTags.Use(middleware.AuthMiddleware(database.DB))
-		{
-			musicTags.POST("", musicTagHandler.CreateMusicTag)
-			musicTags.PUT("/:id", musicTagHandler.UpdateMusicTag)
-			musicTags.DELETE("/:id", musicTagHandler.DeleteMusicTag)
-			musicTags.POST("/match", musicTagHandler.MatchTags)
-		}
+		musicTagReads.POST("/search", musicTagHandler.SearchMusicTags)
+		musicTagReads.POST("/match", musicTagHandler.MatchTags)
+		musicTagReads.GET("/mbid/lookup", musicTagHandler.LookupByMBID)
 	}
 
 	code := m.Run()

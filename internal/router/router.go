@@ -31,9 +31,18 @@ type Handlers struct {
 	Admin    *handler.AdminHandler
 }
 
-// New 创建并配置Gin路由器。
+// New keeps the historical constructor for tests and embedders. Production
+// startup should use NewWithConfig so the router owns one validated snapshot.
 func New(h *Handlers, db *gorm.DB) (*gin.Engine, error) {
-	switch config.AppConfig.Server.Mode {
+	return NewWithConfig(h, db, config.AppConfig)
+}
+
+// NewWithConfig 创建并配置Gin路由器。
+func NewWithConfig(h *Handlers, db *gorm.DB, cfg *config.Config) (*gin.Engine, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("configure router: config is nil")
+	}
+	switch cfg.Server.Mode {
 	case "release":
 		gin.SetMode(gin.ReleaseMode)
 	case "test":
@@ -43,31 +52,31 @@ func New(h *Handlers, db *gorm.DB) (*gin.Engine, error) {
 	}
 
 	router := gin.New()
-	if err := router.SetTrustedProxies(config.AppConfig.Server.TrustedProxies); err != nil {
+	if err := router.SetTrustedProxies(cfg.Server.TrustedProxies); err != nil {
 		return nil, fmt.Errorf("configure trusted proxies: %w", err)
 	}
 
-	if config.AppConfig.Logging.AccessLog {
+	if cfg.Logging.AccessLog {
 		router.Use(middleware.LoggerMiddleware())
 	}
-	router.Use(middleware.CORSMiddleware(config.AppConfig.Server.AllowedOrigins, config.AppConfig.Server.TrustedProxies))
-	if config.AppConfig.RateLimit.Enabled {
+	router.Use(middleware.CORSMiddleware(cfg.Server.AllowedOrigins, cfg.Server.TrustedProxies))
+	if cfg.RateLimit.Enabled {
 		router.Use(middleware.RateLimitMiddleware(
-			rate.Limit(config.AppConfig.RateLimit.GlobalRequestsPerSecond),
-			config.AppConfig.RateLimit.GlobalBurst,
+			rate.Limit(cfg.RateLimit.GlobalRequestsPerSecond),
+			cfg.RateLimit.GlobalBurst,
 		))
 	}
-	router.Use(middleware.JSONBodyLimitMiddleware(int64(config.AppConfig.Server.MaxJSONBodySizeMB) << 20))
+	router.Use(middleware.JSONBodyLimitMiddleware(int64(cfg.Server.MaxJSONBodySizeMB) << 20))
 	router.Use(gin.Recovery(), prometheusMiddleware())
 
 	registerHealthAndMetrics(
 		router,
 		db,
-		config.AppConfig.Server.UploadDir,
-		time.Duration(config.AppConfig.Server.ReadinessTimeout)*time.Second,
-		config.AppConfig.Metrics,
+		cfg.Server.UploadDir,
+		time.Duration(cfg.Server.ReadinessTimeout)*time.Second,
+		cfg.Metrics,
 	)
-	registerAPIRoutes(router, h, db, config.AppConfig.RateLimit)
+	registerAPIRoutes(router, h, db, cfg.RateLimit, cfg.Access, cfg.Integrations, cfg.JWT.Secret)
 
 	return router, nil
 }
@@ -169,22 +178,36 @@ func hasMetricsToken(header, expected string) bool {
 }
 
 // registerAPIRoutes 注册所有API路由
-func registerAPIRoutes(router *gin.Engine, h *Handlers, db *gorm.DB, rateLimit config.RateLimitConfig) {
+func registerAPIRoutes(router *gin.Engine, h *Handlers, db *gorm.DB, rateLimit config.RateLimitConfig, access config.AccessConfig, integrations config.IntegrationsConfig, jwtSecret string) {
 	api := router.Group("/api/v1")
+	api.GET("/instance", func(c *gin.Context) {
+		handler.Success(c, gin.H{
+			"library_mode":            access.LibraryMode,
+			"registration_mode":       access.RegistrationMode,
+			"registration_open":       access.RegistrationMode == config.RegistrationOpen,
+			"musicbee_submit_enabled": strings.TrimSpace(integrations.MusicBee.SubmitToken) != "",
+		})
+	})
 
-	registerUserRoutes(api, h.User, h.Admin, db, rateLimit)
-	registerMusicRoutes(api, h.Music, db)
-	registerMusicTagRoutes(api, h.MusicTag, db)
+	registerUserRoutes(api, h.User, h.Admin, db, rateLimit, access)
+	registerMusicRoutes(api, h.Music, db, access, jwtSecret)
+	registerMusicTagRoutes(api, h.MusicTag, db, access, integrations.MusicBee)
 }
 
 // registerUserRoutes 注册用户相关路由
-func registerUserRoutes(api *gin.RouterGroup, userHandler *handler.UserHandler, adminHandler *handler.AdminHandler, db *gorm.DB, rateLimit config.RateLimitConfig) {
+func registerUserRoutes(api *gin.RouterGroup, userHandler *handler.UserHandler, adminHandler *handler.AdminHandler, db *gorm.DB, rateLimit config.RateLimitConfig, access config.AccessConfig) {
 	public := api.Group("/users")
 	if rateLimit.Enabled {
 		public.Use(middleware.RateLimitMiddleware(rate.Limit(rateLimit.AuthRequestsPerSecond), rateLimit.AuthBurst))
 	}
 	{
-		public.POST("/register", userHandler.Register)
+		public.POST("/register", func(c *gin.Context) {
+			if access.RegistrationMode != config.RegistrationOpen {
+				handler.Forbidden(c, "Public registration is disabled")
+				return
+			}
+			userHandler.Register(c)
+		})
 		public.POST("/login", userHandler.Login)
 	}
 
@@ -204,31 +227,42 @@ func registerUserRoutes(api *gin.RouterGroup, userHandler *handler.UserHandler, 
 		admin.Use(middleware.StrictAdminMiddleware(db))
 		{
 			admin.GET("/users", adminHandler.ListUsers)
+			admin.POST("/users", adminHandler.CreateUser)
 			admin.PUT("/users/:id/status", adminHandler.UpdateUserStatus)
 			admin.PUT("/users/:id/role", adminHandler.UpdateUserRole)
 			admin.DELETE("/musics/:id", adminHandler.DeleteMusic)
 			admin.GET("/system-info", adminHandler.SystemInfo)
+			admin.GET("/media-library/roots", adminHandler.ListMediaLibraryRoots)
+			admin.POST("/media-library/roots", adminHandler.CreateMediaLibraryRoot)
+			admin.PATCH("/media-library/roots/:id", adminHandler.UpdateMediaLibraryRoot)
+			admin.DELETE("/media-library/roots/:id", adminHandler.DeleteMediaLibraryRoot)
+			admin.POST("/media-library/roots/:id/probe", adminHandler.ProbeMediaLibraryRoot)
+			admin.POST("/media-library/roots/:id/scans", adminHandler.StartMediaLibraryScan)
+			admin.GET("/media-library/scans", adminHandler.ListMediaLibraryScans)
+			admin.GET("/media-library/scans/:id", adminHandler.GetMediaLibraryScan)
+			admin.POST("/media-library/scans/:id/cancel", adminHandler.CancelMediaLibraryScan)
 		}
 	}
 }
 
 // registerMusicRoutes 注册音乐相关路由
-func registerMusicRoutes(api *gin.RouterGroup, musicHandler *handler.MusicHandler, db *gorm.DB) {
+func registerMusicRoutes(api *gin.RouterGroup, musicHandler *handler.MusicHandler, db *gorm.DB, access config.AccessConfig, jwtSecret string) {
 	api.GET("/upload-policy", musicHandler.UploadPolicy)
 
 	musicPublic := api.Group("/musics")
-	musicPublic.Use(middleware.OptionalAuthMiddleware())
+	musicPublic.Use(middleware.LibraryReadMiddleware(db, access.LibraryMode))
 	{
 		musicPublic.GET("", musicHandler.Search)
 		musicPublic.GET("/filters", musicHandler.FilterOptions)
 		musicPublic.GET("/:id", musicHandler.GetByID)
 	}
 
-	api.GET("/users/:id/musics", middleware.OptionalAuthMiddleware(), musicHandler.ListUserMusic)
-	api.GET("/users/:id/likes", middleware.OptionalAuthMiddleware(), musicHandler.ListUserLikedMusic)
+	api.GET("/users/:id/musics", middleware.LibraryReadMiddleware(db, access.LibraryMode), musicHandler.ListUserMusic)
+	api.GET("/users/:id/likes", middleware.LibraryReadMiddleware(db, access.LibraryMode), musicHandler.ListUserLikedMusic)
 
-	musicPublic.GET("/:id/stream", musicHandler.Stream)
-	musicPublic.GET("/:id/cover", musicHandler.Cover)
+	media := api.Group("/musics")
+	media.GET("/:id/stream", middleware.LibraryMediaAccessMiddleware(db, access.LibraryMode, jwtSecret, "stream"), musicHandler.Stream)
+	media.GET("/:id/cover", middleware.LibraryMediaAccessMiddleware(db, access.LibraryMode, jwtSecret, "cover"), musicHandler.Cover)
 
 	musicProtected := api.Group("/musics")
 	musicProtected.Use(middleware.AuthMiddleware(db))
@@ -244,26 +278,21 @@ func registerMusicRoutes(api *gin.RouterGroup, musicHandler *handler.MusicHandle
 }
 
 // registerMusicTagRoutes 注册音乐标签相关路由
-func registerMusicTagRoutes(api *gin.RouterGroup, musicTagHandler *handler.MusicTagHandler, db *gorm.DB) {
-	musicTags := api.Group("/music-tags")
+func registerMusicTagRoutes(api *gin.RouterGroup, musicTagHandler *handler.MusicTagHandler, db *gorm.DB, access config.AccessConfig, musicBee config.MusicBeeConfig) {
+	musicTagReads := api.Group("/music-tags")
+	musicTagReads.Use(middleware.LibraryReadMiddleware(db, access.LibraryMode))
 	{
-		musicTags.POST("/search", musicTagHandler.SearchMusicTags)
-		musicTags.GET("/:id", musicTagHandler.GetMusicTag)
-		musicTags.GET("/mbid/lookup", musicTagHandler.LookupByMBID)
-
-		musicTags.Use(middleware.AuthMiddleware(db))
-		{
-			musicTags.POST("", musicTagHandler.CreateMusicTag)
-			musicTags.PUT("/:id", musicTagHandler.UpdateMusicTag)
-			musicTags.DELETE("/:id", musicTagHandler.DeleteMusicTag)
-			musicTags.POST("/match", musicTagHandler.MatchTags)
-		}
+		musicTagReads.POST("/search", musicTagHandler.SearchMusicTags)
+		musicTagReads.POST("/match", musicTagHandler.MatchTags)
+		musicTagReads.GET("/mbid/lookup", musicTagHandler.LookupByMBID)
 	}
 
 	tracks := api.Group("/track")
 	{
-		tracks.POST("/search", musicTagHandler.SearchTracks)
-		tracks.POST("/submit", musicTagHandler.SubmitTrack)
+		tracks.POST("/search", middleware.LibraryReadMiddleware(db, access.LibraryMode), musicTagHandler.SearchTracks)
+		if strings.TrimSpace(musicBee.SubmitToken) != "" {
+			tracks.POST("/submit", middleware.MusicBeeSubmitTokenMiddleware(db, musicBee), musicTagHandler.SubmitTrack)
+		}
 	}
 }
 

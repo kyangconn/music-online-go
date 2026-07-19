@@ -129,10 +129,15 @@ func TestMigrateFreshDatabaseAndRemainIdempotent(t *testing.T) {
 	if err := migrate(db, migrations); err != nil {
 		t.Fatalf("migrate fresh database: %v", err)
 	}
-	for _, table := range []string{"users", "vinyl", "user_music_likes", "music_tags", "schema_migrations"} {
+	for _, table := range []string{
+		"users", "vinyl", "user_music_likes", "media_library_roots", "media_library_root_states", "media_files", "media_scan_jobs", "media_scan_issues", "schema_migrations",
+	} {
 		if !db.Migrator().HasTable(table) {
 			t.Fatalf("expected table %q to exist", table)
 		}
+	}
+	if db.Migrator().HasTable("music_tags") || db.Migrator().HasTable("legacy_music_tags_v1") {
+		t.Fatal("fresh database should not retain a legacy metadata table")
 	}
 
 	var firstRun []schemaMigration
@@ -157,6 +162,77 @@ func TestMigrateFreshDatabaseAndRemainIdempotent(t *testing.T) {
 		if secondRun[index] != firstRun[index] {
 			t.Fatalf("repeat migration changed record %d: got %#v, want %#v", index, secondRun[index], firstRun[index])
 		}
+	}
+}
+
+func TestLegacyManagedRelativePathPreservesNestedUploadLocation(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "42", "audio.flac")
+	relative, err := legacyManagedRelativePath(root, path)
+	if err != nil {
+		t.Fatalf("derive managed relative path: %v", err)
+	}
+	if relative != "42/audio.flac" {
+		t.Fatalf("relative path = %q, want nested upload location", relative)
+	}
+	if _, err := legacyManagedRelativePath(root, filepath.Join(t.TempDir(), "audio.flac")); err == nil {
+		t.Fatal("path outside the configured upload root must not be guessed")
+	}
+}
+
+func TestUnifyMusicMetadataMergesOnlyUnambiguousLegacyTagsAndArchivesSource(t *testing.T) {
+	db := openTestDatabase(t)
+	if err := migrate(db, migrations[:2]); err != nil {
+		t.Fatalf("prepare legacy schema: %v", err)
+	}
+
+	user := domain.User{Username: "migration-owner", Email: "migration@example.com", Password: "unused"}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	music := legacyMusicV1{Title: "Track", Artist: "Artist", Album: "Release", UserID: user.ID}
+	if err := db.Create(&music).Error; err != nil {
+		t.Fatalf("create music: %v", err)
+	}
+	tags := []legacyMusicTagV1{
+		{
+			Title: "track", Artist: "artist", Album: "release", AlbumArtist: "Album Artist",
+			Genre: "Ambient; Chillout", TrackNumber: 2, DiscNumber: 1,
+			MusicBrainzID: "123e4567-e89b-42d3-a456-426614174000",
+		},
+		{Title: "Unmatched", Artist: "Nobody", Genre: "Archived Only", UseCount: 9},
+	}
+	if err := db.Create(&tags).Error; err != nil {
+		t.Fatalf("create legacy tags: %v", err)
+	}
+
+	if err := migrate(db, migrations); err != nil {
+		t.Fatalf("apply canonical metadata migration: %v", err)
+	}
+	if db.Migrator().HasTable("music_tags") || !db.Migrator().HasTable("legacy_music_tags_v1") {
+		t.Fatal("legacy table was not archived")
+	}
+
+	var migrated domain.Music
+	if err := db.First(&migrated, music.ID).Error; err != nil {
+		t.Fatalf("load migrated music: %v", err)
+	}
+	if migrated.AlbumArtist != "Album Artist" || migrated.TrackNumber != 2 || migrated.DiscNumber != 1 {
+		t.Fatalf("legacy metadata was not merged: %+v", migrated)
+	}
+	if migrated.MusicBrainzRecordingID != "123e4567-e89b-42d3-a456-426614174000" {
+		t.Fatalf("recording ID = %q", migrated.MusicBrainzRecordingID)
+	}
+	if len(migrated.Genres) != 2 || migrated.Genres[0] != "Ambient" || migrated.Genres[1] != "Chillout" {
+		t.Fatalf("genres = %#v", migrated.Genres)
+	}
+
+	var archivedCount int64
+	if err := db.Table("legacy_music_tags_v1").Count(&archivedCount).Error; err != nil {
+		t.Fatalf("count archived tags: %v", err)
+	}
+	if archivedCount != int64(len(tags)) {
+		t.Fatalf("archived tags = %d, want %d", archivedCount, len(tags))
 	}
 }
 

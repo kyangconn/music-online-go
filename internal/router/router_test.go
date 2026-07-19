@@ -1,6 +1,7 @@
 package router
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kyangconn/music-online-go/internal/config"
+	"github.com/kyangconn/music-online-go/internal/handler"
 )
 
 func TestReadyChecksDatabaseAndUploadStorage(t *testing.T) {
@@ -53,6 +55,48 @@ func TestReadyChecksDatabaseAndUploadStorage(t *testing.T) {
 			t.Fatalf("unexpected response: %s", w.Body.String())
 		}
 	})
+}
+
+func TestInstanceCapabilitiesAndClosedRegistration(t *testing.T) {
+	router := gin.New()
+	handlers := &Handlers{
+		User:     &handler.UserHandler{},
+		Music:    &handler.MusicHandler{},
+		MusicTag: &handler.MusicTagHandler{},
+		Admin:    &handler.AdminHandler{},
+	}
+	access := config.AccessConfig{
+		LibraryMode:        config.LibraryAccessAuthenticated,
+		RegistrationMode:   config.RegistrationAdmin,
+		MediaURLTTLMinutes: 60,
+	}
+	registerAPIRoutes(router, handlers, nil, config.RateLimitConfig{}, access, config.IntegrationsConfig{}, "test-jwt-secret")
+
+	capabilities := httptest.NewRecorder()
+	router.ServeHTTP(capabilities, httptest.NewRequest(http.MethodGet, "/api/v1/instance", nil))
+	if capabilities.Code != http.StatusOK {
+		t.Fatalf("instance status = %d: %s", capabilities.Code, capabilities.Body.String())
+	}
+	var response struct {
+		Data struct {
+			LibraryMode      string `json:"library_mode"`
+			RegistrationOpen bool   `json:"registration_open"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(capabilities.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode capabilities: %v", err)
+	}
+	if response.Data.LibraryMode != config.LibraryAccessAuthenticated || response.Data.RegistrationOpen {
+		t.Fatalf("unexpected capabilities: %+v", response.Data)
+	}
+
+	registration := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/users/register", strings.NewReader(`{"username":"blocked"}`))
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(registration, request)
+	if registration.Code != http.StatusForbidden {
+		t.Fatalf("closed registration status = %d: %s", registration.Code, registration.Body.String())
+	}
 }
 
 func TestMetricsEndpointRequiresConfigurationAndBearerToken(t *testing.T) {

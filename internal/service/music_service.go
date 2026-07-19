@@ -10,14 +10,17 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kyangconn/music-online-go/internal/config"
 	"github.com/kyangconn/music-online-go/internal/domain"
 	pklog "github.com/kyangconn/music-online-go/internal/pkg/log"
+	"github.com/kyangconn/music-online-go/internal/pkg/mediatoken"
 	"github.com/kyangconn/music-online-go/internal/repository"
 )
 
@@ -32,7 +35,10 @@ type MusicService interface {
 	Create(ctx context.Context, userID uint, req *domain.CreateMusicRequest) (*domain.MusicResponse, error)
 	GetByID(ctx context.Context, id uint, currentUserID *uint) (*domain.MusicResponse, error)
 	Search(ctx context.Context, params *domain.MusicSearchParams, currentUserID *uint) ([]*domain.MusicResponse, int64, error)
+	FindByMusicBrainzRecordingID(ctx context.Context, recordingID string, currentUserID *uint) (*domain.MusicResponse, error)
+	FindMetadataCandidates(ctx context.Context, metadata domain.MusicMetadata, currentUserID *uint) ([]*domain.MusicResponse, bool, error)
 	ListFilterOptions(ctx context.Context) (*domain.MusicFilterOptions, error)
+	CountWithMetadata(ctx context.Context) (int64, error)
 	CheckDuplicates(ctx context.Context, userID uint, role string, req *domain.MusicDuplicateCheckRequest) (*domain.MusicDuplicateCheckResponse, error)
 	ListByUserID(ctx context.Context, userID uint, page, pageSize int, currentUserID *uint) ([]*domain.MusicResponse, int64, error)
 	Update(ctx context.Context, userID uint, role string, id uint, req *domain.UpdateMusicRequest) (*domain.MusicResponse, error)
@@ -43,15 +49,57 @@ type MusicService interface {
 	UploadFiles(ctx context.Context, userID uint, role string, id uint, audioHeader, coverHeader *multipart.FileHeader) (*domain.MusicResponse, error)
 	GetAudioPath(ctx context.Context, id uint) (string, error)
 	GetCoverPath(ctx context.Context, id uint) (string, error)
+	GetUploadPolicy() UploadPolicy
+	UploadBodyLimit() int64
 	// Admin
 	AdminDelete(ctx context.Context, id uint) error
 }
 type musicService struct {
-	repo repository.MusicRepository
+	repo         repository.MusicRepository
+	pathResolver MediaPathResolver
+	serverConfig config.ServerConfig
+	accessConfig config.AccessConfig
+	jwtConfig    config.JWTConfig
+	uploadPolicy UploadPolicy
 }
 
-func NewMusicService(repo repository.MusicRepository) MusicService {
-	return &musicService{repo: repo}
+func NewMusicService(repo repository.MusicRepository, pathResolvers ...MediaPathResolver) MusicService {
+	var pathResolver MediaPathResolver
+	if len(pathResolvers) > 0 {
+		pathResolver = pathResolvers[0]
+	}
+	return NewMusicServiceWithConfig(repo, pathResolver, config.AppConfig)
+}
+
+func NewMusicServiceWithConfig(repo repository.MusicRepository, pathResolver MediaPathResolver, cfg *config.Config) MusicService {
+	serverConfig := config.ServerConfig{
+		UploadDir:      "uploads",
+		MaxAudioSizeMB: config.DefaultMaxAudioSizeMB,
+		MaxCoverSizeMB: config.DefaultMaxCoverSizeMB,
+	}
+	accessConfig := config.AccessConfig{LibraryMode: config.LibraryAccessPublic, MediaURLTTLMinutes: 60}
+	jwtConfig := config.JWTConfig{}
+	if cfg != nil {
+		serverConfig = cfg.Server
+		accessConfig = cfg.Access
+		jwtConfig = cfg.JWT
+	}
+	return &musicService{
+		repo:         repo,
+		pathResolver: pathResolver,
+		serverConfig: serverConfig,
+		accessConfig: accessConfig,
+		jwtConfig:    jwtConfig,
+		uploadPolicy: UploadPolicyFromServerConfig(serverConfig),
+	}
+}
+
+func (s *musicService) GetUploadPolicy() UploadPolicy {
+	return s.uploadPolicy
+}
+
+func (s *musicService) UploadBodyLimit() int64 {
+	return s.uploadPolicy.MaxAudioSizeBytes + s.uploadPolicy.MaxCoverSizeBytes + multipartOverheadBytes
 }
 
 func (s *musicService) Create(ctx context.Context, userID uint, req *domain.CreateMusicRequest) (*domain.MusicResponse, error) {
@@ -61,13 +109,6 @@ func (s *musicService) Create(ctx context.Context, userID uint, req *domain.Crea
 	}
 
 	music := &domain.Music{
-		Title:       req.Title,
-		Artist:      req.Artist,
-		Album:       req.Album,
-		Year:        req.Year,
-		TrackNumber: req.TrackNumber,
-		Genre:       req.Genre,
-		Duration:    req.Duration,
 		Intro:       req.Intro,
 		Img:         "",
 		Path:        "",
@@ -76,12 +117,15 @@ func (s *musicService) Create(ctx context.Context, userID uint, req *domain.Crea
 		UserID:      userID,
 		AlbumID:     req.AlbumID,
 	}
+	if err := applyCreateMusicMetadata(music, req); err != nil {
+		return nil, err
+	}
 
 	if err := s.repo.Create(ctx, music); err != nil {
 		return nil, err
 	}
 
-	return music.ToResponse(), nil
+	return s.toResponse(music), nil
 }
 
 func (s *musicService) GetByID(ctx context.Context, id uint, currentUserID *uint) (*domain.MusicResponse, error) {
@@ -90,7 +134,7 @@ func (s *musicService) GetByID(ctx context.Context, id uint, currentUserID *uint
 		return nil, err
 	}
 
-	resp := music.ToResponse()
+	resp := s.toResponse(music)
 	if err := s.enrichMusicResponse(ctx, resp, currentUserID); err != nil {
 		return nil, err
 	}
@@ -111,8 +155,51 @@ func (s *musicService) Search(ctx context.Context, params *domain.MusicSearchPar
 	return responses, total, nil
 }
 
+func (s *musicService) FindByMusicBrainzRecordingID(ctx context.Context, recordingID string, currentUserID *uint) (*domain.MusicResponse, error) {
+	normalized, err := normalizeMBID("musicbrainz_recording_id", recordingID)
+	if err != nil {
+		return nil, err
+	}
+	music, err := s.repo.FindByMusicBrainzRecordingID(ctx, normalized)
+	if err != nil {
+		return nil, err
+	}
+	resp := s.toResponse(music)
+	if err := s.enrichMusicResponse(ctx, resp, currentUserID); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (s *musicService) FindMetadataCandidates(ctx context.Context, metadata domain.MusicMetadata, currentUserID *uint) ([]*domain.MusicResponse, bool, error) {
+	probe, err := normalizedMusicMetadata(metadata)
+	if err != nil {
+		return nil, false, err
+	}
+
+	stableMatches, err := s.repo.FindByStableMetadataIDs(ctx, probe.MusicBrainzRecordingID, probe.MusicBrainzTrackID, 5)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(stableMatches) > 0 {
+		responses, err := s.toEnrichedResponses(ctx, stableMatches, currentUserID)
+		return responses, true, err
+	}
+
+	textMatches, err := s.repo.FindByTitleAndArtist(ctx, probe.Title, probe.Artist, 5)
+	if err != nil {
+		return nil, false, err
+	}
+	responses, err := s.toEnrichedResponses(ctx, textMatches, currentUserID)
+	return responses, false, err
+}
+
 func (s *musicService) ListFilterOptions(ctx context.Context) (*domain.MusicFilterOptions, error) {
 	return s.repo.ListFilterOptions(ctx)
+}
+
+func (s *musicService) CountWithMetadata(ctx context.Context) (int64, error) {
+	return s.repo.CountWithMetadata(ctx)
 }
 
 func (s *musicService) CheckDuplicates(
@@ -121,9 +208,13 @@ func (s *musicService) CheckDuplicates(
 	role string,
 	req *domain.MusicDuplicateCheckRequest,
 ) (*domain.MusicDuplicateCheckResponse, error) {
+	incoming, err := normalizedMusicMetadata(req.Metadata())
+	if err != nil {
+		return nil, err
+	}
 	response := &domain.MusicDuplicateCheckResponse{
 		MetadataMatches:   []*domain.MusicResponse{},
-		SuggestedMetadata: req.Metadata(),
+		SuggestedMetadata: incoming,
 	}
 
 	var exact *domain.Music
@@ -135,25 +226,34 @@ func (s *musicService) CheckDuplicates(
 		}
 		exact = match
 		if exact != nil {
-			response.ExactMatch = exact.ToResponse()
+			response.ExactMatch = s.toResponse(exact)
 			if canManageMusic(exact, userID, role) {
-				response.Enrichment = buildMetadataEnrichment(exact, req.Metadata())
+				response.Enrichment = buildMetadataEnrichment(exact, incoming)
 			}
 		}
 	}
 
-	matches, err := s.repo.FindByTitleAndArtist(ctx, req.Title, req.Artist, 5)
+	matches, err := s.repo.FindByStableMetadataIDs(ctx, incoming.MusicBrainzRecordingID, incoming.MusicBrainzTrackID, 5)
 	if err != nil {
 		return nil, err
 	}
-	for _, match := range matches {
+	textMatches, err := s.repo.FindByTitleAndArtist(ctx, incoming.Title, incoming.Artist, 5)
+	if err != nil {
+		return nil, err
+	}
+	seenMatches := make(map[uint]struct{}, len(matches)+len(textMatches))
+	for _, match := range append(matches, textMatches...) {
 		if exact != nil && match.ID == exact.ID {
 			continue
 		}
-		response.MetadataMatches = append(response.MetadataMatches, match.ToResponse())
+		if _, exists := seenMatches[match.ID]; exists {
+			continue
+		}
+		seenMatches[match.ID] = struct{}{}
+		response.MetadataMatches = append(response.MetadataMatches, s.toResponse(match))
 	}
 
-	response.SuggestedMetadata = buildSuggestedMetadata(req.Metadata(), exact, matches)
+	response.SuggestedMetadata = buildSuggestedMetadata(incoming, exact, matches)
 	return response, nil
 }
 
@@ -179,27 +279,12 @@ func (s *musicService) Update(ctx context.Context, userID uint, role string, id 
 	if !canManageMusic(music, userID, role) {
 		return nil, ErrForbidden
 	}
+	if err := s.guardReadOnlyMediaSource(ctx, music, role); err != nil {
+		return nil, err
+	}
 
-	if req.Title != nil {
-		music.Title = *req.Title
-	}
-	if req.Artist != nil {
-		music.Artist = *req.Artist
-	}
-	if req.Album != nil {
-		music.Album = *req.Album
-	}
-	if req.Year != nil {
-		music.Year = *req.Year
-	}
-	if req.TrackNumber != nil {
-		music.TrackNumber = *req.TrackNumber
-	}
-	if req.Genre != nil {
-		music.Genre = *req.Genre
-	}
-	if req.Duration != nil {
-		music.Duration = *req.Duration
+	if _, err := applyUpdateMusicMetadata(music, req); err != nil {
+		return nil, err
 	}
 	if req.Intro != nil {
 		music.Intro = *req.Intro
@@ -218,7 +303,7 @@ func (s *musicService) Update(ctx context.Context, userID uint, role string, id 
 		return nil, err
 	}
 
-	return music.ToResponse(), nil
+	return s.toResponse(music), nil
 }
 
 func (s *musicService) Delete(ctx context.Context, userID uint, role string, id uint) error {
@@ -229,6 +314,9 @@ func (s *musicService) Delete(ctx context.Context, userID uint, role string, id 
 	if !canManageMusic(music, userID, role) {
 		return ErrForbidden
 	}
+	if err := s.guardReadOnlyMediaSource(ctx, music, role); err != nil {
+		return err
+	}
 
 	return s.deleteMusic(ctx, id)
 }
@@ -237,7 +325,7 @@ func (s *musicService) deleteMusic(ctx context.Context, id uint) error {
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return err
 	}
-	cleanupMusicUploadDirectory(id)
+	cleanupMusicUploadDirectoryAt(s.serverConfig.UploadDir, id)
 	return nil
 }
 
@@ -245,7 +333,14 @@ func cleanupMusicUploadDirectory(id uint) {
 	if config.AppConfig == nil || config.AppConfig.Server.UploadDir == "" {
 		return
 	}
-	dir := filepath.Join(config.AppConfig.Server.UploadDir, strconv.FormatUint(uint64(id), 10))
+	cleanupMusicUploadDirectoryAt(config.AppConfig.Server.UploadDir, id)
+}
+
+func cleanupMusicUploadDirectoryAt(uploadDir string, id uint) {
+	if strings.TrimSpace(uploadDir) == "" {
+		return
+	}
+	dir := filepath.Join(uploadDir, strconv.FormatUint(uint64(id), 10))
 	if err := os.RemoveAll(dir); err != nil {
 		pklog.Errorf("Failed to clean up upload directory %s: %v", dir, err)
 	}
@@ -285,18 +380,10 @@ func (s *musicService) GetAudioPath(ctx context.Context, id uint) (string, error
 	if music.Path == "" {
 		return "", ErrMediaNotFound
 	}
-
-	// Path traversal protection: ensure resolved path stays within upload dir
-	absPath, err := filepath.Abs(filepath.Clean(music.Path))
-	if err != nil {
-		return "", fmt.Errorf("invalid audio path: %w", err)
+	if music.MediaRelativePath != "" && s.pathResolver != nil {
+		return s.pathResolver.ResolveMusicPath(ctx, music)
 	}
-	uploadDir := filepath.Clean(config.AppConfig.Server.UploadDir)
-	if !strings.HasPrefix(absPath, uploadDir+string(filepath.Separator)) && absPath != uploadDir {
-		return "", ErrMediaNotFound
-	}
-
-	return absPath, nil
+	return secureManagedMediaPathAt(s.serverConfig.UploadDir, music.Path)
 }
 
 func (s *musicService) GetCoverPath(ctx context.Context, id uint) (string, error) {
@@ -308,17 +395,7 @@ func (s *musicService) GetCoverPath(ctx context.Context, id uint) (string, error
 		return "", ErrMediaNotFound
 	}
 
-	// Path traversal protection: ensure resolved path stays within upload dir
-	absPath, err := filepath.Abs(filepath.Clean(music.Img))
-	if err != nil {
-		return "", fmt.Errorf("invalid cover path: %w", err)
-	}
-	uploadDir := filepath.Clean(config.AppConfig.Server.UploadDir)
-	if !strings.HasPrefix(absPath, uploadDir+string(filepath.Separator)) && absPath != uploadDir {
-		return "", ErrMediaNotFound
-	}
-
-	return absPath, nil
+	return secureManagedMediaPathAt(s.serverConfig.UploadDir, music.Img)
 }
 
 // toEnrichedResponses 批量转换并填充音乐响应列表。
@@ -326,7 +403,7 @@ func (s *musicService) GetCoverPath(ctx context.Context, id uint) (string, error
 func (s *musicService) toEnrichedResponses(ctx context.Context, musics []*domain.Music, currentUserID *uint) ([]*domain.MusicResponse, error) {
 	responses := make([]*domain.MusicResponse, 0, len(musics))
 	for _, m := range musics {
-		resp := m.ToResponse()
+		resp := s.toResponse(m)
 		if err := s.enrichMusicResponse(ctx, resp, currentUserID); err != nil {
 			return nil, err
 		}
@@ -337,6 +414,29 @@ func (s *musicService) toEnrichedResponses(ctx context.Context, musics []*domain
 
 func canManageMusic(music *domain.Music, userID uint, role string) bool {
 	return role == "admin" || music.UserID == userID
+}
+
+func (s *musicService) guardReadOnlyMediaSource(ctx context.Context, music *domain.Music, role string) error {
+	if role == "admin" {
+		return nil
+	}
+	// SourceReadOnly is retained for pre-migration rows. New records use the
+	// physical MediaFile table, which also catches a read-only duplicate added
+	// after a user originally uploaded the logical track.
+	if music.SourceReadOnly {
+		return ErrForbidden
+	}
+	if s.pathResolver == nil {
+		return nil
+	}
+	readOnly, err := s.pathResolver.HasReadOnlyMediaSource(ctx, music.ID)
+	if err != nil {
+		return err
+	}
+	if readOnly {
+		return ErrForbidden
+	}
+	return nil
 }
 
 // enrichMusicResponse populates IsLiked and LikeCount.
@@ -369,14 +469,17 @@ func (s *musicService) UploadFiles(ctx context.Context, userID uint, role string
 	if !canManageMusic(music, userID, role) {
 		return nil, ErrForbidden
 	}
-	if err := validateUploadedAudioFile(audioHeader); err != nil {
+	if err := s.guardReadOnlyMediaSource(ctx, music, role); err != nil {
 		return nil, err
 	}
-	if err := validateUploadedCoverFile(coverHeader); err != nil {
+	if err := validateUploadedAudioFileWithLimit(audioHeader, s.uploadPolicy.MaxAudioSizeBytes); err != nil {
+		return nil, err
+	}
+	if err := validateUploadedCoverFileWithLimit(coverHeader, s.uploadPolicy.MaxCoverSizeBytes); err != nil {
 		return nil, err
 	}
 
-	uploadDir := config.AppConfig.Server.UploadDir
+	uploadDir := s.serverConfig.UploadDir
 	musicDir := filepath.Join(uploadDir, strconv.FormatUint(uint64(id), 10))
 	if err := os.MkdirAll(musicDir, 0700); err != nil {
 		return nil, fmt.Errorf("failed to create upload directory: %w", err)
@@ -402,30 +505,34 @@ func (s *musicService) UploadFiles(ctx context.Context, userID uint, role string
 	}
 
 	if audioHeader != nil {
+		previousPath := music.Path
 		tmpPath, finalPath, fileHash, err := saveUploadedMediaFile(musicDir, "audio", audioHeader, true)
 		if err != nil {
 			cleanupStaged()
 			return nil, err
 		}
 		staged = append(staged, &stagedMediaFile{
-			tmpPath:      tmpPath,
-			finalPath:    finalPath,
-			previousPath: music.Path,
+			tmpPath:         tmpPath,
+			finalPath:       finalPath,
+			previousPath:    previousPath,
+			cleanupPrevious: pathIsInManagedUploadDirAt(uploadDir, previousPath),
 		})
 		music.Path = finalPath
 		music.FileHash = fileHash
 	}
 
 	if coverHeader != nil {
+		previousPath := music.Img
 		tmpPath, finalPath, _, err := saveUploadedMediaFile(musicDir, "cover", coverHeader, false)
 		if err != nil {
 			cleanupStaged()
 			return nil, err
 		}
 		staged = append(staged, &stagedMediaFile{
-			tmpPath:      tmpPath,
-			finalPath:    finalPath,
-			previousPath: music.Img,
+			tmpPath:         tmpPath,
+			finalPath:       finalPath,
+			previousPath:    previousPath,
+			cleanupPrevious: pathIsInManagedUploadDirAt(uploadDir, previousPath),
 		})
 		music.Img = finalPath
 	}
@@ -435,24 +542,93 @@ func (s *musicService) UploadFiles(ctx context.Context, userID uint, role string
 			return nil, rollbackApplied(err)
 		}
 	}
+	if audioHeader != nil {
+		info, err := os.Stat(music.Path)
+		if err != nil {
+			return nil, rollbackApplied(fmt.Errorf("failed to inspect finalized audio file: %w", err))
+		}
+		relative, err := filepath.Rel(uploadDir, music.Path)
+		if err != nil || relative == "." || filepath.IsAbs(relative) || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return nil, rollbackApplied(ErrMediaNotFound)
+		}
+		relative = filepath.ToSlash(relative)
+		sourceKey := mediaSourceKey(domain.ManagedMediaRootID, relative, domain.MediaPathSemanticsAuto)
+		modifiedAt := info.ModTime().UTC()
+		music.MediaRootID = domain.ManagedMediaRootID
+		music.MediaRelativePath = relative
+		music.MediaSourceKey = &sourceKey
+		music.SourceFileSize = info.Size()
+		music.SourceFileModTime = &modifiedAt
+		music.SourceReadOnly = false
+	}
 
-	if err := s.repo.Update(ctx, music); err != nil {
-		return nil, rollbackApplied(err)
+	var persistErr error
+	if audioHeader != nil {
+		if persister, ok := s.pathResolver.(ManagedMediaSourcePersister); ok {
+			persistErr = persister.PersistManagedMusicSource(ctx, music)
+		} else {
+			persistErr = s.repo.Update(ctx, music)
+		}
+	} else {
+		persistErr = s.repo.Update(ctx, music)
+	}
+	if persistErr != nil {
+		return nil, rollbackApplied(persistErr)
 	}
 
 	for _, file := range staged {
 		file.commit()
 	}
 
-	return music.ToResponse(), nil
+	return s.toResponse(music), nil
+}
+
+func secureManagedMediaPathAt(uploadDir, path string) (string, error) {
+	if strings.TrimSpace(uploadDir) == "" {
+		return "", ErrMediaNotFound
+	}
+	uploadRoot, err := filepath.Abs(filepath.Clean(uploadDir))
+	if err != nil {
+		return "", ErrMediaNotFound
+	}
+	absPath, err := filepath.Abs(filepath.Clean(path))
+	if err != nil || !pathContains(uploadRoot, absPath) {
+		return "", ErrMediaNotFound
+	}
+	relative, err := filepath.Rel(uploadRoot, absPath)
+	if err != nil {
+		return "", ErrMediaNotFound
+	}
+	return securePathWithinRoot(uploadRoot, filepath.ToSlash(relative))
+}
+
+func (s *musicService) toResponse(music *domain.Music) *domain.MusicResponse {
+	response := music.ToResponse()
+	if response == nil || s.accessConfig.LibraryMode != config.LibraryAccessAuthenticated {
+		return response
+	}
+	expiresAt := time.Now().UTC().Add(time.Duration(s.accessConfig.MediaURLTTLMinutes) * time.Minute).Truncate(time.Second)
+	if response.Path != "" {
+		token := mediatoken.Issue(s.jwtConfig.Secret, music.ID, "stream", expiresAt)
+		response.Path += "?media_token=" + url.QueryEscape(token)
+	}
+	if response.Img != "" {
+		token := mediatoken.Issue(s.jwtConfig.Secret, music.ID, "cover", expiresAt)
+		response.Img += "?media_token=" + url.QueryEscape(token)
+	}
+	if response.Path != "" || response.Img != "" {
+		response.MediaURLExpiresAt = &expiresAt
+	}
+	return response
 }
 
 type stagedMediaFile struct {
-	tmpPath      string
-	finalPath    string
-	previousPath string
-	backupPath   string
-	applied      bool
+	tmpPath         string
+	finalPath       string
+	previousPath    string
+	backupPath      string
+	applied         bool
+	cleanupPrevious bool
 }
 
 func (f *stagedMediaFile) apply() error {
@@ -500,9 +676,21 @@ func (f *stagedMediaFile) rollback() error {
 
 func (f *stagedMediaFile) commit() {
 	cleanupUploadedFiles([]string{f.backupPath})
-	if f.previousPath != f.finalPath {
+	if f.cleanupPrevious && f.previousPath != f.finalPath {
 		cleanupUploadedFiles([]string{f.previousPath})
 	}
+}
+
+func pathIsInManagedUploadDirAt(uploadDir, path string) bool {
+	if strings.TrimSpace(path) == "" || strings.TrimSpace(uploadDir) == "" {
+		return false
+	}
+	root, err := filepath.Abs(filepath.Clean(uploadDir))
+	if err != nil {
+		return false
+	}
+	candidate, err := filepath.Abs(filepath.Clean(path))
+	return err == nil && pathContains(root, candidate)
 }
 
 func (f *stagedMediaFile) cleanupTemp() {
@@ -558,8 +746,20 @@ func saveUploadedMediaFile(dir, baseName string, header *multipart.FileHeader, c
 func buildMetadataEnrichment(existing *domain.Music, incoming domain.MusicMetadata) *domain.UpdateMusicRequest {
 	patch := &domain.UpdateMusicRequest{}
 	changed := false
+	if artistListCanBeEnriched(existing.Artist, existing.Artists, incoming.Artists) {
+		patch.Artists = stringListPointer(incoming.Artists)
+		changed = true
+	}
 	if existing.Album == "" && incoming.Album != "" {
 		patch.Album = &incoming.Album
+		changed = true
+	}
+	if existing.AlbumArtist == "" && incoming.AlbumArtist != "" {
+		patch.AlbumArtist = &incoming.AlbumArtist
+		changed = true
+	}
+	if artistListCanBeEnriched(existing.AlbumArtist, existing.AlbumArtists, incoming.AlbumArtists) {
+		patch.AlbumArtists = stringListPointer(incoming.AlbumArtists)
 		changed = true
 	}
 	if existing.Year == 0 && incoming.Year > 0 {
@@ -570,12 +770,64 @@ func buildMetadataEnrichment(existing *domain.Music, incoming domain.MusicMetada
 		patch.TrackNumber = &incoming.TrackNumber
 		changed = true
 	}
-	if existing.Genre == "" && incoming.Genre != "" {
-		patch.Genre = &incoming.Genre
+	if existing.TrackTotal == 0 && incoming.TrackTotal > 0 {
+		patch.TrackTotal = &incoming.TrackTotal
+		changed = true
+	}
+	if existing.DiscNumber == 0 && incoming.DiscNumber > 0 {
+		patch.DiscNumber = &incoming.DiscNumber
+		changed = true
+	}
+	if existing.DiscTotal == 0 && incoming.DiscTotal > 0 {
+		patch.DiscTotal = &incoming.DiscTotal
+		changed = true
+	}
+	if existing.ReleaseDate == "" && incoming.ReleaseDate != "" {
+		patch.ReleaseDate = &incoming.ReleaseDate
+		changed = true
+	}
+	if existing.OriginalReleaseDate == "" && incoming.OriginalReleaseDate != "" {
+		patch.OriginalReleaseDate = &incoming.OriginalReleaseDate
+		changed = true
+	}
+	if existing.Genre == "" && len(existing.Genres) == 0 && len(incoming.Genres) > 0 {
+		patch.Genres = stringListPointer(incoming.Genres)
+		changed = true
+	}
+	if existing.Comment == "" && incoming.Comment != "" {
+		patch.Comment = &incoming.Comment
+		changed = true
+	}
+	if len(existing.ISRCs) == 0 && len(incoming.ISRCs) > 0 {
+		patch.ISRCs = stringListPointer(incoming.ISRCs)
 		changed = true
 	}
 	if existing.Duration == 0 && incoming.Duration > 0 {
 		patch.Duration = &incoming.Duration
+		changed = true
+	}
+	if existing.MusicBrainzRecordingID == "" && incoming.MusicBrainzRecordingID != "" {
+		patch.MusicBrainzRecordingID = &incoming.MusicBrainzRecordingID
+		changed = true
+	}
+	if existing.MusicBrainzTrackID == "" && incoming.MusicBrainzTrackID != "" {
+		patch.MusicBrainzTrackID = &incoming.MusicBrainzTrackID
+		changed = true
+	}
+	if existing.MusicBrainzReleaseID == "" && incoming.MusicBrainzReleaseID != "" {
+		patch.MusicBrainzReleaseID = &incoming.MusicBrainzReleaseID
+		changed = true
+	}
+	if existing.MusicBrainzReleaseGroupID == "" && incoming.MusicBrainzReleaseGroupID != "" {
+		patch.MusicBrainzReleaseGroupID = &incoming.MusicBrainzReleaseGroupID
+		changed = true
+	}
+	if len(existing.MusicBrainzArtistIDs) == 0 && len(incoming.MusicBrainzArtistIDs) > 0 {
+		patch.MusicBrainzArtistIDs = stringListPointer(incoming.MusicBrainzArtistIDs)
+		changed = true
+	}
+	if len(existing.MusicBrainzAlbumArtistIDs) == 0 && len(incoming.MusicBrainzAlbumArtistIDs) > 0 {
+		patch.MusicBrainzAlbumArtistIDs = stringListPointer(incoming.MusicBrainzAlbumArtistIDs)
 		changed = true
 	}
 	if !changed {
@@ -597,17 +849,68 @@ func buildSuggestedMetadata(incoming domain.MusicMetadata, exact *domain.Music, 
 	if incoming.Album == "" {
 		incoming.Album = best.Album
 	}
+	if len(incoming.Artists) == 0 ||
+		(len(incoming.Artists) == 1 && strings.EqualFold(incoming.Artists[0], incoming.Artist) && len(best.Artists) > 1) {
+		incoming.Artists = append(domain.StringList{}, best.Artists...)
+	}
+	if incoming.AlbumArtist == "" {
+		incoming.AlbumArtist = best.AlbumArtist
+	}
+	if len(incoming.AlbumArtists) == 0 ||
+		(len(incoming.AlbumArtists) == 1 && strings.EqualFold(incoming.AlbumArtists[0], incoming.AlbumArtist) && len(best.AlbumArtists) > 1) {
+		incoming.AlbumArtists = append(domain.StringList{}, best.AlbumArtists...)
+	}
 	if incoming.Year == 0 {
 		incoming.Year = best.Year
 	}
 	if incoming.TrackNumber == 0 {
 		incoming.TrackNumber = best.TrackNumber
 	}
-	if incoming.Genre == "" {
+	if incoming.TrackTotal == 0 {
+		incoming.TrackTotal = best.TrackTotal
+	}
+	if incoming.DiscNumber == 0 {
+		incoming.DiscNumber = best.DiscNumber
+	}
+	if incoming.DiscTotal == 0 {
+		incoming.DiscTotal = best.DiscTotal
+	}
+	if incoming.ReleaseDate == "" {
+		incoming.ReleaseDate = best.ReleaseDate
+	}
+	if incoming.OriginalReleaseDate == "" {
+		incoming.OriginalReleaseDate = best.OriginalReleaseDate
+	}
+	if incoming.Genre == "" && len(incoming.Genres) == 0 {
 		incoming.Genre = best.Genre
+		incoming.Genres = append(domain.StringList{}, best.Genres...)
+	}
+	if incoming.Comment == "" {
+		incoming.Comment = best.Comment
+	}
+	if len(incoming.ISRCs) == 0 {
+		incoming.ISRCs = append(domain.StringList{}, best.ISRCs...)
 	}
 	if incoming.Duration == 0 {
 		incoming.Duration = best.Duration
+	}
+	if incoming.MusicBrainzRecordingID == "" {
+		incoming.MusicBrainzRecordingID = best.MusicBrainzRecordingID
+	}
+	if incoming.MusicBrainzTrackID == "" {
+		incoming.MusicBrainzTrackID = best.MusicBrainzTrackID
+	}
+	if incoming.MusicBrainzReleaseID == "" {
+		incoming.MusicBrainzReleaseID = best.MusicBrainzReleaseID
+	}
+	if incoming.MusicBrainzReleaseGroupID == "" {
+		incoming.MusicBrainzReleaseGroupID = best.MusicBrainzReleaseGroupID
+	}
+	if len(incoming.MusicBrainzArtistIDs) == 0 {
+		incoming.MusicBrainzArtistIDs = append(domain.StringList{}, best.MusicBrainzArtistIDs...)
+	}
+	if len(incoming.MusicBrainzAlbumArtistIDs) == 0 {
+		incoming.MusicBrainzAlbumArtistIDs = append(domain.StringList{}, best.MusicBrainzAlbumArtistIDs...)
 	}
 	return incoming
 }
@@ -617,19 +920,95 @@ func metadataCompleteness(music *domain.Music) int {
 	if music.Album != "" {
 		score++
 	}
+	if len(music.Artists) > 1 {
+		score++
+	}
+	if music.AlbumArtist != "" || len(music.AlbumArtists) > 0 {
+		score++
+	}
 	if music.Year > 0 {
 		score++
 	}
 	if music.TrackNumber > 0 {
 		score++
 	}
-	if music.Genre != "" {
+	if music.TrackTotal > 0 {
+		score++
+	}
+	if music.DiscNumber > 0 || music.DiscTotal > 0 {
+		score++
+	}
+	if music.ReleaseDate != "" || music.OriginalReleaseDate != "" {
+		score++
+	}
+	if music.Genre != "" || len(music.Genres) > 0 {
+		score++
+	}
+	if music.Comment != "" || len(music.ISRCs) > 0 {
 		score++
 	}
 	if music.Duration > 0 {
 		score++
 	}
+	if music.MusicBrainzRecordingID != "" || music.MusicBrainzTrackID != "" {
+		score += 2
+	}
+	if music.MusicBrainzReleaseID != "" || music.MusicBrainzReleaseGroupID != "" {
+		score++
+	}
+	if len(music.MusicBrainzArtistIDs) > 0 || len(music.MusicBrainzAlbumArtistIDs) > 0 {
+		score++
+	}
 	return score
+}
+
+func normalizedMusicMetadata(metadata domain.MusicMetadata) (domain.MusicMetadata, error) {
+	music := &domain.Music{}
+	request := &domain.CreateMusicRequest{
+		Title:                     metadata.Title,
+		Artist:                    metadata.Artist,
+		Artists:                   metadata.Artists,
+		Album:                     metadata.Album,
+		AlbumArtist:               metadata.AlbumArtist,
+		AlbumArtists:              metadata.AlbumArtists,
+		Year:                      metadata.Year,
+		TrackNumber:               metadata.TrackNumber,
+		TrackTotal:                metadata.TrackTotal,
+		DiscNumber:                metadata.DiscNumber,
+		DiscTotal:                 metadata.DiscTotal,
+		ReleaseDate:               metadata.ReleaseDate,
+		OriginalReleaseDate:       metadata.OriginalReleaseDate,
+		Genre:                     metadata.Genre,
+		Genres:                    metadata.Genres,
+		Comment:                   metadata.Comment,
+		ISRCs:                     metadata.ISRCs,
+		Duration:                  metadata.Duration,
+		MusicBrainzRecordingID:    metadata.MusicBrainzRecordingID,
+		MusicBrainzTrackID:        metadata.MusicBrainzTrackID,
+		MusicBrainzReleaseID:      metadata.MusicBrainzReleaseID,
+		MusicBrainzReleaseGroupID: metadata.MusicBrainzReleaseGroupID,
+		MusicBrainzArtistIDs:      metadata.MusicBrainzArtistIDs,
+		MusicBrainzAlbumArtistIDs: metadata.MusicBrainzAlbumArtistIDs,
+	}
+	if err := applyCreateMusicMetadata(music, request); err != nil {
+		return domain.MusicMetadata{}, err
+	}
+	return musicMetadataFromMusic(music), nil
+}
+
+func artistListCanBeEnriched(credited string, existing, incoming domain.StringList) bool {
+	if len(incoming) == 0 {
+		return false
+	}
+	if len(existing) == 0 {
+		return true
+	}
+	return len(existing) == 1 && strings.EqualFold(existing[0], credited) && len(incoming) > 1
+}
+
+func stringListPointer(values domain.StringList) *domain.StringList {
+	copy := append(domain.StringList{}, values...)
+	return &copy
 }
 
 func cleanupUploadedFiles(paths []string) {

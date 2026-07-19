@@ -18,9 +18,13 @@ type MusicRepository interface {
 	Create(ctx context.Context, music *domain.Music) error
 	FindByID(ctx context.Context, id uint) (*domain.Music, error)
 	FindByFileHash(ctx context.Context, fileHash string) (*domain.Music, error)
+	FindByMediaSourceKey(ctx context.Context, sourceKey string) (*domain.Music, error)
 	FindByTitleAndArtist(ctx context.Context, title, artist string, limit int) ([]*domain.Music, error)
+	FindByStableMetadataIDs(ctx context.Context, recordingID, trackID string, limit int) ([]*domain.Music, error)
+	FindByMusicBrainzRecordingID(ctx context.Context, recordingID string) (*domain.Music, error)
 	Search(ctx context.Context, params *domain.MusicSearchParams) ([]*domain.Music, int64, error)
 	ListFilterOptions(ctx context.Context) (*domain.MusicFilterOptions, error)
+	CountWithMetadata(ctx context.Context) (int64, error)
 	ListByUserID(ctx context.Context, userID uint, page, pageSize int) ([]*domain.Music, int64, error)
 	Update(ctx context.Context, music *domain.Music) error
 	Delete(ctx context.Context, id uint) error
@@ -67,6 +71,17 @@ func (r *musicRepository) FindByFileHash(ctx context.Context, fileHash string) (
 	return &music, nil
 }
 
+func (r *musicRepository) FindByMediaSourceKey(ctx context.Context, sourceKey string) (*domain.Music, error) {
+	var music domain.Music
+	if err := r.db.WithContext(ctx).Where("media_source_key = ?", sourceKey).First(&music).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrMusicNotFound
+		}
+		return nil, err
+	}
+	return &music, nil
+}
+
 func (r *musicRepository) FindByTitleAndArtist(ctx context.Context, title, artist string, limit int) ([]*domain.Music, error) {
 	if limit <= 0 {
 		limit = 5
@@ -80,21 +95,111 @@ func (r *musicRepository) FindByTitleAndArtist(ctx context.Context, title, artis
 	return musics, err
 }
 
+func (r *musicRepository) FindByStableMetadataIDs(ctx context.Context, recordingID, trackID string, limit int) ([]*domain.Music, error) {
+	if limit <= 0 {
+		limit = 5
+	}
+	results := make([]*domain.Music, 0, limit)
+	seen := make(map[uint]struct{})
+	appendMatches := func(column, value string) error {
+		if value == "" || len(results) >= limit {
+			return nil
+		}
+		var matches []*domain.Music
+		if err := r.db.WithContext(ctx).
+			Where(column+" = ?", value).
+			Order("created_at DESC").
+			Limit(limit - len(results)).
+			Find(&matches).Error; err != nil {
+			return err
+		}
+		for _, match := range matches {
+			if _, exists := seen[match.ID]; exists {
+				continue
+			}
+			seen[match.ID] = struct{}{}
+			results = append(results, match)
+		}
+		return nil
+	}
+	if err := appendMatches("music_brainz_track_id", trackID); err != nil {
+		return nil, err
+	}
+	if err := appendMatches("music_brainz_recording_id", recordingID); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+func (r *musicRepository) FindByMusicBrainzRecordingID(ctx context.Context, recordingID string) (*domain.Music, error) {
+	var music domain.Music
+	if err := r.db.WithContext(ctx).Where("music_brainz_recording_id = ?", recordingID).First(&music).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrMusicNotFound
+		}
+		return nil, err
+	}
+	return &music, nil
+}
+
 func (r *musicRepository) Search(ctx context.Context, params *domain.MusicSearchParams) ([]*domain.Music, int64, error) {
 	var musics []*domain.Music
 	var total int64
 	offset := (params.Page - 1) * params.PageSize
+	if params.Offset != nil && *params.Offset >= 0 {
+		offset = *params.Offset
+	}
 
 	db := r.db.WithContext(ctx).Model(&domain.Music{})
 	if params.Query != "" {
 		likeQuery := "%" + params.Query + "%"
 		db = db.Where("LOWER(title) LIKE LOWER(?) OR LOWER(artist) LIKE LOWER(?)", likeQuery, likeQuery)
 	}
+	if params.Title != "" {
+		db = db.Where("LOWER(title) = LOWER(?)", params.Title)
+	}
 	if params.Artist != "" {
 		db = db.Where("LOWER(artist) = LOWER(?)", params.Artist)
 	}
+	if params.Album != "" {
+		db = db.Where("LOWER(album) = LOWER(?)", params.Album)
+	}
+	if params.AlbumArtist != "" {
+		db = db.Where("LOWER(album_artist) = LOWER(?)", params.AlbumArtist)
+	}
+	if params.Genre != "" {
+		genre := "%" + params.Genre + "%"
+		db = db.Where("LOWER(genre) LIKE LOWER(?)", genre)
+	}
 	if params.Year != nil {
 		db = db.Where("year = ?", *params.Year)
+	}
+	if params.MinYear != nil {
+		db = db.Where("year >= ?", *params.MinYear)
+	}
+	if params.MaxYear != nil {
+		db = db.Where("year <= ?", *params.MaxYear)
+	}
+	if params.Duration != nil {
+		db = db.Where("duration = ?", *params.Duration)
+	}
+	if params.MinDuration != nil {
+		db = db.Where("duration >= ?", *params.MinDuration)
+	}
+	if params.MaxDuration != nil {
+		db = db.Where("duration <= ?", *params.MaxDuration)
+	}
+	if params.RecordingID != "" {
+		db = db.Where("music_brainz_recording_id = ?", params.RecordingID)
+	}
+	if params.TrackID != "" {
+		db = db.Where("music_brainz_track_id = ?", params.TrackID)
+	}
+	if params.ReleaseID != "" {
+		db = db.Where("music_brainz_release_id = ?", params.ReleaseID)
+	}
+	if params.ReleaseGroupID != "" {
+		db = db.Where("music_brainz_release_group_id = ?", params.ReleaseGroupID)
 	}
 	if params.Type != nil {
 		db = db.Where("type = ?", *params.Type)
@@ -142,6 +247,14 @@ func (r *musicRepository) ListFilterOptions(ctx context.Context) (*domain.MusicF
 	return options, nil
 }
 
+func (r *musicRepository) CountWithMetadata(ctx context.Context) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&domain.Music{}).
+		Where("music_brainz_recording_id <> ? OR music_brainz_release_id <> ? OR genre <> ? OR album_artist <> ?", "", "", "", "").
+		Count(&count).Error
+	return count, err
+}
+
 func (r *musicRepository) ListByUserID(ctx context.Context, userID uint, page, pageSize int) ([]*domain.Music, int64, error) {
 	var musics []*domain.Music
 	var total int64
@@ -166,6 +279,9 @@ func (r *musicRepository) Update(ctx context.Context, music *domain.Music) error
 
 func (r *musicRepository) Delete(ctx context.Context, id uint) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Unscoped().Where("music_id = ?", id).Delete(&domain.MediaFile{}).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("music_id = ?", id).Delete(&domain.UserMusicLike{}).Error; err != nil {
 			return err
 		}

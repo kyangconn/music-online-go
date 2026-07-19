@@ -88,6 +88,68 @@ func TestValidateMetricsConfig(t *testing.T) {
 	}
 }
 
+func TestValidateAccessConfig(t *testing.T) {
+	valid := AccessConfig{
+		LibraryMode:        LibraryAccessPublic,
+		RegistrationMode:   RegistrationAdmin,
+		MediaURLTTLMinutes: 60,
+	}
+	if err := ValidateAccessConfig(valid); err != nil {
+		t.Fatalf("valid access config: %v", err)
+	}
+	valid.LibraryMode = "private-ish"
+	if err := ValidateAccessConfig(valid); err == nil {
+		t.Fatal("unsupported library mode should fail")
+	}
+	valid.LibraryMode = LibraryAccessAuthenticated
+	valid.RegistrationMode = "invite-only"
+	if err := ValidateAccessConfig(valid); err == nil {
+		t.Fatal("unsupported registration mode should fail")
+	}
+	valid.RegistrationMode = RegistrationOpen
+	valid.MediaURLTTLMinutes = 0
+	if err := ValidateAccessConfig(valid); err == nil {
+		t.Fatal("non-positive media URL TTL should fail")
+	}
+}
+
+func TestValidateLibraryConfig(t *testing.T) {
+	valid := LibraryConfig{HealthCheckIntervalSeconds: 60, Scanner: LibraryScannerConfig{
+		Enabled: true, MaxFileSizeMB: 2048, MaxTagSizeMB: 16, MinFileAgeSeconds: 30,
+		HashRecheckHours: 168, RetryMaxAttempts: 5, RetryInitialSeconds: 30, RetryMaxSeconds: 900,
+	}}
+	if err := ValidateLibraryConfig(valid); err != nil {
+		t.Fatalf("valid media scanner config: %v", err)
+	}
+	valid.Scanner.MaxFileSizeMB = 0
+	if err := ValidateLibraryConfig(valid); err == nil {
+		t.Fatal("non-positive scanner file limit should fail")
+	}
+	valid.Scanner.MaxFileSizeMB = 1
+	valid.Scanner.MinFileAgeSeconds = -1
+	if err := ValidateLibraryConfig(valid); err == nil {
+		t.Fatal("negative scanner minimum age should fail")
+	}
+}
+
+func TestValidateMusicBeeConfig(t *testing.T) {
+	if err := ValidateMusicBeeConfig(MusicBeeConfig{}); err != nil {
+		t.Fatalf("disabled MusicBee integration: %v", err)
+	}
+	if err := ValidateMusicBeeConfig(MusicBeeConfig{SubmitUsername: "musicbee"}); err == nil {
+		t.Fatal("username without token should fail")
+	}
+	if err := ValidateMusicBeeConfig(MusicBeeConfig{SubmitToken: "short", SubmitUsername: "musicbee"}); err == nil {
+		t.Fatal("short token should fail")
+	}
+	if err := ValidateMusicBeeConfig(MusicBeeConfig{
+		SubmitToken:    "0123456789abcdef0123456789abcdef",
+		SubmitUsername: "musicbee",
+	}); err != nil {
+		t.Fatalf("valid MusicBee integration: %v", err)
+	}
+}
+
 func TestValidateDatabaseConfigFailsFastForIncompletePostgres(t *testing.T) {
 	cfg := DatabaseConfig{
 		Type:                         "postgres",
@@ -167,6 +229,18 @@ jwt:
 	t.Setenv("SERVER_PORT", "9090")
 	t.Setenv("SERVER_ALLOWED_ORIGINS", "https://one.example,https://two.example")
 	t.Setenv("SERVER_TRUSTED_PROXIES", "127.0.0.1,10.0.0.0/8")
+	t.Setenv("ACCESS_LIBRARY_MODE", "authenticated")
+	t.Setenv("ACCESS_REGISTRATION_MODE", "admin")
+	t.Setenv("ACCESS_MEDIA_URL_TTL_MINUTES", "15")
+	t.Setenv("LIBRARY_SCANNER_ENABLED", "false")
+	t.Setenv("LIBRARY_HEALTH_CHECK_INTERVAL_SECONDS", "75")
+	t.Setenv("LIBRARY_SCANNER_MAX_FILE_SIZE_MB", "4096")
+	t.Setenv("LIBRARY_SCANNER_MAX_TAG_SIZE_MB", "24")
+	t.Setenv("LIBRARY_SCANNER_MIN_FILE_AGE_SECONDS", "45")
+	t.Setenv("LIBRARY_SCANNER_HASH_RECHECK_HOURS", "72")
+	t.Setenv("LIBRARY_SCANNER_RETRY_MAX_ATTEMPTS", "4")
+	t.Setenv("LIBRARY_SCANNER_RETRY_INITIAL_SECONDS", "20")
+	t.Setenv("LIBRARY_SCANNER_RETRY_MAX_SECONDS", "300")
 	t.Setenv("DATABASE_TYPE", "")
 	t.Setenv("DATABASE_PATH", "")
 	t.Setenv("DATABASE_PORT", "")
@@ -187,11 +261,43 @@ jwt:
 	if AppConfig.JWT.Secret != "environment-secret-32-bytes-long!!" {
 		t.Fatalf("jwt secret did not use environment override")
 	}
+	if AppConfig.Access.LibraryMode != LibraryAccessAuthenticated ||
+		AppConfig.Access.RegistrationMode != RegistrationAdmin || AppConfig.Access.MediaURLTTLMinutes != 15 {
+		t.Fatalf("access environment overrides were not loaded: %+v", AppConfig.Access)
+	}
+	if AppConfig.Library.HealthCheckIntervalSeconds != 75 || AppConfig.Library.Scanner.Enabled ||
+		AppConfig.Library.Scanner.MaxFileSizeMB != 4096 || AppConfig.Library.Scanner.MaxTagSizeMB != 24 ||
+		AppConfig.Library.Scanner.MinFileAgeSeconds != 45 || AppConfig.Library.Scanner.HashRecheckHours != 72 ||
+		AppConfig.Library.Scanner.RetryMaxAttempts != 4 || AppConfig.Library.Scanner.RetryInitialSeconds != 20 ||
+		AppConfig.Library.Scanner.RetryMaxSeconds != 300 {
+		t.Fatalf("library scanner environment overrides were not loaded: %+v", AppConfig.Library.Scanner)
+	}
 	if got, want := AppConfig.Server.AllowedOrigins, []string{"https://one.example", "https://two.example"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("allowed origins = %#v, want %#v", got, want)
 	}
 	if got, want := AppConfig.Server.TrustedProxies, []string{"127.0.0.1", "10.0.0.0/8"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("trusted proxies = %#v, want %#v", got, want)
+	}
+}
+
+func TestLoadConfigPublishesOnlyValidatedSnapshot(t *testing.T) {
+	previous := AppConfig
+	sentinel := &Config{SourceFile: "known-good"}
+	AppConfig = sentinel
+	t.Cleanup(func() { AppConfig = previous })
+
+	path := filepath.Join(t.TempDir(), "invalid-config.yaml")
+	contents := []byte("server:\n  mode: release\ndatabase:\n  type: sqlite\n  path: invalid.db\njwt:\n  secret: too-short\n")
+	if err := os.WriteFile(path, contents, 0600); err != nil {
+		t.Fatalf("write invalid config: %v", err)
+	}
+	t.Setenv("MO_CONFIG_FILE", path)
+	t.Setenv("JWT_SECRET", "")
+	if err := LoadConfig(); err == nil {
+		t.Fatal("invalid replacement config should fail")
+	}
+	if AppConfig != sentinel {
+		t.Fatalf("failed load replaced the last validated snapshot: %+v", AppConfig)
 	}
 }
 
@@ -215,6 +321,9 @@ database:
   path: secrets-test.db
 metrics:
   enabled: true
+integrations:
+  musicbee:
+    submit_username: musicbee
 jwt:
   secret: yaml-value-must-be-overridden
 `)
@@ -223,13 +332,14 @@ jwt:
 	}
 
 	t.Setenv("MO_CONFIG_FILE", configPath)
-	for _, envName := range []string{"JWT_SECRET", "DATABASE_PASSWORD", "METRICS_TOKEN", "ADMIN_BOOTSTRAP_PASSWORD"} {
+	for _, envName := range []string{"JWT_SECRET", "DATABASE_PASSWORD", "METRICS_TOKEN", "ADMIN_BOOTSTRAP_PASSWORD", "INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN"} {
 		t.Setenv(envName, "")
 	}
 	t.Setenv("JWT_SECRET_FILE", writeSecret("jwt", "0123456789abcdef0123456789abcdef"))
 	t.Setenv("DATABASE_PASSWORD_FILE", writeSecret("database", "database-secret"))
 	t.Setenv("METRICS_TOKEN_FILE", writeSecret("metrics", "metrics-secret"))
 	t.Setenv("ADMIN_BOOTSTRAP_PASSWORD_FILE", writeSecret("admin", "admin-secret"))
+	t.Setenv("INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN_FILE", writeSecret("musicbee", "0123456789abcdef0123456789abcdef"))
 
 	if err := LoadConfig(); err != nil {
 		t.Fatalf("LoadConfig: %v", err)
@@ -237,7 +347,8 @@ jwt:
 	if AppConfig.JWT.Secret != "0123456789abcdef0123456789abcdef" ||
 		AppConfig.Database.Password != "database-secret" ||
 		AppConfig.Metrics.Token != "metrics-secret" ||
-		AppConfig.AdminBootstrap.Password != "admin-secret" {
+		AppConfig.AdminBootstrap.Password != "admin-secret" ||
+		AppConfig.Integrations.MusicBee.SubmitToken != "0123456789abcdef0123456789abcdef" {
 		t.Fatalf("secret file values were not loaded correctly: %+v", AppConfig)
 	}
 }

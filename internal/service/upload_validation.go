@@ -16,8 +16,6 @@ import (
 )
 
 const (
-	defaultMaxAudioSizeMB  = 200
-	defaultMaxCoverSizeMB  = 10
 	multipartOverheadBytes = 1 << 20
 	signatureReadSize      = 512
 )
@@ -61,17 +59,28 @@ type UploadPolicy struct {
 }
 
 func CurrentUploadPolicy() UploadPolicy {
-	maxAudioMB := config.AppConfig.Server.MaxAudioSizeMB
-	if maxAudioMB <= 0 {
-		maxAudioMB = defaultMaxAudioSizeMB
+	serverConfig := config.ServerConfig{
+		MaxAudioSizeMB: config.DefaultMaxAudioSizeMB,
+		MaxCoverSizeMB: config.DefaultMaxCoverSizeMB,
 	}
-	maxCoverMB := config.AppConfig.Server.MaxCoverSizeMB
+	if config.AppConfig != nil {
+		serverConfig = config.AppConfig.Server
+	}
+	return UploadPolicyFromServerConfig(serverConfig)
+}
+
+func UploadPolicyFromServerConfig(serverConfig config.ServerConfig) UploadPolicy {
+	maxAudioMB := serverConfig.MaxAudioSizeMB
+	maxCoverMB := serverConfig.MaxCoverSizeMB
+	if maxAudioMB <= 0 {
+		maxAudioMB = config.DefaultMaxAudioSizeMB
+	}
 	if maxCoverMB <= 0 {
-		maxCoverMB = defaultMaxCoverSizeMB
+		maxCoverMB = config.DefaultMaxCoverSizeMB
 	}
 	return UploadPolicy{
-		MaxAudioSizeBytes: maxSizeBytes(maxAudioMB, defaultMaxAudioSizeMB),
-		MaxCoverSizeBytes: maxSizeBytes(maxCoverMB, defaultMaxCoverSizeMB),
+		MaxAudioSizeBytes: maxSizeBytes(maxAudioMB, config.DefaultMaxAudioSizeMB),
+		MaxCoverSizeBytes: maxSizeBytes(maxCoverMB, config.DefaultMaxCoverSizeMB),
 		MaxAudioSizeMB:    maxAudioMB,
 		MaxCoverSizeMB:    maxCoverMB,
 		AudioExtensions:   sortedExtensions(allowedAudioExts),
@@ -87,11 +96,11 @@ func UploadRequestBodyLimit() int64 {
 	return policy.MaxAudioSizeBytes + policy.MaxCoverSizeBytes + multipartOverheadBytes
 }
 
-func validateUploadedAudioFile(header *multipart.FileHeader) error {
+func validateUploadedAudioFileWithLimit(header *multipart.FileHeader, maxBytes int64) error {
 	if header == nil {
 		return nil
 	}
-	if err := validateSize(header, "audio", maxSizeBytes(config.AppConfig.Server.MaxAudioSizeMB, defaultMaxAudioSizeMB)); err != nil {
+	if err := validateSize(header, "audio", maxBytes); err != nil {
 		return err
 	}
 	if err := validateExtension(header.Filename, "audio", allowedAudioExts); err != nil {
@@ -110,11 +119,11 @@ func validateUploadedAudioFile(header *multipart.FileHeader) error {
 	return nil
 }
 
-func validateUploadedCoverFile(header *multipart.FileHeader) error {
+func validateUploadedCoverFileWithLimit(header *multipart.FileHeader, maxBytes int64) error {
 	if header == nil {
 		return nil
 	}
-	if err := validateSize(header, "cover", maxSizeBytes(config.AppConfig.Server.MaxCoverSizeMB, defaultMaxCoverSizeMB)); err != nil {
+	if err := validateSize(header, "cover", maxBytes); err != nil {
 		return err
 	}
 	if err := validateExtension(header.Filename, "cover", allowedCoverExts); err != nil {

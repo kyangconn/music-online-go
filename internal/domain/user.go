@@ -46,6 +46,14 @@ type RegisterRequest struct {
 	FullName string `json:"full_name" binding:"max=255"`
 }
 
+type AdminCreateUserRequest struct {
+	Username string `json:"username" binding:"required,min=3,max=50"`
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required"`
+	FullName string `json:"full_name" binding:"max=255"`
+	Role     string `json:"role" binding:"required,oneof=user admin"`
+}
+
 // LoginRequest 登录请求DTO
 type LoginRequest struct {
 	Username string `json:"username" binding:"required"`

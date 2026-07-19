@@ -12,12 +12,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/kyangconn/music-online-go/internal/config"
 	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/kyangconn/music-online-go/internal/pkg/database"
 	"github.com/kyangconn/music-online-go/internal/service"
@@ -229,15 +229,122 @@ func TestMusicTagSearchPublic(t *testing.T) {
 	}
 }
 
-func TestCreateMusicTagAuthRequired(t *testing.T) {
+func TestLegacyMusicTagWriteEndpointIsRemoved(t *testing.T) {
 	body := `{"artist":"foo","title":"bar"}`
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/api/v1/music-tags", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	testRouter.ServeHTTP(w, req)
 
-	if w.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401 for unauthenticated create, got %d", w.Code)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for removed legacy write endpoint, got %d", w.Code)
+	}
+}
+
+func TestCanonicalMusicMetadataRoundTrip(t *testing.T) {
+	token := registerAndLogin(t, "metadata-roundtrip")
+	body := `{
+		"title":"Tagged Track","artist":"Artist feat. Guest","artists":["Artist","Guest"],
+		"album":"Release","album_artist":"Album Artist","album_artists":["Album Artist"],
+		"year":2024,"track_number":2,"track_total":12,"disc_number":1,"disc_total":2,
+		"release_date":"2024-03-02","original_release_date":"2023",
+		"genres":["Ambient / Chillout","Electronic"],"comment":"liner note","isrcs":["US-ABC-24-12345"],
+		"duration":201,
+		"musicbrainz_recording_id":"123e4567-e89b-42d3-a456-426614174000",
+		"musicbrainz_track_id":"123e4567-e89b-42d3-a456-426614174001",
+		"musicbrainz_release_id":"123e4567-e89b-42d3-a456-426614174002",
+		"musicbrainz_release_group_id":"123e4567-e89b-42d3-a456-426614174003",
+		"musicbrainz_artist_ids":["123e4567-e89b-42d3-a456-426614174004"],
+		"musicbrainz_album_artist_ids":["123e4567-e89b-42d3-a456-426614174005"]
+	}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/musics", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create canonical metadata: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var created struct {
+		Data domain.MusicResponse `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created music: %v", err)
+	}
+	if created.Data.MetadataRevision != 1 || created.Data.ISRCs[0] != "USABC2412345" {
+		t.Fatalf("canonical metadata was not normalized: %+v", created.Data)
+	}
+	if got, want := created.Data.GenreTokens, (domain.StringList{"ambient", "chillout", "electronic"}); !reflect.DeepEqual(got, want) {
+		t.Fatalf("genre tokens = %#v, want %#v", got, want)
+	}
+	if len(created.Data.Artists) != 2 || created.Data.MusicBrainzTrackID == created.Data.MusicBrainzRecordingID {
+		t.Fatalf("multi-values or entity IDs were lost: %+v", created.Data)
+	}
+
+	update := `{"comment":"updated note","genres":["Synthwave / Retrowave"]}`
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest(http.MethodPut, "/api/v1/musics/"+strconv.Itoa(int(created.Data.ID)), strings.NewReader(update))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("update canonical metadata: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var updated struct {
+		Data domain.MusicResponse `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("decode updated music: %v", err)
+	}
+	if updated.Data.MetadataRevision != 2 || updated.Data.Comment != "updated note" ||
+		len(updated.Data.GenreTokens) != 2 || updated.Data.Genres[0] != "Synthwave / Retrowave" {
+		t.Fatalf("metadata update did not round trip: %+v", updated.Data)
+	}
+}
+
+func TestStableRecordingIDOutranksTextAndArtistIDNeverIdentifiesATrack(t *testing.T) {
+	token := registerAndLogin(t, "stable-id-matching")
+	recordingID := "123e4567-e89b-42d3-a456-426614174010"
+	artistID := "123e4567-e89b-42d3-a456-426614174011"
+	existingID := createMusicFromJSON(t, token, fmt.Sprintf(
+		`{"title":"Canonical Title","artist":"Canonical Artist","album":"Known Release","musicbrainz_recording_id":%q,"musicbrainz_artist_ids":[%q]}`,
+		recordingID,
+		artistID,
+	))
+
+	w := duplicateCheck(t, token, fmt.Sprintf(
+		`{"title":"Different Display Title","artist":"Different Credit","musicbrainz_recording_id":%q}`,
+		recordingID,
+	))
+	if w.Code != http.StatusOK {
+		t.Fatalf("stable duplicate check: %d %s", w.Code, w.Body.String())
+	}
+	var stable struct {
+		Data domain.MusicDuplicateCheckResponse `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &stable); err != nil {
+		t.Fatalf("decode stable duplicate response: %v", err)
+	}
+	if len(stable.Data.MetadataMatches) == 0 || stable.Data.MetadataMatches[0].ID != existingID ||
+		stable.Data.SuggestedMetadata.Album != "Known Release" {
+		t.Fatalf("recording ID did not produce the stable candidate: %+v", stable.Data)
+	}
+
+	w = duplicateCheck(t, token, fmt.Sprintf(
+		`{"title":"Unrelated Track","artist":"Canonical Artist","musicbrainz_artist_ids":[%q]}`,
+		artistID,
+	))
+	if w.Code != http.StatusOK {
+		t.Fatalf("artist-only duplicate check: %d %s", w.Code, w.Body.String())
+	}
+	var artistOnly struct {
+		Data domain.MusicDuplicateCheckResponse `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &artistOnly); err != nil {
+		t.Fatalf("decode artist-only response: %v", err)
+	}
+	if len(artistOnly.Data.MetadataMatches) != 0 {
+		t.Fatalf("artist ID incorrectly identified a track: %+v", artistOnly.Data.MetadataMatches)
 	}
 }
 
@@ -435,15 +542,6 @@ func TestUploadRejectsInvalidMediaFiles(t *testing.T) {
 }
 
 func TestUploadRequestBodyValidation(t *testing.T) {
-	originalAudioLimit := config.AppConfig.Server.MaxAudioSizeMB
-	originalCoverLimit := config.AppConfig.Server.MaxCoverSizeMB
-	config.AppConfig.Server.MaxAudioSizeMB = 1
-	config.AppConfig.Server.MaxCoverSizeMB = 1
-	t.Cleanup(func() {
-		config.AppConfig.Server.MaxAudioSizeMB = originalAudioLimit
-		config.AppConfig.Server.MaxCoverSizeMB = originalCoverLimit
-	})
-
 	token := registerAndLogin(t, "uploadbodylimituser")
 	musicID := createMusic(t, token, "Upload Body Limit Song")
 
@@ -745,6 +843,31 @@ func TestNonAdminCannotAccessAdminRoutes(t *testing.T) {
 	testRouter.ServeHTTP(w, req)
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("non-admin update status: expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminCanCreateAUser(t *testing.T) {
+	_, adminID := registerAndLoginWithID(t, "create-user-admin")
+	if err := database.DB.Model(&domain.User{}).Where("id = ?", adminID).Update("role", "admin").Error; err != nil {
+		t.Fatalf("promote admin: %v", err)
+	}
+	adminToken := loginUser(t, "create-user-admin")
+	body := `{"username":"admin-created-user","email":"admin-created@example.com","password":"password123","full_name":"Created User","role":"user"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/users/admin/users", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", "application/json")
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("admin create user: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest(http.MethodPost, "/api/v1/users/login", strings.NewReader(`{"username":"admin-created-user","password":"password123"}`))
+	req.Header.Set("Content-Type", "application/json")
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("admin-created user login: expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

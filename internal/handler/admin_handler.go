@@ -15,6 +15,7 @@ import (
 	"github.com/kyangconn/music-online-go/internal/config"
 	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/kyangconn/music-online-go/internal/pkg/database"
+	"github.com/kyangconn/music-online-go/internal/pkg/password"
 	"github.com/kyangconn/music-online-go/internal/repository"
 	"github.com/kyangconn/music-online-go/internal/service"
 	"github.com/kyangconn/music-online-go/internal/version"
@@ -25,17 +26,34 @@ var startTime = time.Now()
 
 // AdminHandler handles admin-related HTTP requests.
 type AdminHandler struct {
-	userService     service.UserService
-	musicService    service.MusicService
-	musicTagService service.MusicTagService
+	userService         service.UserService
+	musicService        service.MusicService
+	mediaLibraryService service.MediaLibraryService
+	serverConfig        config.ServerConfig
+	databaseConfig      config.DatabaseConfig
 }
 
-func NewAdminHandler(userService service.UserService, musicService service.MusicService, musicTagService service.MusicTagService) *AdminHandler {
-	return &AdminHandler{
-		userService:     userService,
-		musicService:    musicService,
-		musicTagService: musicTagService,
+func NewAdminHandler(userService service.UserService, musicService service.MusicService, mediaLibraryServices ...service.MediaLibraryService) *AdminHandler {
+	var mediaLibraryService service.MediaLibraryService
+	if len(mediaLibraryServices) > 0 {
+		mediaLibraryService = mediaLibraryServices[0]
 	}
+	return NewAdminHandlerWithConfig(userService, musicService, mediaLibraryService, config.AppConfig)
+}
+
+// NewAdminHandlerWithConfig keeps system-info output tied to the same
+// validated startup snapshot used to construct the rest of the application.
+func NewAdminHandlerWithConfig(userService service.UserService, musicService service.MusicService, mediaLibraryService service.MediaLibraryService, cfg *config.Config) *AdminHandler {
+	handler := &AdminHandler{
+		userService:         userService,
+		musicService:        musicService,
+		mediaLibraryService: mediaLibraryService,
+	}
+	if cfg != nil {
+		handler.serverConfig = cfg.Server
+		handler.databaseConfig = cfg.Database
+	}
+	return handler
 }
 
 type SystemInfoResponse struct {
@@ -110,8 +128,8 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 
 	info := SystemInfoResponse{
 		Host:       host,
-		ServerMode: config.AppConfig.Server.Mode,
-		ServerPort: config.AppConfig.Server.Port,
+		ServerMode: h.serverConfig.Mode,
+		ServerPort: h.serverConfig.Port,
 		AppVersion: version.Version,
 		AppCommit:  version.Commit,
 		AppBuilt:   version.BuildTime,
@@ -135,7 +153,7 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 		StackSys:         formatBytes(mem.StackSys),
 
 		NumGC:      mem.NumGC,
-		PauseTotal: fmtDuration(time.Duration(mem.PauseTotalNs)), //nolint:gosec // PauseTotalNs < int64 max for realistic uptimes
+		PauseTotal: fmtDuration(time.Duration(mem.PauseTotalNs)),         //nolint:gosec // PauseTotalNs < int64 max for realistic uptimes
 		LastGCTime: time.Unix(0, int64(mem.LastGC)).Format(time.RFC3339), //nolint:gosec // LastGC timestamp within int64 range until year 2262
 		GCCPUFrac:  fmt.Sprintf("%.4f%%", gcCPUFrac),
 
@@ -145,8 +163,8 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 		DBIdle:         dbStats.Idle,
 		DBWaitCount:    dbStats.WaitCount,
 		DBWaitDuration: fmtDuration(dbStats.WaitDuration),
-		DBType:         config.AppConfig.Database.Type,
-		DBName:         config.AppConfig.Database.Name,
+		DBType:         h.databaseConfig.Type,
+		DBName:         h.databaseConfig.Name,
 	}
 
 	if total, err := h.userService.CountAll(ctx); err == nil {
@@ -157,7 +175,7 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 		info.TotalMusic = total
 	}
 
-	if total, err := h.musicTagService.CountAll(ctx); err == nil {
+	if total, err := h.musicService.CountWithMetadata(ctx); err == nil {
 		info.TotalMusicTags = total
 	}
 
@@ -212,6 +230,29 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 		"page":  page,
 		"size":  pageSize,
 	})
+}
+
+func (h *AdminHandler) CreateUser(c *gin.Context) {
+	var req domain.AdminCreateUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, "Invalid request parameters")
+		return
+	}
+	user, err := h.userService.CreateUserByAdmin(c.Request.Context(), &req)
+	if err != nil {
+		switch {
+		case errors.Is(err, password.ErrPasswordTooShort), errors.Is(err, password.ErrPasswordTooLong):
+			BadRequest(c, "Password must be at least 8 Unicode characters and no more than 72 UTF-8 bytes")
+		case errors.Is(err, repository.ErrUsernameExists):
+			Error(c, http.StatusConflict, "Username already exists")
+		case errors.Is(err, repository.ErrEmailExists):
+			Error(c, http.StatusConflict, "Email already exists")
+		default:
+			InternalServerError(c, "Failed to create user")
+		}
+		return
+	}
+	Created(c, user)
 }
 
 type UpdateStatusRequest struct {
@@ -362,4 +403,160 @@ func (h *AdminHandler) DeleteMusic(c *gin.Context) {
 	}
 
 	Success(c, nil)
+}
+
+func (h *AdminHandler) ListMediaLibraryRoots(c *gin.Context) {
+	roots, err := h.mediaLibraryService.ListRoots(c.Request.Context())
+	if err != nil {
+		InternalServerError(c, "Failed to fetch media library roots")
+		return
+	}
+	Success(c, roots)
+}
+
+func (h *AdminHandler) CreateMediaLibraryRoot(c *gin.Context) {
+	var req domain.CreateMediaLibraryRootRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, "Invalid media library root")
+		return
+	}
+	root, err := h.mediaLibraryService.CreateRoot(c.Request.Context(), c.GetUint("userID"), &req)
+	if err != nil {
+		handleMediaLibraryError(c, err, "Failed to create media library root")
+		return
+	}
+	Created(c, root)
+}
+
+func (h *AdminHandler) UpdateMediaLibraryRoot(c *gin.Context) {
+	id, ok := parseMediaLibraryID(c, "Invalid media library root ID")
+	if !ok {
+		return
+	}
+	var req domain.UpdateMediaLibraryRootRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, "Invalid media library root")
+		return
+	}
+	root, err := h.mediaLibraryService.UpdateRoot(c.Request.Context(), id, &req)
+	if err != nil {
+		handleMediaLibraryError(c, err, "Failed to update media library root")
+		return
+	}
+	Success(c, root)
+}
+
+func (h *AdminHandler) DeleteMediaLibraryRoot(c *gin.Context) {
+	id, ok := parseMediaLibraryID(c, "Invalid media library root ID")
+	if !ok {
+		return
+	}
+	if err := h.mediaLibraryService.DeleteRoot(c.Request.Context(), id); err != nil {
+		handleMediaLibraryError(c, err, "Failed to delete media library root")
+		return
+	}
+	Success(c, nil)
+}
+
+func (h *AdminHandler) ProbeMediaLibraryRoot(c *gin.Context) {
+	id, ok := parseMediaLibraryID(c, "Invalid media library root ID")
+	if !ok {
+		return
+	}
+	health, err := h.mediaLibraryService.ProbeRoot(c.Request.Context(), id)
+	if err != nil {
+		handleMediaLibraryError(c, err, "Failed to probe media library root")
+		return
+	}
+	Success(c, health)
+}
+
+func (h *AdminHandler) StartMediaLibraryScan(c *gin.Context) {
+	rootID, ok := parseMediaLibraryID(c, "Invalid media library root ID")
+	if !ok {
+		return
+	}
+	job, err := h.mediaLibraryService.StartScan(c.Request.Context(), rootID, c.GetUint("userID"))
+	if err != nil {
+		handleMediaLibraryError(c, err, "Failed to start media library scan")
+		return
+	}
+	Created(c, job)
+}
+
+func (h *AdminHandler) ListMediaLibraryScans(c *gin.Context) {
+	var rootID *uint
+	if value := c.Query("root_id"); value != "" {
+		parsed, err := strconv.ParseUint(value, 10, 32)
+		if err != nil {
+			BadRequest(c, "Invalid media library root ID")
+			return
+		}
+		id := uint(parsed)
+		rootID = &id
+	}
+	page, pageSize := parsePagination(c, 20)
+	jobs, total, err := h.mediaLibraryService.ListScanJobs(c.Request.Context(), rootID, page, pageSize)
+	if err != nil {
+		InternalServerError(c, "Failed to fetch media library scans")
+		return
+	}
+	Success(c, gin.H{"items": jobs, "total": total, "page": page, "size": pageSize})
+}
+
+func (h *AdminHandler) GetMediaLibraryScan(c *gin.Context) {
+	id, ok := parseMediaLibraryID(c, "Invalid media library scan ID")
+	if !ok || id == 0 {
+		if ok {
+			BadRequest(c, "Invalid media library scan ID")
+		}
+		return
+	}
+	job, err := h.mediaLibraryService.GetScanJob(c.Request.Context(), id)
+	if err != nil {
+		handleMediaLibraryError(c, err, "Failed to fetch media library scan")
+		return
+	}
+	Success(c, job)
+}
+
+func (h *AdminHandler) CancelMediaLibraryScan(c *gin.Context) {
+	id, ok := parseMediaLibraryID(c, "Invalid media library scan ID")
+	if !ok || id == 0 {
+		if ok {
+			BadRequest(c, "Invalid media library scan ID")
+		}
+		return
+	}
+	job, err := h.mediaLibraryService.CancelScan(c.Request.Context(), id)
+	if err != nil {
+		handleMediaLibraryError(c, err, "Failed to cancel media library scan")
+		return
+	}
+	Success(c, job)
+}
+
+func parseMediaLibraryID(c *gin.Context, message string) (uint, bool) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		BadRequest(c, message)
+		return 0, false
+	}
+	return uint(id), true
+}
+
+func handleMediaLibraryError(c *gin.Context, err error, fallback string) {
+	switch {
+	case errors.Is(err, repository.ErrMediaRootNotFound), errors.Is(err, repository.ErrMediaScanNotFound):
+		NotFound(c, "Media library resource not found")
+	case errors.Is(err, repository.ErrMediaRootInUse), errors.Is(err, repository.ErrMediaScanInProgress),
+		errors.Is(err, service.ErrMediaRootOverlap), errors.Is(err, service.ErrMediaRootPathLocked):
+		Error(c, http.StatusConflict, err.Error())
+	case errors.Is(err, service.ErrInvalidMediaRoot):
+		BadRequest(c, err.Error())
+	case errors.Is(err, service.ErrLibraryScannerDisabled):
+		Error(c, http.StatusServiceUnavailable, "Media library scanner is disabled")
+	default:
+		InternalServerError(c, fallback)
+	}
 }

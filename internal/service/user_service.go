@@ -41,6 +41,7 @@ type UserService interface {
 	SearchUsers(ctx context.Context, query string, page, pageSize int) ([]*domain.UserResponse, int64, error)
 	CountAll(ctx context.Context) (int64, error)
 	CountAdmins(ctx context.Context) (int64, error)
+	CreateUserByAdmin(ctx context.Context, req *domain.AdminCreateUserRequest) (*domain.UserResponse, error)
 	// TOTP
 	SetupTOTP(ctx context.Context, userID uint) (*domain.TOTPSetupResponse, error)
 	EnableTOTP(ctx context.Context, userID uint, code string) error
@@ -87,6 +88,26 @@ func (s *userService) Register(ctx context.Context, req *domain.RegisterRequest)
 		return nil, err
 	}
 
+	return user.ToResponse(), nil
+}
+
+func (s *userService) CreateUserByAdmin(ctx context.Context, req *domain.AdminCreateUserRequest) (*domain.UserResponse, error) {
+	hashedPassword, err := password.HashPassword(req.Password)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash password: %w", err)
+	}
+	user := &domain.User{
+		Username:   req.Username,
+		Email:      req.Email,
+		Password:   hashedPassword,
+		FullName:   req.FullName,
+		Role:       req.Role,
+		IsActive:   true,
+		IsVerified: true,
+	}
+	if err := s.userRepo.Create(ctx, user); err != nil {
+		return nil, err
+	}
 	return user.ToResponse(), nil
 }
 

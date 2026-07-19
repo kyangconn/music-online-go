@@ -76,13 +76,26 @@ func main() {
 		}
 	}()
 
-	handlers := initDependencies()
-	r, err := router.New(handlers, database.DB)
+	handlers, mediaLibraryService := initDependencies()
+	r, err := router.NewWithConfig(handlers, database.DB, config.AppConfig)
 	if err != nil {
 		pklog.Fatalf("Failed to configure router: %v", err)
 	}
 	configureStaticAssets(r)
+	scannerContext, stopScanner := context.WithCancel(context.Background())
+	if err := mediaLibraryService.Start(scannerContext); err != nil {
+		pklog.Fatalf("Failed to start media library scanner: %v", err)
+	}
 	startServer(r)
+	stopScanner()
+	shutdownContext, cancelShutdown := context.WithTimeout(
+		context.Background(),
+		time.Duration(config.AppConfig.Server.ShutdownTimeout)*time.Second,
+	)
+	defer cancelShutdown()
+	if err := mediaLibraryService.Shutdown(shutdownContext); err != nil {
+		pklog.Errorf("Media library scanner did not stop cleanly: %v", err)
+	}
 }
 
 func parseFlags() {
@@ -103,22 +116,21 @@ func setEnvIfNotEmpty(key, val string) {
 	}
 }
 
-func initDependencies() *router.Handlers {
+func initDependencies() (*router.Handlers, service.MediaLibraryService) {
 	userRepo := repository.NewUserRepository(database.DB)
 	userService := service.NewUserService(userRepo)
 
 	musicRepo := repository.NewMusicRepository(database.DB)
-	musicService := service.NewMusicService(musicRepo)
-
-	musicTagRepo := repository.NewMusicTagRepository(database.DB)
-	musicTagService := service.NewMusicTagService(musicTagRepo)
+	mediaLibraryRepo := repository.NewMediaLibraryRepository(database.DB)
+	mediaLibraryService := service.NewMediaLibraryService(mediaLibraryRepo, musicRepo, config.AppConfig.Library, config.AppConfig.Server)
+	musicService := service.NewMusicServiceWithConfig(musicRepo, mediaLibraryService, config.AppConfig)
 
 	return &router.Handlers{
 		User:     handler.NewUserHandler(userService),
-		Music:    handler.NewMusicHandler(musicService),
-		MusicTag: handler.NewMusicTagHandler(musicTagService),
-		Admin:    handler.NewAdminHandler(userService, musicService, musicTagService),
-	}
+		Music:    handler.NewMusicHandlerWithAccess(musicService, config.AppConfig.Access),
+		MusicTag: handler.NewMusicTagHandler(musicService),
+		Admin:    handler.NewAdminHandlerWithConfig(userService, musicService, mediaLibraryService, config.AppConfig),
+	}, mediaLibraryService
 }
 
 func bootstrapAdmin(ctx context.Context) error {

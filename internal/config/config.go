@@ -6,13 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
+	"net/mail"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
+	"unicode/utf8"
 
+	"github.com/kyangconn/music-online-go/internal/pkg/password"
 	"github.com/spf13/viper"
 )
 
@@ -23,6 +28,9 @@ type Config struct {
 	JWT            JWTConfig
 	Metrics        MetricsConfig
 	AdminBootstrap AdminBootstrapConfig
+	Access         AccessConfig
+	Library        LibraryConfig
+	Integrations   IntegrationsConfig
 	RateLimit      RateLimitConfig
 	Logging        LoggingConfig
 }
@@ -82,6 +90,46 @@ type AdminBootstrapConfig struct {
 	ResetPassword bool
 }
 
+const (
+	LibraryAccessPublic        = "public"
+	LibraryAccessAuthenticated = "authenticated"
+	RegistrationOpen           = "open"
+	RegistrationAdmin          = "admin"
+	DefaultMaxAudioSizeMB      = 200
+	DefaultMaxCoverSizeMB      = 10
+)
+
+type AccessConfig struct {
+	LibraryMode        string
+	RegistrationMode   string
+	MediaURLTTLMinutes int
+}
+
+type LibraryConfig struct {
+	Scanner                    LibraryScannerConfig
+	HealthCheckIntervalSeconds int
+}
+
+type LibraryScannerConfig struct {
+	Enabled             bool
+	MaxFileSizeMB       int
+	MaxTagSizeMB        int
+	MinFileAgeSeconds   int
+	HashRecheckHours    int
+	RetryMaxAttempts    int
+	RetryInitialSeconds int
+	RetryMaxSeconds     int
+}
+
+type IntegrationsConfig struct {
+	MusicBee MusicBeeConfig
+}
+
+type MusicBeeConfig struct {
+	SubmitToken    string
+	SubmitUsername string
+}
+
 type RateLimitConfig struct {
 	Enabled                 bool
 	GlobalRequestsPerSecond float64
@@ -103,68 +151,84 @@ type LoggingConfig struct {
 var AppConfig *Config
 
 func LoadConfig() error {
-	viper.Reset()
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
+	// A private Viper instance prevents tests or future reload attempts from
+	// mutating the process-wide parser while the validated config is in use.
+	v := viper.New()
+	v.SetConfigName("config")
+	v.SetConfigType("yaml")
 
 	// Viper 读取第一个找到的文件，因此按优先级从高到低添加搜索路径。
-	addSearchPaths()
+	addSearchPaths(v)
 
 	// 环境变量覆盖: MO_CONFIG_FILE
 	if envPath := os.Getenv("MO_CONFIG_FILE"); envPath != "" {
-		viper.SetConfigFile(envPath)
+		v.SetConfigFile(envPath)
 	}
 
 	// 设置默认值
-	viper.SetDefault("server.listen_address", "")
-	viper.SetDefault("server.port", "8080")
-	viper.SetDefault("server.mode", "debug")
-	viper.SetDefault("server.read_header_timeout", 10)
-	viper.SetDefault("server.read_timeout", 0)
-	viper.SetDefault("server.write_timeout", 0)
-	viper.SetDefault("server.idle_timeout", 60)
-	viper.SetDefault("server.shutdown_timeout", 15)
-	viper.SetDefault("server.readiness_timeout", 2)
-	viper.SetDefault("server.upload_dir", "uploads")
-	viper.SetDefault("server.log_file", "")
-	viper.SetDefault("server.max_json_body_size_mb", 1)
-	viper.SetDefault("server.max_audio_size_mb", 200)
-	viper.SetDefault("server.max_cover_size_mb", 10)
-	viper.SetDefault("server.allowed_origins", []string{})
-	viper.SetDefault("server.trusted_proxies", []string{})
-	viper.SetDefault("database.type", "sqlite")
-	viper.SetDefault("database.path", "music.db")
-	viper.SetDefault("database.port", "5432")
-	viper.SetDefault("database.sslmode", "prefer")
-	viper.SetDefault("database.log_level", "auto")
-	viper.SetDefault("database.connect_timeout_seconds", 10)
-	viper.SetDefault("database.max_open_connections", 0)
-	viper.SetDefault("database.max_idle_connections", 0)
-	viper.SetDefault("database.connection_max_lifetime_minutes", 60)
-	viper.SetDefault("database.connection_max_idle_time_minutes", 10)
-	viper.SetDefault("jwt.expire_hour", 24)
-	viper.SetDefault("metrics.enabled", false)
-	viper.SetDefault("metrics.token", "")
-	viper.SetDefault("admin.bootstrap.enabled", false)
-	viper.SetDefault("admin.bootstrap.full_name", "Administrator")
-	viper.SetDefault("admin.bootstrap.reset_password", false)
-	viper.SetDefault("rate_limit.enabled", true)
-	viper.SetDefault("rate_limit.global_requests_per_second", 20.0)
-	viper.SetDefault("rate_limit.global_burst", 50)
-	viper.SetDefault("rate_limit.auth_requests_per_second", 1.0)
-	viper.SetDefault("rate_limit.auth_burst", 5)
-	viper.SetDefault("logging.max_size_mb", 50)
-	viper.SetDefault("logging.level", "info")
-	viper.SetDefault("logging.access_log", true)
-	viper.SetDefault("logging.max_backups", 3)
-	viper.SetDefault("logging.max_age_days", 28)
-	viper.SetDefault("logging.compress", true)
-	viper.SetDefault("logging.local_time", true)
+	v.SetDefault("server.listen_address", "")
+	v.SetDefault("server.port", "8080")
+	v.SetDefault("server.mode", "debug")
+	v.SetDefault("server.read_header_timeout", 10)
+	v.SetDefault("server.read_timeout", 0)
+	v.SetDefault("server.write_timeout", 0)
+	v.SetDefault("server.idle_timeout", 60)
+	v.SetDefault("server.shutdown_timeout", 15)
+	v.SetDefault("server.readiness_timeout", 2)
+	v.SetDefault("server.upload_dir", "uploads")
+	v.SetDefault("server.log_file", "")
+	v.SetDefault("server.max_json_body_size_mb", 1)
+	v.SetDefault("server.max_audio_size_mb", DefaultMaxAudioSizeMB)
+	v.SetDefault("server.max_cover_size_mb", DefaultMaxCoverSizeMB)
+	v.SetDefault("server.allowed_origins", []string{})
+	v.SetDefault("server.trusted_proxies", []string{})
+	v.SetDefault("database.type", "sqlite")
+	v.SetDefault("database.path", "music.db")
+	v.SetDefault("database.port", "5432")
+	v.SetDefault("database.sslmode", "prefer")
+	v.SetDefault("database.log_level", "auto")
+	v.SetDefault("database.connect_timeout_seconds", 10)
+	v.SetDefault("database.max_open_connections", 0)
+	v.SetDefault("database.max_idle_connections", 0)
+	v.SetDefault("database.connection_max_lifetime_minutes", 60)
+	v.SetDefault("database.connection_max_idle_time_minutes", 10)
+	v.SetDefault("jwt.expire_hour", 24)
+	v.SetDefault("metrics.enabled", false)
+	v.SetDefault("metrics.token", "")
+	v.SetDefault("admin.bootstrap.enabled", false)
+	v.SetDefault("admin.bootstrap.full_name", "Administrator")
+	v.SetDefault("admin.bootstrap.reset_password", false)
+	v.SetDefault("access.library_mode", LibraryAccessPublic)
+	v.SetDefault("access.registration_mode", RegistrationOpen)
+	v.SetDefault("access.media_url_ttl_minutes", 60)
+	v.SetDefault("library.health_check_interval_seconds", 60)
+	v.SetDefault("library.scanner.enabled", true)
+	v.SetDefault("library.scanner.max_file_size_mb", 2048)
+	v.SetDefault("library.scanner.max_tag_size_mb", 16)
+	v.SetDefault("library.scanner.min_file_age_seconds", 30)
+	v.SetDefault("library.scanner.hash_recheck_hours", 168)
+	v.SetDefault("library.scanner.retry_max_attempts", 5)
+	v.SetDefault("library.scanner.retry_initial_seconds", 30)
+	v.SetDefault("library.scanner.retry_max_seconds", 900)
+	v.SetDefault("integrations.musicbee.submit_token", "")
+	v.SetDefault("integrations.musicbee.submit_username", "")
+	v.SetDefault("rate_limit.enabled", true)
+	v.SetDefault("rate_limit.global_requests_per_second", 20.0)
+	v.SetDefault("rate_limit.global_burst", 50)
+	v.SetDefault("rate_limit.auth_requests_per_second", 1.0)
+	v.SetDefault("rate_limit.auth_burst", 5)
+	v.SetDefault("logging.max_size_mb", 50)
+	v.SetDefault("logging.level", "info")
+	v.SetDefault("logging.access_log", true)
+	v.SetDefault("logging.max_backups", 3)
+	v.SetDefault("logging.max_age_days", 28)
+	v.SetDefault("logging.compress", true)
+	v.SetDefault("logging.local_time", true)
 
-	viper.AutomaticEnv()
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
-	if err := viper.ReadInConfig(); err != nil {
+	if err := v.ReadInConfig(); err != nil {
 		if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); !ok {
 			return fmt.Errorf("read config file: %w", err)
 		}
@@ -172,103 +236,137 @@ func LoadConfig() error {
 
 	logFile := os.Getenv("MO_LOG_FILE")
 	if logFile == "" {
-		logFile = viper.GetString("server.log_file")
+		logFile = v.GetString("server.log_file")
 	}
-	allowedOrigins, err := NormalizeAllowedOrigins(viper.GetStringSlice("server.allowed_origins"))
+	allowedOrigins, err := NormalizeAllowedOrigins(v.GetStringSlice("server.allowed_origins"))
 	if err != nil {
 		return err
 	}
-	trustedProxies, err := NormalizeTrustedProxies(viper.GetStringSlice("server.trusted_proxies"))
+	trustedProxies, err := NormalizeTrustedProxies(v.GetStringSlice("server.trusted_proxies"))
 	if err != nil {
 		return err
 	}
-	databasePassword, err := secretValue("database.password", "DATABASE_PASSWORD")
+	databasePassword, err := secretValueFrom(v, "database.password", "DATABASE_PASSWORD")
 	if err != nil {
 		return err
 	}
-	jwtSecret, err := secretValue("jwt.secret", "JWT_SECRET")
+	jwtSecret, err := secretValueFrom(v, "jwt.secret", "JWT_SECRET")
 	if err != nil {
 		return err
 	}
-	metricsToken, err := secretValue("metrics.token", "METRICS_TOKEN")
+	metricsToken, err := secretValueFrom(v, "metrics.token", "METRICS_TOKEN")
 	if err != nil {
 		return err
 	}
-	bootstrapPassword, err := secretValue("admin.bootstrap.password", "ADMIN_BOOTSTRAP_PASSWORD")
+	bootstrapPassword, err := secretValueFrom(v, "admin.bootstrap.password", "ADMIN_BOOTSTRAP_PASSWORD")
+	if err != nil {
+		return err
+	}
+	musicBeeSubmitToken, err := secretValueFrom(v, "integrations.musicbee.submit_token", "INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN")
 	if err != nil {
 		return err
 	}
 
-	AppConfig = &Config{
-		SourceFile: viper.ConfigFileUsed(),
+	loaded := &Config{
+		SourceFile: v.ConfigFileUsed(),
 		Server: ServerConfig{
-			ListenAddress:     viper.GetString("server.listen_address"),
-			Port:              viper.GetString("server.port"),
-			Mode:              strings.ToLower(strings.TrimSpace(viper.GetString("server.mode"))),
-			ReadHeaderTimeout: viper.GetInt("server.read_header_timeout"),
-			ReadTimeout:       viper.GetInt("server.read_timeout"),
-			WriteTimeout:      viper.GetInt("server.write_timeout"),
-			IdleTimeout:       viper.GetInt("server.idle_timeout"),
-			ShutdownTimeout:   viper.GetInt("server.shutdown_timeout"),
-			ReadinessTimeout:  viper.GetInt("server.readiness_timeout"),
-			UploadDir:         viper.GetString("server.upload_dir"),
+			ListenAddress:     v.GetString("server.listen_address"),
+			Port:              v.GetString("server.port"),
+			Mode:              strings.ToLower(strings.TrimSpace(v.GetString("server.mode"))),
+			ReadHeaderTimeout: v.GetInt("server.read_header_timeout"),
+			ReadTimeout:       v.GetInt("server.read_timeout"),
+			WriteTimeout:      v.GetInt("server.write_timeout"),
+			IdleTimeout:       v.GetInt("server.idle_timeout"),
+			ShutdownTimeout:   v.GetInt("server.shutdown_timeout"),
+			ReadinessTimeout:  v.GetInt("server.readiness_timeout"),
+			UploadDir:         v.GetString("server.upload_dir"),
 			LogFile:           logFile,
-			MaxJSONBodySizeMB: viper.GetInt("server.max_json_body_size_mb"),
-			MaxAudioSizeMB:    viper.GetInt("server.max_audio_size_mb"),
-			MaxCoverSizeMB:    viper.GetInt("server.max_cover_size_mb"),
+			MaxJSONBodySizeMB: v.GetInt("server.max_json_body_size_mb"),
+			MaxAudioSizeMB:    v.GetInt("server.max_audio_size_mb"),
+			MaxCoverSizeMB:    v.GetInt("server.max_cover_size_mb"),
 			AllowedOrigins:    allowedOrigins,
 			TrustedProxies:    trustedProxies,
 		},
 		Database: DatabaseConfig{
-			Type:                         strings.ToLower(strings.TrimSpace(viper.GetString("database.type"))),
-			Host:                         viper.GetString("database.host"),
-			Port:                         strings.TrimSpace(viper.GetString("database.port")),
-			User:                         viper.GetString("database.user"),
+			Type:                         strings.ToLower(strings.TrimSpace(v.GetString("database.type"))),
+			Host:                         v.GetString("database.host"),
+			Port:                         strings.TrimSpace(v.GetString("database.port")),
+			User:                         v.GetString("database.user"),
 			Password:                     databasePassword,
-			Name:                         viper.GetString("database.name"),
-			SSLMode:                      strings.ToLower(strings.TrimSpace(viper.GetString("database.sslmode"))),
-			LogLevel:                     strings.ToLower(strings.TrimSpace(viper.GetString("database.log_level"))),
-			Path:                         viper.GetString("database.path"),
-			ConnectTimeoutSeconds:        viper.GetInt("database.connect_timeout_seconds"),
-			MaxOpenConnections:           viper.GetInt("database.max_open_connections"),
-			MaxIdleConnections:           viper.GetInt("database.max_idle_connections"),
-			ConnectionMaxLifetimeMinutes: viper.GetInt("database.connection_max_lifetime_minutes"),
-			ConnectionMaxIdleTimeMinutes: viper.GetInt("database.connection_max_idle_time_minutes"),
+			Name:                         v.GetString("database.name"),
+			SSLMode:                      strings.ToLower(strings.TrimSpace(v.GetString("database.sslmode"))),
+			LogLevel:                     strings.ToLower(strings.TrimSpace(v.GetString("database.log_level"))),
+			Path:                         v.GetString("database.path"),
+			ConnectTimeoutSeconds:        v.GetInt("database.connect_timeout_seconds"),
+			MaxOpenConnections:           v.GetInt("database.max_open_connections"),
+			MaxIdleConnections:           v.GetInt("database.max_idle_connections"),
+			ConnectionMaxLifetimeMinutes: v.GetInt("database.connection_max_lifetime_minutes"),
+			ConnectionMaxIdleTimeMinutes: v.GetInt("database.connection_max_idle_time_minutes"),
 		},
 		JWT: JWTConfig{
 			Secret:     jwtSecret,
-			ExpireHour: viper.GetInt("jwt.expire_hour"),
+			ExpireHour: v.GetInt("jwt.expire_hour"),
 		},
 		Metrics: MetricsConfig{
-			Enabled: viper.GetBool("metrics.enabled"),
+			Enabled: v.GetBool("metrics.enabled"),
 			Token:   metricsToken,
 		},
 		AdminBootstrap: AdminBootstrapConfig{
-			Enabled:       viper.GetBool("admin.bootstrap.enabled"),
-			Username:      viper.GetString("admin.bootstrap.username"),
-			Email:         viper.GetString("admin.bootstrap.email"),
+			Enabled:       v.GetBool("admin.bootstrap.enabled"),
+			Username:      strings.TrimSpace(v.GetString("admin.bootstrap.username")),
+			Email:         strings.TrimSpace(v.GetString("admin.bootstrap.email")),
 			Password:      bootstrapPassword,
-			FullName:      viper.GetString("admin.bootstrap.full_name"),
-			ResetPassword: viper.GetBool("admin.bootstrap.reset_password"),
+			FullName:      strings.TrimSpace(v.GetString("admin.bootstrap.full_name")),
+			ResetPassword: v.GetBool("admin.bootstrap.reset_password"),
+		},
+		Access: AccessConfig{
+			LibraryMode:        strings.ToLower(strings.TrimSpace(v.GetString("access.library_mode"))),
+			RegistrationMode:   strings.ToLower(strings.TrimSpace(v.GetString("access.registration_mode"))),
+			MediaURLTTLMinutes: v.GetInt("access.media_url_ttl_minutes"),
+		},
+		Library: LibraryConfig{
+			HealthCheckIntervalSeconds: v.GetInt("library.health_check_interval_seconds"),
+			Scanner: LibraryScannerConfig{
+				Enabled:             v.GetBool("library.scanner.enabled"),
+				MaxFileSizeMB:       v.GetInt("library.scanner.max_file_size_mb"),
+				MaxTagSizeMB:        v.GetInt("library.scanner.max_tag_size_mb"),
+				MinFileAgeSeconds:   v.GetInt("library.scanner.min_file_age_seconds"),
+				HashRecheckHours:    v.GetInt("library.scanner.hash_recheck_hours"),
+				RetryMaxAttempts:    v.GetInt("library.scanner.retry_max_attempts"),
+				RetryInitialSeconds: v.GetInt("library.scanner.retry_initial_seconds"),
+				RetryMaxSeconds:     v.GetInt("library.scanner.retry_max_seconds"),
+			},
+		},
+		Integrations: IntegrationsConfig{
+			MusicBee: MusicBeeConfig{
+				SubmitToken:    musicBeeSubmitToken,
+				SubmitUsername: strings.TrimSpace(v.GetString("integrations.musicbee.submit_username")),
+			},
 		},
 		RateLimit: RateLimitConfig{
-			Enabled:                 viper.GetBool("rate_limit.enabled"),
-			GlobalRequestsPerSecond: viper.GetFloat64("rate_limit.global_requests_per_second"),
-			GlobalBurst:             viper.GetInt("rate_limit.global_burst"),
-			AuthRequestsPerSecond:   viper.GetFloat64("rate_limit.auth_requests_per_second"),
-			AuthBurst:               viper.GetInt("rate_limit.auth_burst"),
+			Enabled:                 v.GetBool("rate_limit.enabled"),
+			GlobalRequestsPerSecond: v.GetFloat64("rate_limit.global_requests_per_second"),
+			GlobalBurst:             v.GetInt("rate_limit.global_burst"),
+			AuthRequestsPerSecond:   v.GetFloat64("rate_limit.auth_requests_per_second"),
+			AuthBurst:               v.GetInt("rate_limit.auth_burst"),
 		},
 		Logging: LoggingConfig{
-			Level:      strings.ToLower(strings.TrimSpace(viper.GetString("logging.level"))),
-			AccessLog:  viper.GetBool("logging.access_log"),
-			MaxSizeMB:  viper.GetInt("logging.max_size_mb"),
-			MaxBackups: viper.GetInt("logging.max_backups"),
-			MaxAgeDays: viper.GetInt("logging.max_age_days"),
-			Compress:   viper.GetBool("logging.compress"),
-			LocalTime:  viper.GetBool("logging.local_time"),
+			Level:      strings.ToLower(strings.TrimSpace(v.GetString("logging.level"))),
+			AccessLog:  v.GetBool("logging.access_log"),
+			MaxSizeMB:  v.GetInt("logging.max_size_mb"),
+			MaxBackups: v.GetInt("logging.max_backups"),
+			MaxAgeDays: v.GetInt("logging.max_age_days"),
+			Compress:   v.GetBool("logging.compress"),
+			LocalTime:  v.GetBool("logging.local_time"),
 		},
 	}
-	return Validate(AppConfig)
+	// Publish only a fully validated snapshot. Callers can never observe a
+	// half-populated or invalid AppConfig after a failed reload.
+	if err := Validate(loaded); err != nil {
+		return err
+	}
+	AppConfig = loaded
+	return nil
 }
 
 const maxSecretFileBytes = 64 << 10
@@ -277,13 +375,17 @@ const maxSecretFileBytes = 64 << 10
 // has environment-level priority over YAML but cannot be combined with a
 // directly supplied environment value, which keeps secret provenance explicit.
 func secretValue(configKey, envName string) (string, error) {
+	return secretValueFrom(viper.GetViper(), configKey, envName)
+}
+
+func secretValueFrom(v *viper.Viper, configKey, envName string) (string, error) {
 	directValue := os.Getenv(envName)
 	filePath := strings.TrimSpace(os.Getenv(envName + "_FILE"))
 	if directValue != "" && filePath != "" {
 		return "", fmt.Errorf("%s and %s_FILE cannot both be set", envName, envName)
 	}
 	if filePath == "" {
-		return viper.GetString(configKey), nil
+		return v.GetString(configKey), nil
 	}
 
 	// #nosec G304,G703 -- this path is an explicit administrator-controlled *_FILE setting.
@@ -338,6 +440,30 @@ func ValidateMetricsConfig(cfg MetricsConfig) error {
 	return nil
 }
 
+func ValidateAdminBootstrapConfig(cfg AdminBootstrapConfig) error {
+	if !cfg.Enabled {
+		return nil
+	}
+	usernameLength := utf8.RuneCountInString(cfg.Username)
+	if usernameLength < 3 || usernameLength > 50 {
+		return errors.New("enabled admin.bootstrap requires a username between 3 and 50 characters")
+	}
+	if len(cfg.Email) > 255 {
+		return errors.New("admin.bootstrap.email exceeds 255 bytes")
+	}
+	address, err := mail.ParseAddress(cfg.Email)
+	if err != nil || address.Address != cfg.Email {
+		return errors.New("enabled admin.bootstrap requires a valid email address")
+	}
+	if utf8.RuneCountInString(cfg.FullName) > 255 {
+		return errors.New("admin.bootstrap.full_name exceeds 255 characters")
+	}
+	if err := password.ValidateNewPassword(cfg.Password); err != nil {
+		return fmt.Errorf("admin.bootstrap.password: %w", err)
+	}
+	return nil
+}
+
 func NormalizeTrustedProxies(values []string) ([]string, error) {
 	seen := make(map[string]struct{})
 	proxies := make([]string, 0, len(values))
@@ -382,13 +508,106 @@ func Validate(cfg *Config) error {
 	if cfg.JWT.ExpireHour <= 0 {
 		return errors.New("jwt.expire_hour must be greater than zero")
 	}
+	if err := validateDurationFits("jwt.expire_hour", cfg.JWT.ExpireHour, time.Hour); err != nil {
+		return err
+	}
 	if err := ValidateMetricsConfig(cfg.Metrics); err != nil {
+		return err
+	}
+	if err := ValidateAdminBootstrapConfig(cfg.AdminBootstrap); err != nil {
+		return err
+	}
+	if err := ValidateAccessConfig(cfg.Access); err != nil {
+		return err
+	}
+	if err := ValidateLibraryConfig(cfg.Library); err != nil {
+		return err
+	}
+	if err := ValidateMusicBeeConfig(cfg.Integrations.MusicBee); err != nil {
 		return err
 	}
 	if err := ValidateRateLimitConfig(cfg.RateLimit); err != nil {
 		return err
 	}
 	return ValidateLoggingConfig(cfg.Logging)
+}
+
+func ValidateLibraryConfig(cfg LibraryConfig) error {
+	if cfg.HealthCheckIntervalSeconds < 0 {
+		return errors.New("library.health_check_interval_seconds cannot be negative")
+	}
+	if err := validateDurationFits("library.health_check_interval_seconds", cfg.HealthCheckIntervalSeconds, time.Second); err != nil {
+		return err
+	}
+	if cfg.Scanner.MaxFileSizeMB <= 0 {
+		return errors.New("library.scanner.max_file_size_mb must be greater than zero")
+	}
+	if err := validateMegabytesFits("library.scanner.max_file_size_mb", cfg.Scanner.MaxFileSizeMB); err != nil {
+		return err
+	}
+	if cfg.Scanner.MaxTagSizeMB <= 0 || cfg.Scanner.MaxTagSizeMB > 64 {
+		return errors.New("library.scanner.max_tag_size_mb must be between 1 and 64")
+	}
+	if cfg.Scanner.MinFileAgeSeconds < 0 {
+		return errors.New("library.scanner.min_file_age_seconds cannot be negative")
+	}
+	if err := validateDurationFits("library.scanner.min_file_age_seconds", cfg.Scanner.MinFileAgeSeconds, time.Second); err != nil {
+		return err
+	}
+	if cfg.Scanner.HashRecheckHours < 0 {
+		return errors.New("library.scanner.hash_recheck_hours cannot be negative")
+	}
+	if err := validateDurationFits("library.scanner.hash_recheck_hours", cfg.Scanner.HashRecheckHours, time.Hour); err != nil {
+		return err
+	}
+	if cfg.Scanner.RetryMaxAttempts <= 0 {
+		return errors.New("library.scanner.retry_max_attempts must be greater than zero")
+	}
+	if cfg.Scanner.RetryInitialSeconds <= 0 {
+		return errors.New("library.scanner.retry_initial_seconds must be greater than zero")
+	}
+	if err := validateDurationFits("library.scanner.retry_initial_seconds", cfg.Scanner.RetryInitialSeconds, time.Second); err != nil {
+		return err
+	}
+	if cfg.Scanner.RetryMaxSeconds < cfg.Scanner.RetryInitialSeconds {
+		return errors.New("library.scanner.retry_max_seconds must be greater than or equal to retry_initial_seconds")
+	}
+	if err := validateDurationFits("library.scanner.retry_max_seconds", cfg.Scanner.RetryMaxSeconds, time.Second); err != nil {
+		return err
+	}
+	return nil
+}
+
+func ValidateAccessConfig(cfg AccessConfig) error {
+	switch cfg.LibraryMode {
+	case LibraryAccessPublic, LibraryAccessAuthenticated:
+	default:
+		return fmt.Errorf("access.library_mode must be public or authenticated, got %q", cfg.LibraryMode)
+	}
+	switch cfg.RegistrationMode {
+	case RegistrationOpen, RegistrationAdmin:
+	default:
+		return fmt.Errorf("access.registration_mode must be open or admin, got %q", cfg.RegistrationMode)
+	}
+	if cfg.MediaURLTTLMinutes <= 0 {
+		return errors.New("access.media_url_ttl_minutes must be greater than zero")
+	}
+	if err := validateDurationFits("access.media_url_ttl_minutes", cfg.MediaURLTTLMinutes, time.Minute); err != nil {
+		return err
+	}
+	return nil
+}
+
+func ValidateMusicBeeConfig(cfg MusicBeeConfig) error {
+	hasToken := strings.TrimSpace(cfg.SubmitToken) != ""
+	hasUsername := strings.TrimSpace(cfg.SubmitUsername) != ""
+	if hasToken != hasUsername {
+		return errors.New("integrations.musicbee.submit_token and submit_username must be configured together")
+	}
+	if hasToken && len([]byte(cfg.SubmitToken)) < 32 {
+		return errors.New("integrations.musicbee.submit_token must contain at least 32 bytes")
+	}
+	return nil
 }
 
 func ValidateServerConfig(cfg ServerConfig) error {
@@ -410,12 +629,21 @@ func ValidateServerConfig(cfg ServerConfig) error {
 		if value < 0 {
 			return fmt.Errorf("%s cannot be negative", name)
 		}
+		if err := validateDurationFits(name, value, time.Second); err != nil {
+			return err
+		}
 	}
 	if cfg.ShutdownTimeout <= 0 {
 		return errors.New("server.shutdown_timeout must be greater than zero")
 	}
+	if err := validateDurationFits("server.shutdown_timeout", cfg.ShutdownTimeout, time.Second); err != nil {
+		return err
+	}
 	if cfg.ReadinessTimeout <= 0 {
 		return errors.New("server.readiness_timeout must be greater than zero")
+	}
+	if err := validateDurationFits("server.readiness_timeout", cfg.ReadinessTimeout, time.Second); err != nil {
+		return err
 	}
 	if strings.TrimSpace(cfg.UploadDir) == "" {
 		return errors.New("server.upload_dir cannot be empty")
@@ -423,11 +651,25 @@ func ValidateServerConfig(cfg ServerConfig) error {
 	if cfg.MaxJSONBodySizeMB <= 0 {
 		return errors.New("server.max_json_body_size_mb must be greater than zero")
 	}
+	if err := validateMegabytesFits("server.max_json_body_size_mb", cfg.MaxJSONBodySizeMB); err != nil {
+		return err
+	}
 	if cfg.MaxAudioSizeMB <= 0 {
 		return errors.New("server.max_audio_size_mb must be greater than zero")
 	}
+	if err := validateMegabytesFits("server.max_audio_size_mb", cfg.MaxAudioSizeMB); err != nil {
+		return err
+	}
 	if cfg.MaxCoverSizeMB <= 0 {
 		return errors.New("server.max_cover_size_mb must be greater than zero")
+	}
+	if err := validateMegabytesFits("server.max_cover_size_mb", cfg.MaxCoverSizeMB); err != nil {
+		return err
+	}
+	audioBytes := int64(cfg.MaxAudioSizeMB) * (1 << 20)
+	coverBytes := int64(cfg.MaxCoverSizeMB) * (1 << 20)
+	if audioBytes > maxSignedInt64-coverBytes-(1<<20) {
+		return errors.New("server audio and cover limits are too large to form a safe multipart request limit")
 	}
 	return nil
 }
@@ -482,6 +724,11 @@ func ValidateDatabaseConfig(cfg DatabaseConfig) error {
 		if value < 0 {
 			return fmt.Errorf("%s cannot be negative", name)
 		}
+		if strings.Contains(name, "_minutes") {
+			if err := validateDurationFits(name, value, time.Minute); err != nil {
+				return err
+			}
+		}
 	}
 	if cfg.MaxOpenConnections > 0 && cfg.MaxIdleConnections > cfg.MaxOpenConnections {
 		return errors.New("database.max_idle_connections cannot exceed database.max_open_connections")
@@ -493,13 +740,17 @@ func ValidateRateLimitConfig(cfg RateLimitConfig) error {
 	if !cfg.Enabled {
 		return nil
 	}
-	if cfg.GlobalRequestsPerSecond <= 0 || cfg.GlobalBurst <= 0 {
+	if !finitePositive(cfg.GlobalRequestsPerSecond) || cfg.GlobalBurst <= 0 {
 		return errors.New("enabled rate_limit requires positive global_requests_per_second and global_burst")
 	}
-	if cfg.AuthRequestsPerSecond <= 0 || cfg.AuthBurst <= 0 {
+	if !finitePositive(cfg.AuthRequestsPerSecond) || cfg.AuthBurst <= 0 {
 		return errors.New("enabled rate_limit requires positive auth_requests_per_second and auth_burst")
 	}
 	return nil
+}
+
+func finitePositive(value float64) bool {
+	return value > 0 && !math.IsInf(value, 0) && !math.IsNaN(value)
 }
 
 func ValidateLoggingConfig(cfg LoggingConfig) error {
@@ -511,11 +762,30 @@ func ValidateLoggingConfig(cfg LoggingConfig) error {
 	if cfg.MaxSizeMB <= 0 {
 		return errors.New("logging.max_size_mb must be greater than zero")
 	}
+	if err := validateMegabytesFits("logging.max_size_mb", cfg.MaxSizeMB); err != nil {
+		return err
+	}
 	if cfg.MaxBackups < 0 {
 		return errors.New("logging.max_backups cannot be negative")
 	}
 	if cfg.MaxAgeDays < 0 {
 		return errors.New("logging.max_age_days cannot be negative")
+	}
+	return nil
+}
+
+var maxSignedInt64 = int64(^uint64(0) >> 1)
+
+func validateDurationFits(name string, value int, unit time.Duration) error {
+	if value > 0 && int64(value) > maxSignedInt64/int64(unit) {
+		return fmt.Errorf("%s is too large", name)
+	}
+	return nil
+}
+
+func validateMegabytesFits(name string, value int) error {
+	if value > 0 && int64(value) > maxSignedInt64/(1<<20) {
+		return fmt.Errorf("%s is too large", name)
 	}
 	return nil
 }
@@ -538,30 +808,30 @@ func ValidateJWTSecret(secret, mode string) error {
 
 // addSearchPaths 按优先级从高到低添加配置文件搜索路径。
 // Viper 只读取第一个找到的配置文件，不会合并后续路径。
-func addSearchPaths() {
+func addSearchPaths(v *viper.Viper) {
 	// 1. 最高优先级：二进制所在目录
 	if exe, err := os.Executable(); err == nil {
-		viper.AddConfigPath(filepath.Dir(exe))
+		v.AddConfigPath(filepath.Dir(exe))
 	}
 
 	// 2. Docker volume 挂载常用路径
-	viper.AddConfigPath("/data")
+	v.AddConfigPath("/data")
 
 	// 3. 系统级配置
-	viper.AddConfigPath("/etc/music-online")
+	v.AddConfigPath("/etc/music-online")
 
 	// 4. XDG 配置目录
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		viper.AddConfigPath(filepath.Join(xdg, "music-online"))
+		v.AddConfigPath(filepath.Join(xdg, "music-online"))
 	} else if home := os.Getenv("HOME"); home != "" {
-		viper.AddConfigPath(filepath.Join(home, ".config", "music-online"))
+		v.AddConfigPath(filepath.Join(home, ".config", "music-online"))
 	}
 
 	// 5. 开发：从 cmd/server 运行时往回找
-	viper.AddConfigPath("..")
-	viper.AddConfigPath("../..")
+	v.AddConfigPath("..")
+	v.AddConfigPath("../..")
 
 	// 6. 最低优先级：当前目录和子目录 config/
-	viper.AddConfigPath(".")
-	viper.AddConfigPath("./config")
+	v.AddConfigPath(".")
+	v.AddConfigPath("./config")
 }
