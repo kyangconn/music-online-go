@@ -203,13 +203,18 @@ type MusicResponse struct {
 	Duration    int        `json:"duration"`
 	Intro       string     `json:"intro"`
 
-	MusicBrainzRecordingID    string     `json:"musicbrainz_recording_id"`
-	MusicBrainzTrackID        string     `json:"musicbrainz_track_id"`
-	MusicBrainzReleaseID      string     `json:"musicbrainz_release_id"`
-	MusicBrainzReleaseGroupID string     `json:"musicbrainz_release_group_id"`
-	MusicBrainzArtistIDs      StringList `json:"musicbrainz_artist_ids"`
-	MusicBrainzAlbumArtistIDs StringList `json:"musicbrainz_album_artist_ids"`
-	MetadataRevision          uint64     `json:"metadata_revision"`
+	MusicBrainzRecordingID    string                        `json:"musicbrainz_recording_id"`
+	MusicBrainzTrackID        string                        `json:"musicbrainz_track_id"`
+	MusicBrainzReleaseID      string                        `json:"musicbrainz_release_id"`
+	MusicBrainzReleaseGroupID string                        `json:"musicbrainz_release_group_id"`
+	MusicBrainzArtistIDs      StringList                    `json:"musicbrainz_artist_ids"`
+	MusicBrainzAlbumArtistIDs StringList                    `json:"musicbrainz_album_artist_ids"`
+	MetadataRevision          uint64                        `json:"metadata_revision"`
+	ArtistKeys                StringList                    `json:"artist_keys"`
+	AlbumKey                  string                        `json:"album_key,omitempty"`
+	AlbumArtistKey            string                        `json:"album_artist_key,omitempty"`
+	PresetClassification      *PresetClassificationResponse `json:"preset_classification,omitempty"`
+	AudioAnalysis             *MusicAnalysisSummary         `json:"audio_analysis,omitempty"`
 
 	Img               string     `json:"img"`
 	Path              string     `json:"path"`
@@ -258,6 +263,7 @@ func (m *Music) ToResponse() *MusicResponse {
 		MusicBrainzArtistIDs:      m.MusicBrainzArtistIDs,
 		MusicBrainzAlbumArtistIDs: m.MusicBrainzAlbumArtistIDs,
 		MetadataRevision:          m.MetadataRevision,
+		ArtistKeys:                StringList{},
 		Img:                       m.Img,
 		Path:                      m.Path,
 		Type:                      m.Type,
@@ -275,6 +281,16 @@ func (m *Music) ToResponse() *MusicResponse {
 	if resp.Img != "" {
 		resp.Img = fmt.Sprintf("/api/v1/musics/%d/cover", m.ID)
 	}
+	projection := BuildMusicBrowseProjection(m)
+	for _, credit := range projection.ArtistCredits {
+		if credit.TrackCredit {
+			resp.ArtistKeys = append(resp.ArtistKeys, credit.GroupKey)
+		}
+	}
+	if projection.AlbumMembership != nil {
+		resp.AlbumKey = projection.AlbumMembership.GroupKey
+		resp.AlbumArtistKey = projection.AlbumMembership.AlbumArtistKey
+	}
 
 	return resp
 }
@@ -283,9 +299,13 @@ type MusicSearchParams struct {
 	Query          string
 	Title          string
 	Artist         string
+	ArtistKey      string
 	Album          string
+	AlbumKey       string
 	AlbumArtist    string
 	Genre          string
+	Preset         string
+	PresetStatus   string
 	Year           *int
 	MinYear        *int
 	MaxYear        *int
@@ -305,9 +325,12 @@ type MusicSearchParams struct {
 }
 
 type MusicFilterOptions struct {
-	Artists []string    `json:"artists"`
-	Years   []int       `json:"years"`
-	Types   []MusicType `json:"types"`
+	Artists      []string    `json:"artists"`
+	Albums       []string    `json:"albums"`
+	AlbumArtists []string    `json:"album_artists"`
+	Genres       []string    `json:"genres"`
+	Years        []int       `json:"years"`
+	Types        []MusicType `json:"types"`
 }
 
 type MusicMetadata struct {

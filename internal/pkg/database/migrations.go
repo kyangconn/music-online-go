@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -173,6 +174,108 @@ var migrations = []migration{
 		name:    "stabilize_media_storage",
 		up:      stabilizeMediaStorage,
 	},
+	{
+		version: 6,
+		name:    "add_library_browse_and_playlists",
+		up:      addLibraryBrowseAndPlaylists,
+	},
+	{
+		version: 7,
+		name:    "add_music_preset_classification",
+		up: func(db *gorm.DB) error {
+			if err := db.AutoMigrate(
+				&domain.MusicPresetClassification{},
+				&domain.MusicPresetScore{},
+			); err != nil {
+				return fmt.Errorf("add preset classification schema: %w", err)
+			}
+			return nil
+		},
+	},
+	{
+		version: 8,
+		name:    "add_music_analysis_jobs",
+		up: func(db *gorm.DB) error {
+			if err := db.AutoMigrate(
+				&domain.MusicAudioAnalysis{},
+				&domain.MusicAnalysisJob{},
+			); err != nil {
+				return fmt.Errorf("add music analysis schema: %w", err)
+			}
+			return nil
+		},
+	},
+	{
+		version: 9,
+		name:    "index_music_analysis_queue",
+		up: func(db *gorm.DB) error {
+			for _, name := range []string{"idx_analysis_claim", "idx_analysis_music_kind_id"} {
+				if db.Migrator().HasIndex(&domain.MusicAnalysisJob{}, name) {
+					continue
+				}
+				if err := db.Migrator().CreateIndex(&domain.MusicAnalysisJob{}, name); err != nil {
+					return fmt.Errorf("create music analysis index %s: %w", name, err)
+				}
+			}
+			return nil
+		},
+	},
+}
+
+func addLibraryBrowseAndPlaylists(db *gorm.DB) error {
+	if err := db.AutoMigrate(
+		&domain.MusicArtistCredit{},
+		&domain.MusicAlbumMembership{},
+		&domain.MusicGenreFacet{},
+		&domain.Playlist{},
+		&domain.PlaylistItem{},
+	); err != nil {
+		return fmt.Errorf("add library browse and playlist schema: %w", err)
+	}
+
+	const batchSize = 200
+	var lastID uint
+	for {
+		var musics []*domain.Music
+		if err := db.Where("id > ?", lastID).Order("id ASC").Limit(batchSize).Find(&musics).Error; err != nil {
+			return fmt.Errorf("load music for browse projection backfill: %w", err)
+		}
+		for _, music := range musics {
+			genreValues := music.Genres
+			if len(genreValues) == 0 && strings.TrimSpace(music.Genre) != "" {
+				genreValues = domain.StringList{music.Genre}
+			}
+			normalizedGenreTokens := domain.NormalizeGenreTokens(genreValues)
+			if !slices.Equal(music.GenreTokens, normalizedGenreTokens) {
+				if err := db.Model(&domain.Music{}).Where("id = ?", music.ID).
+					Update("genre_tokens", normalizedGenreTokens).Error; err != nil {
+					return fmt.Errorf("normalize genre tokens for music %d: %w", music.ID, err)
+				}
+				music.GenreTokens = normalizedGenreTokens
+			}
+			projection := domain.BuildMusicBrowseProjection(music)
+			if len(projection.ArtistCredits) > 0 {
+				if err := db.Create(&projection.ArtistCredits).Error; err != nil {
+					return fmt.Errorf("backfill artist browse credits for music %d: %w", music.ID, err)
+				}
+			}
+			if projection.AlbumMembership != nil {
+				if err := db.Create(projection.AlbumMembership).Error; err != nil {
+					return fmt.Errorf("backfill album browse membership for music %d: %w", music.ID, err)
+				}
+			}
+			if len(projection.GenreFacets) > 0 {
+				if err := db.Create(&projection.GenreFacets).Error; err != nil {
+					return fmt.Errorf("backfill genre browse facets for music %d: %w", music.ID, err)
+				}
+			}
+			lastID = music.ID
+		}
+		if len(musics) < batchSize {
+			break
+		}
+	}
+	return nil
 }
 
 func stabilizeMediaStorage(db *gorm.DB) error {

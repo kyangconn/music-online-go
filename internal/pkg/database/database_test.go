@@ -130,7 +130,8 @@ func TestMigrateFreshDatabaseAndRemainIdempotent(t *testing.T) {
 		t.Fatalf("migrate fresh database: %v", err)
 	}
 	for _, table := range []string{
-		"users", "vinyl", "user_music_likes", "media_library_roots", "media_library_root_states", "media_files", "media_scan_jobs", "media_scan_issues", "schema_migrations",
+		"users", "vinyl", "user_music_likes", "media_library_roots", "media_library_root_states", "media_files", "media_scan_jobs", "media_scan_issues",
+		"music_artist_credits", "music_album_memberships", "music_genre_facets", "playlists", "playlist_items", "schema_migrations",
 	} {
 		if !db.Migrator().HasTable(table) {
 			t.Fatalf("expected table %q to exist", table)
@@ -225,6 +226,22 @@ func TestUnifyMusicMetadataMergesOnlyUnambiguousLegacyTagsAndArchivesSource(t *t
 	}
 	if len(migrated.Genres) != 2 || migrated.Genres[0] != "Ambient" || migrated.Genres[1] != "Chillout" {
 		t.Fatalf("genres = %#v", migrated.Genres)
+	}
+	if len(migrated.GenreTokens) != 2 || migrated.GenreTokens[0] != "ambient" || migrated.GenreTokens[1] != "chillout" {
+		t.Fatalf("genre tokens = %#v", migrated.GenreTokens)
+	}
+	var artistCredits []domain.MusicArtistCredit
+	if err := db.Where("music_id = ?", migrated.ID).Find(&artistCredits).Error; err != nil || len(artistCredits) == 0 {
+		t.Fatalf("browse artist projection was not backfilled: credits=%+v err=%v", artistCredits, err)
+	}
+	var albumMembership domain.MusicAlbumMembership
+	if err := db.First(&albumMembership, "music_id = ?", migrated.ID).Error; err != nil ||
+		albumMembership.Title != "Release" || albumMembership.NormalizedTitle != "release" {
+		t.Fatalf("browse album projection was not backfilled: membership=%+v err=%v", albumMembership, err)
+	}
+	var genreFacets []domain.MusicGenreFacet
+	if err := db.Where("music_id = ?", migrated.ID).Order("position ASC").Find(&genreFacets).Error; err != nil || len(genreFacets) != 2 {
+		t.Fatalf("browse genre projection was not backfilled: facets=%+v err=%v", genreFacets, err)
 	}
 
 	var archivedCount int64
@@ -339,5 +356,10 @@ func TestMigrateBackfillsExistingMusicFileHashes(t *testing.T) {
 	}
 	if len(history) != len(migrations) {
 		t.Fatalf("expected %d applied migrations, got %d", len(migrations), len(history))
+	}
+	for _, index := range []string{"idx_analysis_claim", "idx_analysis_music_kind_id"} {
+		if !DB.Migrator().HasIndex(&domain.MusicAnalysisJob{}, index) {
+			t.Fatalf("music analysis index %q was not created", index)
+		}
 	}
 }
