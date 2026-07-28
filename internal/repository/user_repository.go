@@ -126,8 +126,35 @@ func (r *userRepository) Delete(ctx context.Context, id uint) error {
 		if err := tx.Where("user_id = ?", id).Delete(&domain.UserMusicLike{}).Error; err != nil {
 			return err
 		}
+		var playlistIDs []uint
+		if err := tx.Model(&domain.Playlist{}).Where("user_id = ?", id).Pluck("id", &playlistIDs).Error; err != nil {
+			return err
+		}
+		if len(playlistIDs) > 0 {
+			if err := tx.Where("playlist_id IN ?", playlistIDs).Delete(&domain.PlaylistItem{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("id IN ?", playlistIDs).Delete(&domain.Playlist{}).Error; err != nil {
+				return err
+			}
+		}
 		if len(musicIDs) > 0 {
+			if err := deleteMusicAnalysisState(tx, musicIDs); err != nil {
+				return err
+			}
 			if err := tx.Where("music_id IN ?", musicIDs).Delete(&domain.UserMusicLike{}).Error; err != nil {
+				return err
+			}
+			if err := removeMusicFromPlaylists(tx, musicIDs); err != nil {
+				return err
+			}
+			if err := tx.Unscoped().Where("music_id IN ?", musicIDs).Delete(&domain.MediaFile{}).Error; err != nil {
+				return err
+			}
+			if err := deleteMusicBrowseProjection(tx, musicIDs); err != nil {
+				return err
+			}
+			if err := deleteMusicPresetProjection(tx, musicIDs); err != nil {
 				return err
 			}
 			if err := tx.Model(&domain.Music{}).Where("album_id IN ?", musicIDs).Update("album_id", nil).Error; err != nil {

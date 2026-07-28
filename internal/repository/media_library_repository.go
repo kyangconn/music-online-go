@@ -58,11 +58,16 @@ type MediaLibraryRepository interface {
 }
 
 type mediaLibraryRepository struct {
-	db *gorm.DB
+	db           *gorm.DB
+	presetPolicy domain.PresetRulePolicy
 }
 
-func NewMediaLibraryRepository(db *gorm.DB) MediaLibraryRepository {
-	return &mediaLibraryRepository{db: db}
+func NewMediaLibraryRepository(db *gorm.DB, presetPolicies ...domain.PresetRulePolicy) MediaLibraryRepository {
+	var presetPolicy domain.PresetRulePolicy
+	if len(presetPolicies) > 0 {
+		presetPolicy = presetPolicies[0]
+	}
+	return &mediaLibraryRepository{db: db, presetPolicy: presetPolicy}
 }
 
 func (r *mediaLibraryRepository) ListRoots(ctx context.Context) ([]*domain.MediaLibraryRoot, error) {
@@ -169,6 +174,12 @@ func (r *mediaLibraryRepository) CreateMusicWithMediaFile(ctx context.Context, m
 		if err := tx.Create(music).Error; err != nil {
 			return err
 		}
+		if err := replaceMusicBrowseProjection(tx, music); err != nil {
+			return err
+		}
+		if err := replaceMusicPresetProjection(tx, music, r.presetPolicy); err != nil {
+			return err
+		}
 		mediaFile.MusicID = music.ID
 		return tx.Create(mediaFile).Error
 	})
@@ -184,6 +195,12 @@ func (r *mediaLibraryRepository) ReplaceManagedMediaFile(ctx context.Context, mu
 		}
 		music.SourceReadOnly = mediaFile.ReadOnly || readOnlySourceCount > 0
 		if err := tx.Save(music).Error; err != nil {
+			return err
+		}
+		if err := replaceMusicBrowseProjection(tx, music); err != nil {
+			return err
+		}
+		if err := replaceMusicPresetProjection(tx, music, r.presetPolicy); err != nil {
 			return err
 		}
 		if err := tx.Unscoped().Where("music_id = ? AND root_id = ? AND source_key <> ?", music.ID, domain.ManagedMediaRootID, mediaFile.SourceKey).
