@@ -213,6 +213,11 @@ func openMediaLibraryTestDB(t *testing.T, filename string, models ...any) *gorm.
 			t.Errorf("close database: %v", err)
 		}
 	})
+	models = append(models,
+		&domain.MusicArtistCredit{},
+		&domain.MusicAlbumMembership{},
+		&domain.MusicGenreFacet{},
+	)
 	if err := db.AutoMigrate(models...); err != nil {
 		t.Fatalf("create media library schema: %v", err)
 	}

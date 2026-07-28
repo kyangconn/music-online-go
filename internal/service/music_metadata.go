@@ -332,25 +332,7 @@ func normalizeDisplayValues(values domain.StringList, split bool) domain.StringL
 }
 
 func normalizeGenreTokens(genres domain.StringList) domain.StringList {
-	tokens := make(domain.StringList, 0, len(genres))
-	seen := make(map[string]struct{})
-	for _, genre := range genres {
-		for _, value := range metadataListSeparator.Split(genre, -1) {
-			token := strings.ToLower(metadataWhitespace.ReplaceAllString(strings.TrimSpace(value), " "))
-			if token == "" {
-				continue
-			}
-			if _, exists := seen[token]; exists {
-				continue
-			}
-			seen[token] = struct{}{}
-			tokens = append(tokens, token)
-			if len(tokens) >= maxCanonicalMetadataValues {
-				return tokens
-			}
-		}
-	}
-	return tokens
+	return domain.NormalizeGenreTokens(genres)
 }
 
 func normalizeISRCs(values domain.StringList) (domain.StringList, error) {

@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,7 +19,6 @@ import (
 	"github.com/kyangconn/music-online-go/internal/config"
 	"github.com/kyangconn/music-online-go/internal/domain"
 	pklog "github.com/kyangconn/music-online-go/internal/pkg/log"
-	"github.com/kyangconn/music-online-go/internal/pkg/mediatoken"
 	"github.com/kyangconn/music-online-go/internal/repository"
 )
 
@@ -34,6 +32,7 @@ var (
 type MusicService interface {
 	Create(ctx context.Context, userID uint, req *domain.CreateMusicRequest) (*domain.MusicResponse, error)
 	GetByID(ctx context.Context, id uint, currentUserID *uint) (*domain.MusicResponse, error)
+	GetByIDs(ctx context.Context, ids []uint, currentUserID *uint) ([]*domain.MusicResponse, error)
 	Search(ctx context.Context, params *domain.MusicSearchParams, currentUserID *uint) ([]*domain.MusicResponse, int64, error)
 	FindByMusicBrainzRecordingID(ctx context.Context, recordingID string, currentUserID *uint) (*domain.MusicResponse, error)
 	FindMetadataCandidates(ctx context.Context, metadata domain.MusicMetadata, currentUserID *uint) ([]*domain.MusicResponse, bool, error)
@@ -51,6 +50,7 @@ type MusicService interface {
 	GetCoverPath(ctx context.Context, id uint) (string, error)
 	GetUploadPolicy() UploadPolicy
 	UploadBodyLimit() int64
+	SetAnalysisScheduler(scheduler MusicAnalysisScheduler)
 	// Admin
 	AdminDelete(ctx context.Context, id uint) error
 }
@@ -58,9 +58,11 @@ type musicService struct {
 	repo         repository.MusicRepository
 	pathResolver MediaPathResolver
 	serverConfig config.ServerConfig
-	accessConfig config.AccessConfig
-	jwtConfig    config.JWTConfig
+	presenter    musicPresenter
 	uploadPolicy UploadPolicy
+	presetRepo   repository.PresetRepository
+	analysisRepo repository.MusicAnalysisRepository
+	analyzer     MusicAnalysisScheduler
 }
 
 func NewMusicService(repo repository.MusicRepository, pathResolvers ...MediaPathResolver) MusicService {
@@ -71,27 +73,50 @@ func NewMusicService(repo repository.MusicRepository, pathResolvers ...MediaPath
 	return NewMusicServiceWithConfig(repo, pathResolver, config.AppConfig)
 }
 
-func NewMusicServiceWithConfig(repo repository.MusicRepository, pathResolver MediaPathResolver, cfg *config.Config) MusicService {
+func NewMusicServiceWithConfig(
+	repo repository.MusicRepository,
+	pathResolver MediaPathResolver,
+	cfg *config.Config,
+	presetRepositories ...repository.PresetRepository,
+) MusicService {
+	return NewMusicServiceWithAnalysis(repo, pathResolver, cfg, firstPresetRepository(presetRepositories), nil)
+}
+
+func NewMusicServiceWithAnalysis(
+	repo repository.MusicRepository,
+	pathResolver MediaPathResolver,
+	cfg *config.Config,
+	presetRepo repository.PresetRepository,
+	analysisRepo repository.MusicAnalysisRepository,
+) MusicService {
 	serverConfig := config.ServerConfig{
 		UploadDir:      "uploads",
 		MaxAudioSizeMB: config.DefaultMaxAudioSizeMB,
 		MaxCoverSizeMB: config.DefaultMaxCoverSizeMB,
 	}
-	accessConfig := config.AccessConfig{LibraryMode: config.LibraryAccessPublic, MediaURLTTLMinutes: 60}
-	jwtConfig := config.JWTConfig{}
 	if cfg != nil {
 		serverConfig = cfg.Server
-		accessConfig = cfg.Access
-		jwtConfig = cfg.JWT
 	}
 	return &musicService{
 		repo:         repo,
 		pathResolver: pathResolver,
 		serverConfig: serverConfig,
-		accessConfig: accessConfig,
-		jwtConfig:    jwtConfig,
+		presenter:    newMusicPresenter(cfg),
 		uploadPolicy: UploadPolicyFromServerConfig(serverConfig),
+		presetRepo:   presetRepo,
+		analysisRepo: analysisRepo,
 	}
+}
+
+func firstPresetRepository(values []repository.PresetRepository) repository.PresetRepository {
+	if len(values) == 0 {
+		return nil
+	}
+	return values[0]
+}
+
+func (s *musicService) SetAnalysisScheduler(scheduler MusicAnalysisScheduler) {
+	s.analyzer = scheduler
 }
 
 func (s *musicService) GetUploadPolicy() UploadPolicy {
@@ -139,6 +164,14 @@ func (s *musicService) GetByID(ctx context.Context, id uint, currentUserID *uint
 		return nil, err
 	}
 	return resp, nil
+}
+
+func (s *musicService) GetByIDs(ctx context.Context, ids []uint, currentUserID *uint) ([]*domain.MusicResponse, error) {
+	musics, err := s.repo.FindByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	return s.toEnrichedResponses(ctx, musics, currentUserID)
 }
 
 func (s *musicService) Search(ctx context.Context, params *domain.MusicSearchParams, currentUserID *uint) ([]*domain.MusicResponse, int64, error) {
@@ -401,12 +434,36 @@ func (s *musicService) GetCoverPath(ctx context.Context, id uint) (string, error
 // toEnrichedResponses 批量转换并填充音乐响应列表。
 // 统一 Search / ListByUserID / ListLikedByUserID 的「ToResponse + enrich」循环，避免重复逻辑。
 func (s *musicService) toEnrichedResponses(ctx context.Context, musics []*domain.Music, currentUserID *uint) ([]*domain.MusicResponse, error) {
+	ids := make([]uint, 0, len(musics))
+	for _, music := range musics {
+		ids = append(ids, music.ID)
+	}
+	engagement, err := s.repo.ListEngagementByMusicIDs(ctx, ids, currentUserID)
+	if err != nil {
+		return nil, err
+	}
+	classifications := make(map[uint]*domain.MusicPresetClassification)
+	if s.presetRepo != nil {
+		classifications, err = s.presetRepo.FindByMusicIDs(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+	}
+	analysisJobs := make(map[uint]*domain.MusicAnalysisJob)
+	if s.analysisRepo != nil {
+		analysisJobs, err = s.analysisRepo.LatestAudioJobsByMusicIDs(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+	}
 	responses := make([]*domain.MusicResponse, 0, len(musics))
 	for _, m := range musics {
 		resp := s.toResponse(m)
-		if err := s.enrichMusicResponse(ctx, resp, currentUserID); err != nil {
-			return nil, err
-		}
+		values := engagement[m.ID]
+		resp.LikeCount = values.LikeCount
+		resp.IsLiked = values.IsLiked
+		resp.PresetClassification = classifications[m.ID].ToResponse()
+		resp.AudioAnalysis = analysisJobs[m.ID].ToSummary()
 		responses = append(responses, resp)
 	}
 	return responses, nil
@@ -439,8 +496,8 @@ func (s *musicService) guardReadOnlyMediaSource(ctx context.Context, music *doma
 	return nil
 }
 
-// enrichMusicResponse populates IsLiked and LikeCount.
-// Note: This performs N+1 queries. For high traffic, consider batching or joining in repository.
+// enrichMusicResponse populates one detail response. List responses use the
+// repository's batch path to keep playlist and library reads bounded.
 func (s *musicService) enrichMusicResponse(ctx context.Context, resp *domain.MusicResponse, currentUserID *uint) error {
 	count, err := s.repo.CountLikes(ctx, resp.ID)
 	if err != nil {
@@ -456,6 +513,20 @@ func (s *musicService) enrichMusicResponse(ctx context.Context, resp *domain.Mus
 		resp.IsLiked = liked
 	} else {
 		resp.IsLiked = false
+	}
+	if s.presetRepo != nil {
+		classifications, err := s.presetRepo.FindByMusicIDs(ctx, []uint{resp.ID})
+		if err != nil {
+			return err
+		}
+		resp.PresetClassification = classifications[resp.ID].ToResponse()
+	}
+	if s.analysisRepo != nil {
+		jobs, err := s.analysisRepo.LatestAudioJobsByMusicIDs(ctx, []uint{resp.ID})
+		if err != nil {
+			return err
+		}
+		resp.AudioAnalysis = jobs[resp.ID].ToSummary()
 	}
 	return nil
 }
@@ -579,6 +650,15 @@ func (s *musicService) UploadFiles(ctx context.Context, userID uint, role string
 	for _, file := range staged {
 		file.commit()
 	}
+	if audioHeader != nil && s.analyzer != nil {
+		scheduleCtx, cancelSchedule := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		if err := s.analyzer.ScheduleContentAnalysis(scheduleCtx, music.ID, userID); err != nil {
+			// Analysis is derived work. A full queue or unavailable analyzer must
+			// never turn a successfully committed upload into an HTTP failure.
+			pklog.Warnf("Music %d was uploaded but analysis could not be queued: %v", music.ID, err)
+		}
+		cancelSchedule()
+	}
 
 	return s.toResponse(music), nil
 }
@@ -603,23 +683,7 @@ func secureManagedMediaPathAt(uploadDir, path string) (string, error) {
 }
 
 func (s *musicService) toResponse(music *domain.Music) *domain.MusicResponse {
-	response := music.ToResponse()
-	if response == nil || s.accessConfig.LibraryMode != config.LibraryAccessAuthenticated {
-		return response
-	}
-	expiresAt := time.Now().UTC().Add(time.Duration(s.accessConfig.MediaURLTTLMinutes) * time.Minute).Truncate(time.Second)
-	if response.Path != "" {
-		token := mediatoken.Issue(s.jwtConfig.Secret, music.ID, "stream", expiresAt)
-		response.Path += "?media_token=" + url.QueryEscape(token)
-	}
-	if response.Img != "" {
-		token := mediatoken.Issue(s.jwtConfig.Secret, music.ID, "cover", expiresAt)
-		response.Img += "?media_token=" + url.QueryEscape(token)
-	}
-	if response.Path != "" || response.Img != "" {
-		response.MediaURLExpiresAt = &expiresAt
-	}
-	return response
+	return s.presenter.music(music)
 }
 
 type stagedMediaFile struct {

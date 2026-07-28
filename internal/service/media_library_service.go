@@ -34,7 +34,7 @@ var (
 )
 
 func IsTransientMediaStorageError(err error) bool {
-	return mediafs.IsTransientError(err)
+	return errors.Is(err, ErrMediaStorageUnavailable) || mediafs.IsTransientError(err)
 }
 
 func isRetryableMediaStorageError(err error) bool {
@@ -71,6 +71,7 @@ type MediaLibraryService interface {
 	GetScanJob(ctx context.Context, id uint) (*domain.MediaScanJobDetail, error)
 	CancelScan(ctx context.Context, id uint) (*domain.MediaScanJob, error)
 	ProbeRoot(ctx context.Context, id uint) (*domain.MediaLibraryRootHealthResponse, error)
+	SetAnalysisScheduler(scheduler MusicAnalysisScheduler)
 	Start(ctx context.Context) error
 	Shutdown(ctx context.Context) error
 }
@@ -83,12 +84,17 @@ type mediaLibraryService struct {
 	managedPath   string
 	maxCoverBytes int64
 	workerID      string
+	analyzer      MusicAnalysisScheduler
 
 	rootMu  sync.Mutex
 	mu      sync.Mutex
 	cancel  context.CancelFunc
 	started bool
 	wg      sync.WaitGroup
+}
+
+func (s *mediaLibraryService) SetAnalysisScheduler(scheduler MusicAnalysisScheduler) {
+	s.analyzer = scheduler
 }
 
 type resolvedMediaRoot struct {
@@ -931,6 +937,15 @@ func (s *mediaLibraryService) processScanFile(ctx context.Context, job *domain.M
 				s.addScanIssue(ctx, job, relative, "warning", "cover_store_failed", "embedded cover was not attached to the track")
 			}
 		}
+	}
+	if s.analyzer != nil {
+		scheduleCtx, cancelSchedule := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		if err := s.analyzer.ScheduleContentAnalysis(scheduleCtx, music.ID, job.RequestedBy); err != nil {
+			// Import remains successful even when derived analysis is disabled,
+			// backpressured, or temporarily unavailable.
+			pklog.Warnf("Music %d was imported but analysis could not be queued: %v", music.ID, err)
+		}
+		cancelSchedule()
 	}
 	job.ImportedCount++
 }
