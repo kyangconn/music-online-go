@@ -30,6 +30,7 @@ type Config struct {
 	AdminBootstrap AdminBootstrapConfig
 	Access         AccessConfig
 	Library        LibraryConfig
+	Classification ClassificationConfig
 	Integrations   IntegrationsConfig
 	RateLimit      RateLimitConfig
 	Logging        LoggingConfig
@@ -116,6 +117,38 @@ type LibraryScannerConfig struct {
 	MaxTagSizeMB        int
 	MinFileAgeSeconds   int
 	HashRecheckHours    int
+	RetryMaxAttempts    int
+	RetryInitialSeconds int
+	RetryMaxSeconds     int
+}
+
+// ClassificationConfig controls the cheap, local metadata rule layer. Audio
+// analysis has its own optional configuration so disabling an external
+// analyzer never disables tag-based classification or local playback.
+type ClassificationConfig struct {
+	Enabled            bool
+	AnalyzeOnUpload    bool
+	AutoThreshold      float64
+	ReviewMargin       float64
+	CalmFlowWeight     float64
+	KineticPulseWeight float64
+	CosmicDriftWeight  float64
+	BassImpactWeight   float64
+	Analyzer           AnalyzerConfig
+}
+
+type AnalyzerConfig struct {
+	Mode                string
+	Endpoint            string
+	Token               string
+	ID                  string
+	Version             string
+	ModelVersion        string
+	TimeoutSeconds      int
+	Concurrency         int
+	QueueLimit          int
+	MaxFileSizeMB       int
+	MaxDurationSeconds  int
 	RetryMaxAttempts    int
 	RetryInitialSeconds int
 	RetryMaxSeconds     int
@@ -210,6 +243,27 @@ func LoadConfig() error {
 	v.SetDefault("library.scanner.retry_max_attempts", 5)
 	v.SetDefault("library.scanner.retry_initial_seconds", 30)
 	v.SetDefault("library.scanner.retry_max_seconds", 900)
+	v.SetDefault("classification.enabled", true)
+	v.SetDefault("classification.analyze_on_upload", false)
+	v.SetDefault("classification.auto_threshold", 0.65)
+	v.SetDefault("classification.review_margin", 0.12)
+	v.SetDefault("classification.weights.calm_flow", 1.0)
+	v.SetDefault("classification.weights.kinetic_pulse", 1.0)
+	v.SetDefault("classification.weights.cosmic_drift", 1.0)
+	v.SetDefault("classification.weights.bass_impact", 1.0)
+	v.SetDefault("classification.analyzer.mode", "disabled")
+	v.SetDefault("classification.analyzer.endpoint", "")
+	v.SetDefault("classification.analyzer.id", "")
+	v.SetDefault("classification.analyzer.version", "")
+	v.SetDefault("classification.analyzer.model_version", "")
+	v.SetDefault("classification.analyzer.timeout_seconds", 300)
+	v.SetDefault("classification.analyzer.concurrency", 1)
+	v.SetDefault("classification.analyzer.queue_limit", 1000)
+	v.SetDefault("classification.analyzer.max_file_size_mb", 2048)
+	v.SetDefault("classification.analyzer.max_duration_seconds", 1800)
+	v.SetDefault("classification.analyzer.retry_max_attempts", 3)
+	v.SetDefault("classification.analyzer.retry_initial_seconds", 30)
+	v.SetDefault("classification.analyzer.retry_max_seconds", 900)
 	v.SetDefault("integrations.musicbee.submit_token", "")
 	v.SetDefault("integrations.musicbee.submit_username", "")
 	v.SetDefault("rate_limit.enabled", true)
@@ -263,6 +317,10 @@ func LoadConfig() error {
 		return err
 	}
 	musicBeeSubmitToken, err := secretValueFrom(v, "integrations.musicbee.submit_token", "INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN")
+	if err != nil {
+		return err
+	}
+	analyzerToken, err := secretValueFrom(v, "classification.analyzer.token", "CLASSIFICATION_ANALYZER_TOKEN")
 	if err != nil {
 		return err
 	}
@@ -335,6 +393,32 @@ func LoadConfig() error {
 				RetryMaxAttempts:    v.GetInt("library.scanner.retry_max_attempts"),
 				RetryInitialSeconds: v.GetInt("library.scanner.retry_initial_seconds"),
 				RetryMaxSeconds:     v.GetInt("library.scanner.retry_max_seconds"),
+			},
+		},
+		Classification: ClassificationConfig{
+			Enabled:            v.GetBool("classification.enabled"),
+			AnalyzeOnUpload:    v.GetBool("classification.analyze_on_upload"),
+			AutoThreshold:      v.GetFloat64("classification.auto_threshold"),
+			ReviewMargin:       v.GetFloat64("classification.review_margin"),
+			CalmFlowWeight:     v.GetFloat64("classification.weights.calm_flow"),
+			KineticPulseWeight: v.GetFloat64("classification.weights.kinetic_pulse"),
+			CosmicDriftWeight:  v.GetFloat64("classification.weights.cosmic_drift"),
+			BassImpactWeight:   v.GetFloat64("classification.weights.bass_impact"),
+			Analyzer: AnalyzerConfig{
+				Mode:                strings.ToLower(strings.TrimSpace(v.GetString("classification.analyzer.mode"))),
+				Endpoint:            strings.TrimSpace(v.GetString("classification.analyzer.endpoint")),
+				Token:               analyzerToken,
+				ID:                  strings.TrimSpace(v.GetString("classification.analyzer.id")),
+				Version:             strings.TrimSpace(v.GetString("classification.analyzer.version")),
+				ModelVersion:        strings.TrimSpace(v.GetString("classification.analyzer.model_version")),
+				TimeoutSeconds:      v.GetInt("classification.analyzer.timeout_seconds"),
+				Concurrency:         v.GetInt("classification.analyzer.concurrency"),
+				QueueLimit:          v.GetInt("classification.analyzer.queue_limit"),
+				MaxFileSizeMB:       v.GetInt("classification.analyzer.max_file_size_mb"),
+				MaxDurationSeconds:  v.GetInt("classification.analyzer.max_duration_seconds"),
+				RetryMaxAttempts:    v.GetInt("classification.analyzer.retry_max_attempts"),
+				RetryInitialSeconds: v.GetInt("classification.analyzer.retry_initial_seconds"),
+				RetryMaxSeconds:     v.GetInt("classification.analyzer.retry_max_seconds"),
 			},
 		},
 		Integrations: IntegrationsConfig{
@@ -523,6 +607,9 @@ func Validate(cfg *Config) error {
 	if err := ValidateLibraryConfig(cfg.Library); err != nil {
 		return err
 	}
+	if err := ValidateClassificationConfig(cfg.Classification); err != nil {
+		return err
+	}
 	if err := ValidateMusicBeeConfig(cfg.Integrations.MusicBee); err != nil {
 		return err
 	}
@@ -530,6 +617,93 @@ func Validate(cfg *Config) error {
 		return err
 	}
 	return ValidateLoggingConfig(cfg.Logging)
+}
+
+func ValidateClassificationConfig(cfg ClassificationConfig) error {
+	if !cfg.Enabled {
+		if cfg.AnalyzeOnUpload {
+			return errors.New("classification.analyze_on_upload requires classification.enabled")
+		}
+		return nil
+	}
+	if cfg.AutoThreshold <= 0 || cfg.AutoThreshold > 1 {
+		return errors.New("classification.auto_threshold must be greater than 0 and at most 1")
+	}
+	if cfg.ReviewMargin < 0 || cfg.ReviewMargin > 1 {
+		return errors.New("classification.review_margin must be between 0 and 1")
+	}
+	for name, value := range map[string]float64{
+		"classification.weights.calm_flow":     cfg.CalmFlowWeight,
+		"classification.weights.kinetic_pulse": cfg.KineticPulseWeight,
+		"classification.weights.cosmic_drift":  cfg.CosmicDriftWeight,
+		"classification.weights.bass_impact":   cfg.BassImpactWeight,
+	} {
+		if value <= 0 || value > 2 {
+			return fmt.Errorf("%s must be greater than 0 and at most 2", name)
+		}
+	}
+	if cfg.AnalyzeOnUpload && cfg.Analyzer.Mode != "http" {
+		return errors.New("classification.analyze_on_upload requires classification.analyzer.mode=http")
+	}
+	return ValidateAnalyzerConfig(cfg.Analyzer)
+}
+
+func ValidateAnalyzerConfig(cfg AnalyzerConfig) error {
+	switch cfg.Mode {
+	case "", "disabled":
+		return nil
+	case "http":
+	default:
+		return fmt.Errorf("classification.analyzer.mode must be disabled or http, got %q", cfg.Mode)
+	}
+	endpoint, err := url.Parse(cfg.Endpoint)
+	if err != nil || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.Host == "" ||
+		endpoint.User != nil || endpoint.Fragment != "" {
+		return errors.New("classification.analyzer.endpoint must be an absolute http(s) URL without credentials or fragment")
+	}
+	if len([]byte(cfg.Token)) < 32 {
+		return errors.New("classification.analyzer.token must contain at least 32 bytes in http mode")
+	}
+	for name, value := range map[string]string{
+		"classification.analyzer.id":            cfg.ID,
+		"classification.analyzer.version":       cfg.Version,
+		"classification.analyzer.model_version": cfg.ModelVersion,
+	} {
+		if value == "" || len(value) > 100 {
+			return fmt.Errorf("%s must contain 1 to 100 characters in http mode", name)
+		}
+	}
+	if cfg.TimeoutSeconds <= 0 || cfg.TimeoutSeconds > 3600 {
+		return errors.New("classification.analyzer.timeout_seconds must be between 1 and 3600")
+	}
+	if cfg.Concurrency <= 0 || cfg.Concurrency > 8 {
+		return errors.New("classification.analyzer.concurrency must be between 1 and 8")
+	}
+	if cfg.QueueLimit <= 0 || cfg.QueueLimit > 100000 {
+		return errors.New("classification.analyzer.queue_limit must be between 1 and 100000")
+	}
+	if cfg.MaxFileSizeMB <= 0 || cfg.MaxDurationSeconds <= 0 {
+		return errors.New("classification analyzer file-size and duration limits must be greater than zero")
+	}
+	if err := validateMegabytesFits("classification.analyzer.max_file_size_mb", cfg.MaxFileSizeMB); err != nil {
+		return err
+	}
+	if err := validateDurationFits("classification.analyzer.max_duration_seconds", cfg.MaxDurationSeconds, time.Second); err != nil {
+		return err
+	}
+	if cfg.RetryMaxAttempts <= 0 || cfg.RetryMaxAttempts > 20 {
+		return errors.New("classification.analyzer.retry_max_attempts must be between 1 and 20")
+	}
+	if cfg.RetryInitialSeconds <= 0 || cfg.RetryMaxSeconds < cfg.RetryInitialSeconds {
+		return errors.New("classification analyzer retry delays must be positive and max must not be smaller than initial")
+	}
+	if err := validateDurationFits("classification.analyzer.timeout_seconds", cfg.TimeoutSeconds, time.Second); err != nil {
+		return err
+	}
+	if err := validateDurationFits("classification.analyzer.retry_max_seconds", cfg.RetryMaxSeconds, time.Second); err != nil {
+		return err
+	}
+	return nil
 }
 
 func ValidateLibraryConfig(cfg LibraryConfig) error {

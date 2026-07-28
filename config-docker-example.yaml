@@ -54,6 +54,32 @@ library:
     retry_initial_seconds: 30
     retry_max_seconds: 900
 
+classification:
+  enabled: true
+  analyze_on_upload: false
+  auto_threshold: 0.65
+  review_margin: 0.12
+  weights:
+    calm_flow: 1.0
+    kinetic_pulse: 1.0
+    cosmic_drift: 1.0
+    bass_impact: 1.0
+  analyzer:
+    mode: "disabled"
+    endpoint: ""
+    token: ""
+    id: ""
+    version: ""
+    model_version: ""
+    timeout_seconds: 300
+    concurrency: 1
+    queue_limit: 1000
+    max_file_size_mb: 2048
+    max_duration_seconds: 1800
+    retry_max_attempts: 3
+    retry_initial_seconds: 30
+    retry_max_seconds: 900
+
 integrations:
   musicbee:
     # Prefer INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN or its _FILE form at runtime.

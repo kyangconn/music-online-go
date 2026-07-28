@@ -132,6 +132,72 @@ func TestValidateLibraryConfig(t *testing.T) {
 	}
 }
 
+func TestValidateClassificationConfig(t *testing.T) {
+	valid := ClassificationConfig{
+		Enabled: true, AutoThreshold: 0.65, ReviewMargin: 0.12,
+		CalmFlowWeight: 1, KineticPulseWeight: 1, CosmicDriftWeight: 1, BassImpactWeight: 1,
+	}
+	if err := ValidateClassificationConfig(valid); err != nil {
+		t.Fatalf("valid classification config: %v", err)
+	}
+	valid.AutoThreshold = 0
+	if err := ValidateClassificationConfig(valid); err == nil {
+		t.Fatal("zero automatic threshold should fail")
+	}
+	valid.AutoThreshold = 0.65
+	valid.ReviewMargin = 1.1
+	if err := ValidateClassificationConfig(valid); err == nil {
+		t.Fatal("review margin greater than one should fail")
+	}
+	valid.ReviewMargin = 0.12
+	valid.BassImpactWeight = 0
+	if err := ValidateClassificationConfig(valid); err == nil {
+		t.Fatal("zero preset weight should fail")
+	}
+	if err := ValidateClassificationConfig(ClassificationConfig{}); err != nil {
+		t.Fatalf("disabled classification should not require tuning values: %v", err)
+	}
+}
+
+func TestValidateAnalyzerConfig(t *testing.T) {
+	valid := AnalyzerConfig{
+		Mode: "http", Endpoint: "http://analyzer:8090/v1/analyze",
+		Token: "0123456789abcdef0123456789abcdef", ID: "local-dsp", Version: "1.0.0", ModelVersion: "baseline-v1",
+		TimeoutSeconds: 300, Concurrency: 1, QueueLimit: 1000, MaxFileSizeMB: 2048, MaxDurationSeconds: 1800,
+		RetryMaxAttempts: 3, RetryInitialSeconds: 30, RetryMaxSeconds: 900,
+	}
+	if err := ValidateAnalyzerConfig(valid); err != nil {
+		t.Fatalf("valid analyzer config: %v", err)
+	}
+	invalid := valid
+	invalid.Endpoint = "file:///tmp/audio"
+	if err := ValidateAnalyzerConfig(invalid); err == nil {
+		t.Fatal("non-HTTP analyzer endpoint should fail")
+	}
+	invalid = valid
+	invalid.Token = "short"
+	if err := ValidateAnalyzerConfig(invalid); err == nil {
+		t.Fatal("short analyzer token should fail")
+	}
+	invalid = valid
+	invalid.Concurrency = 9
+	if err := ValidateAnalyzerConfig(invalid); err == nil {
+		t.Fatal("excessive analyzer concurrency should fail")
+	}
+	invalid = valid
+	invalid.MaxDurationSeconds = int(^uint(0) >> 1)
+	if err := ValidateAnalyzerConfig(invalid); err == nil {
+		t.Fatal("analyzer duration that cannot fit time.Duration should fail")
+	}
+	if err := ValidateClassificationConfig(ClassificationConfig{
+		Enabled: true, AnalyzeOnUpload: true, AutoThreshold: 0.65, ReviewMargin: 0.12,
+		CalmFlowWeight: 1, KineticPulseWeight: 1, CosmicDriftWeight: 1, BassImpactWeight: 1,
+		Analyzer: AnalyzerConfig{Mode: "disabled"},
+	}); err == nil {
+		t.Fatal("automatic upload analysis without an HTTP analyzer should fail")
+	}
+}
+
 func TestValidateMusicBeeConfig(t *testing.T) {
 	if err := ValidateMusicBeeConfig(MusicBeeConfig{}); err != nil {
 		t.Fatalf("disabled MusicBee integration: %v", err)
@@ -241,6 +307,28 @@ jwt:
 	t.Setenv("LIBRARY_SCANNER_RETRY_MAX_ATTEMPTS", "4")
 	t.Setenv("LIBRARY_SCANNER_RETRY_INITIAL_SECONDS", "20")
 	t.Setenv("LIBRARY_SCANNER_RETRY_MAX_SECONDS", "300")
+	t.Setenv("CLASSIFICATION_ENABLED", "true")
+	t.Setenv("CLASSIFICATION_ANALYZE_ON_UPLOAD", "true")
+	t.Setenv("CLASSIFICATION_AUTO_THRESHOLD", "0.7")
+	t.Setenv("CLASSIFICATION_REVIEW_MARGIN", "0.08")
+	t.Setenv("CLASSIFICATION_WEIGHTS_CALM_FLOW", "1.1")
+	t.Setenv("CLASSIFICATION_WEIGHTS_KINETIC_PULSE", "0.9")
+	t.Setenv("CLASSIFICATION_WEIGHTS_COSMIC_DRIFT", "1.2")
+	t.Setenv("CLASSIFICATION_WEIGHTS_BASS_IMPACT", "0.8")
+	t.Setenv("CLASSIFICATION_ANALYZER_MODE", "http")
+	t.Setenv("CLASSIFICATION_ANALYZER_ENDPOINT", "http://analyzer:8090/v1/analyze")
+	t.Setenv("CLASSIFICATION_ANALYZER_TOKEN", "0123456789abcdef0123456789abcdef")
+	t.Setenv("CLASSIFICATION_ANALYZER_ID", "fixture-dsp")
+	t.Setenv("CLASSIFICATION_ANALYZER_VERSION", "1.2.3")
+	t.Setenv("CLASSIFICATION_ANALYZER_MODEL_VERSION", "fixture-v1")
+	t.Setenv("CLASSIFICATION_ANALYZER_TIMEOUT_SECONDS", "120")
+	t.Setenv("CLASSIFICATION_ANALYZER_CONCURRENCY", "2")
+	t.Setenv("CLASSIFICATION_ANALYZER_QUEUE_LIMIT", "500")
+	t.Setenv("CLASSIFICATION_ANALYZER_MAX_FILE_SIZE_MB", "1024")
+	t.Setenv("CLASSIFICATION_ANALYZER_MAX_DURATION_SECONDS", "900")
+	t.Setenv("CLASSIFICATION_ANALYZER_RETRY_MAX_ATTEMPTS", "4")
+	t.Setenv("CLASSIFICATION_ANALYZER_RETRY_INITIAL_SECONDS", "10")
+	t.Setenv("CLASSIFICATION_ANALYZER_RETRY_MAX_SECONDS", "120")
 	t.Setenv("DATABASE_TYPE", "")
 	t.Setenv("DATABASE_PATH", "")
 	t.Setenv("DATABASE_PORT", "")
@@ -271,6 +359,20 @@ jwt:
 		AppConfig.Library.Scanner.RetryMaxAttempts != 4 || AppConfig.Library.Scanner.RetryInitialSeconds != 20 ||
 		AppConfig.Library.Scanner.RetryMaxSeconds != 300 {
 		t.Fatalf("library scanner environment overrides were not loaded: %+v", AppConfig.Library.Scanner)
+	}
+	if !AppConfig.Classification.Enabled || !AppConfig.Classification.AnalyzeOnUpload || AppConfig.Classification.AutoThreshold != 0.7 ||
+		AppConfig.Classification.ReviewMargin != 0.08 || AppConfig.Classification.CalmFlowWeight != 1.1 ||
+		AppConfig.Classification.KineticPulseWeight != 0.9 || AppConfig.Classification.CosmicDriftWeight != 1.2 ||
+		AppConfig.Classification.BassImpactWeight != 0.8 {
+		t.Fatalf("classification environment overrides were not loaded: %+v", AppConfig.Classification)
+	}
+	if analyzer := AppConfig.Classification.Analyzer; analyzer.Mode != "http" ||
+		analyzer.Endpoint != "http://analyzer:8090/v1/analyze" || analyzer.Token == "" ||
+		analyzer.ID != "fixture-dsp" || analyzer.Version != "1.2.3" || analyzer.ModelVersion != "fixture-v1" ||
+		analyzer.TimeoutSeconds != 120 || analyzer.Concurrency != 2 || analyzer.QueueLimit != 500 ||
+		analyzer.MaxFileSizeMB != 1024 || analyzer.MaxDurationSeconds != 900 ||
+		analyzer.RetryMaxAttempts != 4 || analyzer.RetryInitialSeconds != 10 || analyzer.RetryMaxSeconds != 120 {
+		t.Fatalf("analyzer environment overrides were not loaded: %+v", analyzer)
 	}
 	if got, want := AppConfig.Server.AllowedOrigins, []string{"https://one.example", "https://two.example"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("allowed origins = %#v, want %#v", got, want)

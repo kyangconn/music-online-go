@@ -1,0 +1,50 @@
+services:
+  app:
+    environment:
+      CLASSIFICATION_ENABLED: "true"
+      CLASSIFICATION_ANALYZER_MODE: http
+      CLASSIFICATION_ANALYZER_ENDPOINT: http://analyzer:${ANALYZER_PORT:-8090}/v1/analyze
+      CLASSIFICATION_ANALYZER_TOKEN: ${ANALYZER_TOKEN:-}
+      CLASSIFICATION_ANALYZER_ID: ${ANALYZER_ID:?Set the analyzer implementation ID}
+      CLASSIFICATION_ANALYZER_VERSION: ${ANALYZER_VERSION:?Set the analyzer implementation version}
+      CLASSIFICATION_ANALYZER_MODEL_VERSION: ${ANALYZER_MODEL_VERSION:?Set the model version}
+      CLASSIFICATION_ANALYZER_TIMEOUT_SECONDS: ${ANALYZER_TIMEOUT_SECONDS:-300}
+      CLASSIFICATION_ANALYZER_CONCURRENCY: ${ANALYZER_CONCURRENCY:-1}
+      CLASSIFICATION_ANALYZER_QUEUE_LIMIT: ${ANALYZER_QUEUE_LIMIT:-1000}
+      CLASSIFICATION_ANALYZER_MAX_FILE_SIZE_MB: ${ANALYZER_MAX_FILE_SIZE_MB:-2048}
+      CLASSIFICATION_ANALYZER_MAX_DURATION_SECONDS: ${ANALYZER_MAX_DURATION_SECONDS:-1800}
+      CLASSIFICATION_ANALYZER_RETRY_MAX_ATTEMPTS: ${ANALYZER_RETRY_MAX_ATTEMPTS:-3}
+      CLASSIFICATION_ANALYZER_RETRY_INITIAL_SECONDS: ${ANALYZER_RETRY_INITIAL_SECONDS:-30}
+      CLASSIFICATION_ANALYZER_RETRY_MAX_SECONDS: ${ANALYZER_RETRY_MAX_SECONDS:-900}
+    depends_on:
+      analyzer:
+        condition: service_started
+        restart: true
+
+  analyzer:
+    profiles: ["analyzer"]
+    image: ${ANALYZER_IMAGE:?Set ANALYZER_IMAGE to an implementation of the documented HTTP contract}
+    restart: ${ANALYZER_RESTART_POLICY:-unless-stopped}
+    init: true
+    read_only: true
+    environment:
+      ANALYZER_LISTEN_ADDRESS: 0.0.0.0
+      ANALYZER_PORT: ${ANALYZER_PORT:-8090}
+      ANALYZER_TOKEN: ${ANALYZER_TOKEN:-}
+      ANALYZER_ID: ${ANALYZER_ID:?Set the analyzer implementation ID}
+      ANALYZER_VERSION: ${ANALYZER_VERSION:?Set the analyzer implementation version}
+      ANALYZER_MODEL_VERSION: ${ANALYZER_MODEL_VERSION:?Set the model version}
+      ANALYZER_MAX_FILE_SIZE_MB: ${ANALYZER_MAX_FILE_SIZE_MB:-2048}
+      ANALYZER_MAX_DURATION_SECONDS: ${ANALYZER_MAX_DURATION_SECONDS:-1800}
+    expose:
+      - "${ANALYZER_PORT:-8090}"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=${ANALYZER_TMPFS_SIZE:-512m},mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: ${ANALYZER_PIDS_LIMIT:-256}
+    cpus: ${ANALYZER_CPUS:-2.0}
+    mem_limit: ${ANALYZER_MEMORY_LIMIT:-2g}
+    stop_grace_period: ${ANALYZER_STOP_GRACE_PERIOD:-30s}

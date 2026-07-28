@@ -216,6 +216,13 @@ make docker-up-musicbee-secrets
 | `TMPFS_SIZE` / `STOP_GRACE_PERIOD` | `256m` / `30s` | multipart 临时空间与停止宽限期；提高上传上限时也要相应提高 |
 | `HEALTHCHECK_INTERVAL`, `HEALTHCHECK_TIMEOUT`, `HEALTHCHECK_START_PERIOD`, `HEALTHCHECK_RETRIES` | `30s`, `5s`, `15s`, `3` | 应用健康检查参数 |
 | `VERSION`, `VCS_REF`, `BUILD_DATE` | `dev`, `unknown`, epoch | 镜像标签和二进制版本元数据 |
+| `ANALYZER_IMAGE`, `ANALYZER_ID`, `ANALYZER_VERSION`, `ANALYZER_MODEL_VERSION` | 无 | 可选 analyzer profile 的镜像和三个缓存/契约版本；启用 overlay 时必须明确设置 |
+| `ANALYZER_TOKEN`, `ANALYZER_PORT` | 无 / `8090` | analyzer 共享密钥与仅在 Compose 网络暴露的端口 |
+| `ANALYZER_TIMEOUT_SECONDS`, `ANALYZER_CONCURRENCY`, `ANALYZER_QUEUE_LIMIT` | `300`, `1`, `1000` | 请求超时、worker 数和任务背压上限 |
+| `ANALYZER_MAX_FILE_SIZE_MB`, `ANALYZER_MAX_DURATION_SECONDS` | `2048`, `1800` | analyzer 输入大小与解码时长上限 |
+| `ANALYZER_RETRY_MAX_ATTEMPTS`, `ANALYZER_RETRY_INITIAL_SECONDS`, `ANALYZER_RETRY_MAX_SECONDS` | `3`, `30`, `900` | analyzer 有限指数退避参数 |
+| `ANALYZER_RESTART_POLICY`, `ANALYZER_STOP_GRACE_PERIOD` | `unless-stopped`, `30s` | analyzer 容器重启与停止策略 |
+| `ANALYZER_CPUS`, `ANALYZER_MEMORY_LIMIT`, `ANALYZER_PIDS_LIMIT`, `ANALYZER_TMPFS_SIZE` | `2.0`, `2g`, `256`, `512m` | analyzer 容器资源护栏 |
 | `POSTGRES_IMAGE`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT` | 见 `.env.example` | PostgreSQL override 的镜像和连接参数；密码可直接提供或改用 secret 文件 |
 | `POSTGRES_PASSWORD_FILE` | `""` | 官方 PostgreSQL 容器内的密码文件路径；secrets override 会设为 `/run/secrets/postgres_password` |
 | `POSTGRES_DATA_PATH` / `POSTGRES_DATA_VOLUME_NAME` | `music-online-postgres-data` | PostgreSQL 数据来源和默认卷名 |
@@ -224,6 +231,7 @@ make docker-up-musicbee-secrets
 | `JWT_SECRET_HOST_FILE` | `./secrets/jwt_secret` | `compose.secrets.yaml` 在宿主机读取的 JWT secret 文件 |
 | `MUSICBEE_SUBMIT_TOKEN_HOST_FILE` | `./secrets/musicbee_submit_token` | `compose.musicbee-secrets.yaml` 在宿主机读取的 MusicBee scoped token 文件 |
 | `POSTGRES_PASSWORD_HOST_FILE` | `./secrets/postgres_password` | `compose.postgres-secrets.yaml` 在宿主机读取的数据库密码文件 |
+| `ANALYZER_TOKEN_HOST_FILE` | `./secrets/analyzer_token` | `compose.analyzer-secrets.yaml` 在宿主机读取的 analyzer 共享密钥文件 |
 
 `make docker` 也接受 Make 变量 `DOCKER_IMAGE`、`VERSION`、`VCS_REF`、`BUILD_DATE`。
 Compose 中未设置的应用变量保持为空，不会覆盖 YAML；应用启动时要求通过 `JWT_SECRET`、
@@ -290,6 +298,7 @@ SERVER_PORT=8080 DATABASE_TYPE=sqlite DATABASE_PATH=/data/music.db ./music-onlin
 | `METRICS_TOKEN_FILE` | 指标 Bearer token 文件；不能与 `METRICS_TOKEN` 同时设置 |
 | `ADMIN_BOOTSTRAP_PASSWORD_FILE` | 首个管理员密码文件；不能与 `ADMIN_BOOTSTRAP_PASSWORD` 同时设置 |
 | `INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN_FILE` | MusicBee 提交凭证文件；不能与 `INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN` 同时设置 |
+| `CLASSIFICATION_ANALYZER_TOKEN_FILE` | HTTP analyzer Bearer 密钥文件；不能与 `CLASSIFICATION_ANALYZER_TOKEN` 同时设置 |
 | `MO_LOG_FILE` | 日志路径；优先级为 `--log-file` > `MO_LOG_FILE` > `SERVER_LOG_FILE`/YAML |
 | `MO_LOG_MAX_SIZE`, `MO_LOG_MAX_BACKUPS`, `MO_LOG_MAX_AGE` | 旧版日志轮转兼容别名，有值时覆盖 `LOGGING_*` 对应项 |
 | `XDG_CONFIG_HOME` / `HOME` | 决定用户级配置搜索目录 |
@@ -389,6 +398,69 @@ Windows 原生运行优先登记 UNC（如 `\\server\music`）；映射盘符依
 
 NFS/SMB 只用于媒体来源，不建议承载 SQLite 数据库文件或 `/data` 写入卷；网络文件系统的锁与缓存语义
 可能破坏 SQLite 的可靠性。单实例默认使用本地 SQLite；需要多个应用实例或共享数据库时改用 PostgreSQL。
+
+#### classification 本地预设规则
+
+| YAML 字段 | 环境变量 | 默认值 | 说明 |
+|---|---|---|---|
+| `classification.enabled` | `CLASSIFICATION_ENABLED` | `true` | 启用本地、离线可用的标签规则分类；关闭不影响导入、浏览或播放 |
+| `classification.analyze_on_upload` | `CLASSIFICATION_ANALYZE_ON_UPLOAD` | `false` | 音频上传或目录导入提交成功后自动追加音频分析任务；仅可与 HTTP analyzer 一起启用 |
+| `classification.auto_threshold` | `CLASSIFICATION_AUTO_THRESHOLD` | `0.65` | 最高分至少达到该值才可能自动归类，范围 `(0, 1]` |
+| `classification.review_margin` | `CLASSIFICATION_REVIEW_MARGIN` | `0.12` | 最高两类分差低于该值时进入待确认，范围 `[0, 1]` |
+| `classification.weights.calm_flow` | `CLASSIFICATION_WEIGHTS_CALM_FLOW` | `1.0` | 静谧心流规则分数倍率，范围 `(0, 2]` |
+| `classification.weights.kinetic_pulse` | `CLASSIFICATION_WEIGHTS_KINETIC_PULSE` | `1.0` | 律动跃迁规则分数倍率，范围 `(0, 2]` |
+| `classification.weights.cosmic_drift` | `CLASSIFICATION_WEIGHTS_COSMIC_DRIFT` | `1.0` | 星云漫游规则分数倍率，范围 `(0, 2]` |
+| `classification.weights.bass_impact` | `CLASSIFICATION_WEIGHTS_BASS_IMPACT` | `1.0` | 低频震域规则分数倍率，范围 `(0, 2]` |
+| `classification.analyzer.mode` | `CLASSIFICATION_ANALYZER_MODE` | `"disabled"` | `disabled` 保持纯 Go 单体部署；`http` 启用可选的字节流分析器 |
+| `classification.analyzer.endpoint` | `CLASSIFICATION_ANALYZER_ENDPOINT` | `""` | analyzer 的绝对 HTTP(S) `POST` 地址；不得包含凭据或 fragment |
+| `classification.analyzer.token` | `CLASSIFICATION_ANALYZER_TOKEN` / `_FILE` | `""` | 两端共享的 Bearer 密钥，HTTP 模式至少 32 字节；推荐通过文件传入 |
+| `classification.analyzer.id` | `CLASSIFICATION_ANALYZER_ID` | `""` | 分析器实现稳定标识，参与缓存键并必须与响应一致 |
+| `classification.analyzer.version` | `CLASSIFICATION_ANALYZER_VERSION` | `""` | 分析器实现版本，参与缓存键 |
+| `classification.analyzer.model_version` | `CLASSIFICATION_ANALYZER_MODEL_VERSION` | `""` | 模型/规则包版本，参与缓存键 |
+| `classification.analyzer.timeout_seconds` | `CLASSIFICATION_ANALYZER_TIMEOUT_SECONDS` | `300` | 单次 HTTP 分析硬超时，范围 `1`–`3600` 秒 |
+| `classification.analyzer.concurrency` | `CLASSIFICATION_ANALYZER_CONCURRENCY` | `1` | 后台 worker 数，范围 `1`–`8`；SQLite 仍通过单写连接协调任务 |
+| `classification.analyzer.queue_limit` | `CLASSIFICATION_ANALYZER_QUEUE_LIMIT` | `1000` | `pending + running` 任务的背压上限 |
+| `classification.analyzer.max_file_size_mb` | `CLASSIFICATION_ANALYZER_MAX_FILE_SIZE_MB` | `2048` | 允许流向 analyzer 的最大源文件大小 |
+| `classification.analyzer.max_duration_seconds` | `CLASSIFICATION_ANALYZER_MAX_DURATION_SECONDS` | `1800` | 请求 analyzer 停止解码的最大音频时长，同时校验返回时长 |
+| `classification.analyzer.retry_max_attempts` | `CLASSIFICATION_ANALYZER_RETRY_MAX_ATTEMPTS` | `3` | 网络、超时和服务端暂时错误的最大尝试次数 |
+| `classification.analyzer.retry_initial_seconds` | `CLASSIFICATION_ANALYZER_RETRY_INITIAL_SECONDS` | `30` | 首次有限指数退避延迟 |
+| `classification.analyzer.retry_max_seconds` | `CLASSIFICATION_ANALYZER_RETRY_MAX_SECONDS` | `900` | 单次重试等待上限 |
+
+规则层只读取规范化后的本地标签，保存四类独立分数、规则版本和证据，并允许弃权。管理员人工选择与自动结果分开保存，后续重新分类不会覆盖人工选择。权重用于真实曲库校准，不改变 API/数据库中的稳定预设标识。
+
+#### 可选 HTTP analyzer 与持久任务
+
+基础镜像不会安装 FFmpeg、Python 或模型运行时。启用 analyzer 后，应用只把任务状态保存在现有 SQLite/PostgreSQL 中：默认单 worker 领取带租约和 fencing generation 的任务，重启会回收过期的 `running` 任务；重复请求按曲目内容哈希、内容修订及分析器/模型版本幂等复用。相同字节的多个物理来源共享 `music_audio_analyses` 产物。队列满、分析器离线、超时、损坏文件或取消均不会回滚已经成功的上传、目录导入或播放。
+
+应用向配置的 endpoint 发送 `POST application/octet-stream`，使用 `Authorization: Bearer <token>`，并附带以下请求头：
+
+- `X-Music-Online-Music-ID`
+- `X-Music-Online-File-Hash`（SHA-256）
+- `X-Music-Online-Content-Revision`
+- `X-Music-Online-Max-Duration-Ms`
+
+请求体只包含由服务端媒体根解析器选出的受控音频流，不传递宿主机/容器路径，也不接受浏览器提供路径。应用不会跟随 endpoint 重定向，以免 Bearer 密钥泄露。analyzer 必须完整消费声明的 `Content-Length`，并返回不超过 1 MiB 的 JSON：
+
+```json
+{
+  "analyzer_id": "implementation-id",
+  "analyzer_version": "1.0.0",
+  "model_version": "model-v1",
+  "duration_ms": 213000,
+  "features": { "bpm": 128.0, "danceability": 0.82 },
+  "model_labels": { "trance": 0.74, "progressive house": 0.43 }
+}
+```
+
+三个版本字段必须与配置完全一致；模型标签分数必须在 `0..1`，数值必须有限，嵌套深度、键数、数组和字符串都有上限。服务端在流式发送时重新计算 SHA-256；与任务哈希不符时任务标记为 `stale`，结果不会入库。
+
+仓库暂不指定默认模型镜像。准备好实现上述契约的镜像和至少 32 字节密钥后，可使用隔离的可选 profile：
+
+```bash
+docker compose --env-file .env -f compose.yaml -f compose.analyzer.yaml --profile analyzer up -d
+```
+
+推荐把共享密钥写入 `./secrets/analyzer_token`，再额外叠加 `-f compose.analyzer-secrets.yaml`；analyzer 镜像也必须支持 `ANALYZER_TOKEN_FILE`。该 overlay 默认不发布 analyzer 端口，并限制只读根文件系统、capabilities、PID、CPU、内存和临时目录。管理员可通过后台或 `/api/v1/users/admin/analysis/*` 显式回填、查看指标、重试和取消任务。
 
 #### database
 

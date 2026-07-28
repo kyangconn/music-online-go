@@ -68,6 +68,37 @@ library:
     retry_initial_seconds: 30
     retry_max_seconds: 900
 
+classification:
+  # 本地标签规则层；关闭后不再生成或更新预设分类，但不影响音乐库和播放。
+  enabled: true
+  # 仅在 HTTP analyzer 已配置时启用；上传/导入提交成功后只追加后台任务。
+  analyze_on_upload: false
+  # 最高分达到阈值且与第二名差距足够时才自动归类，否则保留待确认/未归类。
+  auto_threshold: 0.65
+  review_margin: 0.12
+  # 预留给真实曲库校准的全局倍率，范围 (0, 2]；规则内原始证据仍单独保存。
+  weights:
+    calm_flow: 1.0
+    kinetic_pulse: 1.0
+    cosmic_drift: 1.0
+    bass_impact: 1.0
+  analyzer:
+    # disabled 保持纯 Go 单体部署；http 通过受鉴权的音频字节流调用可选分析器。
+    mode: "disabled"
+    endpoint: ""
+    token: ""
+    id: ""
+    version: ""
+    model_version: ""
+    timeout_seconds: 300
+    concurrency: 1
+    queue_limit: 1000
+    max_file_size_mb: 2048
+    max_duration_seconds: 1800
+    retry_max_attempts: 3
+    retry_initial_seconds: 30
+    retry_max_seconds: 900
+
 integrations:
   musicbee:
     # 两项需同时设置。启用后 POST /api/v1/track/submit 仅接受此 scoped Bearer token。

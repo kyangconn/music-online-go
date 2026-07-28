@@ -224,6 +224,14 @@ Copy `.env.example` instead of editing Compose YAML for routine deployment chang
 | `VERSION` | `dev` | Image/application version embedded at build time |
 | `VCS_REF` | `unknown` | Source revision embedded at build time |
 | `BUILD_DATE` | `1970-01-01T00:00:00Z` | OCI image/application build timestamp |
+| `ANALYZER_IMAGE` | none | Image implementing the optional HTTP analyzer contract |
+| `ANALYZER_ID` / `ANALYZER_VERSION` / `ANALYZER_MODEL_VERSION` | none | Three explicit cache/contract versions required by the analyzer overlay |
+| `ANALYZER_TOKEN` / `ANALYZER_PORT` | none / `8090` | Shared analyzer secret and Compose-network-only port |
+| `ANALYZER_TIMEOUT_SECONDS` / `ANALYZER_CONCURRENCY` / `ANALYZER_QUEUE_LIMIT` | `300` / `1` / `1000` | Request timeout, workers, and queue backpressure |
+| `ANALYZER_MAX_FILE_SIZE_MB` / `ANALYZER_MAX_DURATION_SECONDS` | `2048` / `1800` | Analyzer input-size and decode-duration ceilings |
+| `ANALYZER_RETRY_MAX_ATTEMPTS` / `ANALYZER_RETRY_INITIAL_SECONDS` / `ANALYZER_RETRY_MAX_SECONDS` | `3` / `30` / `900` | Bounded exponential-backoff settings |
+| `ANALYZER_RESTART_POLICY` / `ANALYZER_STOP_GRACE_PERIOD` | `unless-stopped` / `30s` | Analyzer restart and shutdown policy |
+| `ANALYZER_CPUS` / `ANALYZER_MEMORY_LIMIT` / `ANALYZER_PIDS_LIMIT` / `ANALYZER_TMPFS_SIZE` | `2.0` / `2g` / `256` / `512m` | Analyzer container resource guardrails |
 | `POSTGRES_IMAGE` | `postgres:18-alpine3.23` | PostgreSQL image used by the override |
 | `POSTGRES_USER` | `music_online` | PostgreSQL role and application database user |
 | `POSTGRES_PASSWORD` | required unless file-backed | PostgreSQL role password |
@@ -240,6 +248,7 @@ Copy `.env.example` instead of editing Compose YAML for routine deployment chang
 | `JWT_SECRET_HOST_FILE` | `./secrets/jwt_secret` | Host file consumed by `compose.secrets.yaml` |
 | `MUSICBEE_SUBMIT_TOKEN_HOST_FILE` | `./secrets/musicbee_submit_token` | Host file consumed by `compose.musicbee-secrets.yaml` |
 | `POSTGRES_PASSWORD_HOST_FILE` | `./secrets/postgres_password` | Host file consumed by `compose.postgres-secrets.yaml` |
+| `ANALYZER_TOKEN_HOST_FILE` | `./secrets/analyzer_token` | Host file consumed by `compose.analyzer-secrets.yaml` |
 
 `DOCKER_IMAGE` is a Make variable used by `make docker`; `MUSIC_ONLINE_IMAGE` is the corresponding Compose setting used by `make docker-up*`.
 
@@ -353,6 +362,69 @@ Scans are append-oriented: missing physical sources are marked unavailable witho
 
 Use NFS/SMB for read-only media sources, not for the SQLite database or writable `/data` volume: network locking and cache semantics can undermine SQLite guarantees. Keep SQLite local for the normal single-instance deployment and use PostgreSQL when multiple application instances must share a database.
 
+### Local preset classification rules
+
+| YAML key | Environment variable | Type | Default | Description |
+|---|---|---|---:|---|
+| `classification.enabled` | `CLASSIFICATION_ENABLED` | bool | `true` | Enable offline metadata-rule classification; disabling it does not affect import, browsing, or playback |
+| `classification.analyze_on_upload` | `CLASSIFICATION_ANALYZE_ON_UPLOAD` | bool | `false` | Append audio-analysis work only after an upload/import commits; requires HTTP analyzer mode |
+| `classification.auto_threshold` | `CLASSIFICATION_AUTO_THRESHOLD` | float | `0.65` | Minimum top score for automatic classification, in `(0, 1]` |
+| `classification.review_margin` | `CLASSIFICATION_REVIEW_MARGIN` | float | `0.12` | Send close top-two scores to review, in `[0, 1]` |
+| `classification.weights.calm_flow` | `CLASSIFICATION_WEIGHTS_CALM_FLOW` | float | `1.0` | Calm Flow rule-score multiplier, in `(0, 2]` |
+| `classification.weights.kinetic_pulse` | `CLASSIFICATION_WEIGHTS_KINETIC_PULSE` | float | `1.0` | Kinetic Pulse rule-score multiplier, in `(0, 2]` |
+| `classification.weights.cosmic_drift` | `CLASSIFICATION_WEIGHTS_COSMIC_DRIFT` | float | `1.0` | Cosmic Drift rule-score multiplier, in `(0, 2]` |
+| `classification.weights.bass_impact` | `CLASSIFICATION_WEIGHTS_BASS_IMPACT` | float | `1.0` | Bass Impact rule-score multiplier, in `(0, 2]` |
+| `classification.analyzer.mode` | `CLASSIFICATION_ANALYZER_MODE` | string | `"disabled"` | Keep the pure-Go standalone deployment, or use `http` for an optional byte-stream analyzer |
+| `classification.analyzer.endpoint` | `CLASSIFICATION_ANALYZER_ENDPOINT` | string | `""` | Absolute HTTP(S) analyzer `POST` endpoint, without credentials or a fragment |
+| `classification.analyzer.token` | `CLASSIFICATION_ANALYZER_TOKEN` / `_FILE` | secret | `""` | Shared Bearer secret, at least 32 bytes in HTTP mode; file input is preferred |
+| `classification.analyzer.id` | `CLASSIFICATION_ANALYZER_ID` | string | `""` | Stable implementation ID, included in the cache key and required in responses |
+| `classification.analyzer.version` | `CLASSIFICATION_ANALYZER_VERSION` | string | `""` | Analyzer implementation version included in the cache key |
+| `classification.analyzer.model_version` | `CLASSIFICATION_ANALYZER_MODEL_VERSION` | string | `""` | Model/rule-bundle version included in the cache key |
+| `classification.analyzer.timeout_seconds` | `CLASSIFICATION_ANALYZER_TIMEOUT_SECONDS` | int | `300` | Hard timeout per HTTP analysis, from `1` to `3600` seconds |
+| `classification.analyzer.concurrency` | `CLASSIFICATION_ANALYZER_CONCURRENCY` | int | `1` | Worker count, from `1` to `8`; SQLite still coordinates writes through its single connection |
+| `classification.analyzer.queue_limit` | `CLASSIFICATION_ANALYZER_QUEUE_LIMIT` | int | `1000` | Backpressure limit for `pending + running` jobs |
+| `classification.analyzer.max_file_size_mb` | `CLASSIFICATION_ANALYZER_MAX_FILE_SIZE_MB` | int | `2048` | Largest source file the server may stream to the analyzer |
+| `classification.analyzer.max_duration_seconds` | `CLASSIFICATION_ANALYZER_MAX_DURATION_SECONDS` | int | `1800` | Requested decode ceiling and maximum accepted response duration |
+| `classification.analyzer.retry_max_attempts` | `CLASSIFICATION_ANALYZER_RETRY_MAX_ATTEMPTS` | int | `3` | Maximum attempts for network, timeout, and temporary server failures |
+| `classification.analyzer.retry_initial_seconds` | `CLASSIFICATION_ANALYZER_RETRY_INITIAL_SECONDS` | int | `30` | Initial bounded exponential-backoff delay |
+| `classification.analyzer.retry_max_seconds` | `CLASSIFICATION_ANALYZER_RETRY_MAX_SECONDS` | int | `900` | Maximum delay before one retry |
+
+The local rule layer stores four independent scores, a rule version, and stable evidence keys, and it may abstain. Administrator overrides are stored separately from automatic output, so reclassification never erases a manual choice. Tuning weights do not change the stable preset IDs used by the API and database.
+
+### Optional HTTP analyzer and durable jobs
+
+The base image does not install FFmpeg, Python, or a model runtime. When an analyzer is enabled, job state stays in the existing SQLite/PostgreSQL database: one worker is the default, claims use leases and a fencing generation, and startup recovers expired `running` work. Requests are idempotent across a track content hash, content revision, and analyzer/model versions; byte-identical physical sources reuse a `music_audio_analyses` artifact. A full queue, offline analyzer, timeout, damaged file, or cancellation never rolls back an already successful upload, directory import, or playback operation.
+
+The application sends `POST application/octet-stream` to the configured endpoint with `Authorization: Bearer <token>` and these headers:
+
+- `X-Music-Online-Music-ID`
+- `X-Music-Online-File-Hash` (SHA-256)
+- `X-Music-Online-Content-Revision`
+- `X-Music-Online-Max-Duration-Ms`
+
+The body is a controlled stream selected by the server media-root resolver. No host/container path is sent or accepted from a browser. Redirects are not followed, preventing Bearer-secret forwarding. The analyzer must consume the declared `Content-Length` and return at most 1 MiB of JSON:
+
+```json
+{
+  "analyzer_id": "implementation-id",
+  "analyzer_version": "1.0.0",
+  "model_version": "model-v1",
+  "duration_ms": 213000,
+  "features": { "bpm": 128.0, "danceability": 0.82 },
+  "model_labels": { "trance": 0.74, "progressive house": 0.43 }
+}
+```
+
+All three version values must exactly match configuration. Model-label scores must be in `0..1`, numbers must be finite, and object depth, key count, arrays, and strings are bounded. The server recomputes SHA-256 while streaming; a mismatch marks the job `stale` and discards the result.
+
+No default model image is selected yet. Once an image implements this contract and a secret of at least 32 bytes is available, start the isolated optional profile with:
+
+```bash
+docker compose --env-file .env -f compose.yaml -f compose.analyzer.yaml --profile analyzer up -d
+```
+
+Prefer writing the shared secret to `./secrets/analyzer_token` and additionally layering `-f compose.analyzer-secrets.yaml`; the analyzer image must then support `ANALYZER_TOKEN_FILE`. The overlay does not publish the analyzer port and applies a read-only root filesystem, dropped capabilities, PID/CPU/memory bounds, and bounded temporary storage. Administrators can explicitly backfill, inspect metrics, retry, and cancel jobs through the UI or `/api/v1/users/admin/analysis/*`.
+
 ### Database
 
 | YAML key | Environment variable | Type | Default | Description |
@@ -457,6 +529,7 @@ Logs always go to stdout. If `server.log_file`, `MO_LOG_FILE`, or `--log-file` i
 | `METRICS_TOKEN_FILE` | Backend | Metrics bearer-token file; mutually exclusive with `METRICS_TOKEN` |
 | `ADMIN_BOOTSTRAP_PASSWORD_FILE` | Backend | Bootstrap-admin password file; mutually exclusive with `ADMIN_BOOTSTRAP_PASSWORD` |
 | `INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN_FILE` | Backend | MusicBee submission-token file; mutually exclusive with `INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN` |
+| `CLASSIFICATION_ANALYZER_TOKEN_FILE` | Backend | HTTP analyzer bearer-secret file; mutually exclusive with `CLASSIFICATION_ANALYZER_TOKEN` |
 | `MO_LOG_FILE` | Backend | File-log path; overrides `SERVER_LOG_FILE` and `server.log_file` |
 | `MO_LOG_MAX_SIZE` | Backend | Legacy positive-integer override for `logging.max_size_mb` |
 | `MO_LOG_MAX_BACKUPS` | Backend | Legacy positive-integer override for `logging.max_backups` |
