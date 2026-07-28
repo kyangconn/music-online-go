@@ -1,6 +1,6 @@
 # Music Online
 
-Full-stack music management platform — Go backend + Vue 3 frontend, compiled into a single static binary.
+A small self-hosted music platform for individuals, families, and small teams. It manages, searches, and plays a local library offline, preserves common MusicBrainz Picard tags, and compiles its Go backend and Vue 3 frontend into one static binary.
 
 ## Technology Stack
 
@@ -20,6 +20,14 @@ Full-stack music management platform — Go backend + Vue 3 frontend, compiled i
 - Pinia state management + Vue Router
 - i18n (Chinese / English)
 - Vite build tool
+
+## Core capabilities
+
+- Browser uploads and administrator-managed server scans share one Picard/MusicBrainz-compatible metadata model.
+- Artist and album views prefer stable MusicBrainz IDs and fall back to Unicode-normalized text. Multi-disc releases retain disc/track order and can be played or queued as a collection.
+- Library search supports artist, album, album artist, genre, release year, type, and liked-state filters, with filters and pagination preserved in the URL.
+- Signed-in users can create private playlists and add, remove, or reorder tracks. Deleting music also removes stale playlist references.
+- Public and authenticated-only instance modes apply the same access policy to tracks, aggregates, covers, and audio.
 
 ## Project Structure
 
