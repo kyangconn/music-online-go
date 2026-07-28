@@ -61,6 +61,7 @@ const isOwnerOfReadOnlySource = computed(
 const sequenceLabel = (number: number, total: number) => (total > 0 ? `${number || "–"} / ${total}` : String(number));
 const musicBrainzURL = (entity: "artist" | "recording" | "release" | "release-group" | "track", id: string) =>
   `https://musicbrainz.org/${entity}/${encodeURIComponent(id)}`;
+const artistKeyAt = (index: number) => music.value?.artist_keys[index] || "";
 
 const fetchDetail = async () => {
   const requestedId = musicId.value;
@@ -137,17 +138,40 @@ watch(musicId, fetchDetail, { immediate: true });
           </div>
           <div class="info-section">
             <h1 class="music-title">{{ music?.title }}</h1>
-            <p class="music-artist">{{ music?.artist }}</p>
+			<p class="music-artist">
+				<router-link
+					v-if="music?.artist_keys[0]"
+					:to="{ name: 'ArtistDetail', params: { key: music.artist_keys[0] } }"
+				>
+					{{ music.artist }}
+				</router-link>
+				<span v-else>{{ music?.artist }}</span>
+			</p>
             <el-descriptions :column="1" border>
               <el-descriptions-item :label="$t('common.type')">
                 {{ music?.type === "album" ? $t("common.album") : $t("common.single") }}
               </el-descriptions-item>
-              <el-descriptions-item v-if="music?.album" :label="$t('common.album')">{{ music.album }}</el-descriptions-item>
+			  <el-descriptions-item v-if="music?.album" :label="$t('common.album')">
+				<router-link v-if="music.album_key" :to="{ name: 'AlbumDetail', params: { key: music.album_key } }">
+				  {{ music.album }}
+				</router-link>
+				<span v-else>{{ music.album }}</span>
+			  </el-descriptions-item>
               <el-descriptions-item v-if="structuredArtists.length" :label="$t('music.artists')">
-                <el-tag v-for="artist in structuredArtists" :key="artist" class="metadata-tag" effect="plain">{{ artist }}</el-tag>
+				<el-tag v-for="(artist, index) in structuredArtists" :key="artist" class="metadata-tag" effect="plain">
+				  <router-link
+					v-if="artistKeyAt(index)"
+					:to="{ name: 'ArtistDetail', params: { key: artistKeyAt(index) } }"
+				  >{{ artist }}</router-link>
+				  <span v-else>{{ artist }}</span>
+				</el-tag>
               </el-descriptions-item>
               <el-descriptions-item v-if="music?.album_artist" :label="$t('music.album_artist')">
-                {{ music.album_artist }}
+				<router-link
+				  v-if="music.album_artist_key"
+				  :to="{ name: 'ArtistDetail', params: { key: music.album_artist_key } }"
+				>{{ music.album_artist }}</router-link>
+				<span v-else>{{ music.album_artist }}</span>
               </el-descriptions-item>
               <el-descriptions-item v-if="structuredAlbumArtists.length" :label="$t('music.album_artists')">
                 <el-tag v-for="artist in structuredAlbumArtists" :key="artist" class="metadata-tag" effect="plain">{{ artist }}</el-tag>
@@ -166,7 +190,13 @@ watch(musicId, fetchDetail, { immediate: true });
                 {{ sequenceLabel(music.disc_number, music.disc_total) }}
               </el-descriptions-item>
               <el-descriptions-item v-if="music?.genres?.length" :label="$t('music.genre')">
-                <el-tag v-for="genre in music.genres" :key="genre" class="metadata-tag" effect="plain">{{ genre }}</el-tag>
+				<router-link
+				  v-for="genre in music.genres"
+				  :key="genre"
+				  :to="{ name: 'Home', query: { genre } }"
+				>
+				  <el-tag class="metadata-tag" effect="plain">{{ genre }}</el-tag>
+				</router-link>
               </el-descriptions-item>
               <el-descriptions-item v-else-if="music?.genre" :label="$t('music.genre')">{{ music.genre }}</el-descriptions-item>
               <el-descriptions-item v-if="music?.isrcs?.length" :label="$t('music.isrc')">

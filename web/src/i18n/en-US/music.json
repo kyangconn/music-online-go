@@ -1,5 +1,7 @@
 {
   "edit_title": "Edit Music",
+  "title": "Title",
+  "cover": "Music cover",
   "edit_subtitle": "Update metadata, or replace the audio and cover files",
   "current_cover": "Current cover",
   "replace_cover": "Replace Cover",
@@ -19,11 +21,14 @@
   "title_artist_required": "Title and artist are required",
   "load_detail_failed": "Failed to load music detail",
   "filter_artist": "Filter by artist",
+  "filter_album": "Filter by album",
+  "filter_album_artist": "Filter by album artist",
+  "filter_genre": "Filter by genre",
   "filter_year": "Filter by year",
   "filter_type": "Filter by type",
   "liked_only": "Liked only",
   "reset_filters": "Clear filters",
-  "filter_options_failed": "Filter options failed to load; you can still enter an artist",
+  "filter_options_failed": "Filter options failed to load; you can still enter filter values",
   "year": "Year",
   "track_number": "Track Number",
   "genre": "Genre",
@@ -35,5 +40,9 @@
   "disc_number": "Disc Number",
   "comment": "Tag Comment",
   "isrc": "ISRC",
-  "musicbrainz_ids": "MusicBrainz IDs"
+  "musicbrainz_ids": "MusicBrainz IDs",
+  "unknown_title": "Unknown title",
+  "unknown_artist": "Unknown artist",
+  "unknown_album": "Unknown album",
+  "no_cover": "No cover"
 }

@@ -13,6 +13,7 @@ const makeTrack = (id: number, overrides: Partial<Music> = {}): Music => ({
   album_artist: "",
   album_artists: [],
   artist: `Artist ${id}`,
+	artist_keys: [`text_${String(id).padStart(64, "0")}`],
   artists: [`Artist ${id}`],
   comment: "",
   created_at: "2026-01-01T00:00:00Z",
@@ -168,6 +169,43 @@ describe("usePlayerStore", () => {
     expect(audio.src).toBe(second.path);
     expect(audio.play).toHaveBeenCalledTimes(2);
   });
+
+	it("plays a normalized collection from a requested index", async () => {
+		const store = usePlayerStore();
+		const audio = makeAudio();
+		store.attachAudio(audio);
+
+		await expect(store.playCollection([makeTrack(1), makeTrack(2), makeTrack(2), makeTrack(3)], 1)).resolves.toBe(true);
+
+		expect(store.queue.map((track) => track.id)).toEqual([1, 2, 3]);
+		expect(store.currentTrack?.id).toBe(2);
+		expect(audio.play).toHaveBeenCalledOnce();
+	});
+
+	it("appends only playable tracks that are not already queued", async () => {
+		const store = usePlayerStore();
+		store.attachAudio(makeAudio());
+		await store.playCollection([makeTrack(1)]);
+
+		const added = store.enqueueTracks([makeTrack(1), makeTrack(2), makeTrack(2), makeTrack(3, { path: "" })]);
+
+		expect(added).toBe(1);
+		expect(store.queue.map((track) => track.id)).toEqual([1, 2]);
+	});
+
+	it("can start playback after enqueueing into an empty queue", async () => {
+		const store = usePlayerStore();
+		const audio = makeAudio();
+		store.attachAudio(audio);
+		const track = makeTrack(1);
+
+		expect(store.enqueueTracks([track])).toBe(1);
+		await expect(store.play()).resolves.toBe(true);
+
+		expect(audio.src).toBe(track.path);
+		expect(audio.load).toHaveBeenCalledOnce();
+		expect(audio.play).toHaveBeenCalledOnce();
+	});
 
   it("deduplicates rapid playback errors but reports later failures", () => {
     vi.useFakeTimers();

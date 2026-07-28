@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Download, Headset, Moon, Search, Sunny } from "@element-plus/icons-vue";
+import { Collection, Download, Headset, List, Moon, Search, Sunny, UserFilled } from "@element-plus/icons-vue";
 import type { InputInstance } from "element-plus";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
@@ -53,6 +53,18 @@ useKeyboardShortcuts({
           <el-icon :size="22"><Headset /></el-icon>
           <span class="logo-label">{{ $t("common.app_name") }}</span>
         </button>
+
+        <nav v-if="!hideSearch" class="library-nav" :aria-label="$t('library.navigation')">
+          <router-link :to="{ name: 'Artists' }" :aria-label="$t('library.artists')">
+            <el-icon><UserFilled /></el-icon><span>{{ $t("library.artists") }}</span>
+          </router-link>
+          <router-link :to="{ name: 'Albums' }" :aria-label="$t('library.albums')">
+            <el-icon><Collection /></el-icon><span>{{ $t("library.albums") }}</span>
+          </router-link>
+          <router-link v-if="userStore.isLoggedIn" :to="{ name: 'Playlists' }" :aria-label="$t('playlist.title')">
+            <el-icon><List /></el-icon><span>{{ $t("playlist.title") }}</span>
+          </router-link>
+        </nav>
 
         <div class="search-bar" v-if="!hideSearch">
           <el-input
@@ -174,6 +186,29 @@ useKeyboardShortcuts({
   }
 }
 
+.library-nav {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  margin-left: $spacing-lg;
+
+  a {
+    display: inline-flex;
+    align-items: center;
+    gap: $spacing-xs;
+    padding: $spacing-xs $spacing-sm;
+    border-radius: $radius-md;
+    color: rgba(255, 255, 255, 0.82);
+    text-decoration: none;
+
+    &:hover,
+    &.router-link-active {
+      background: rgba(255, 255, 255, 0.14);
+      color: #fff;
+    }
+  }
+}
+
 .user-actions {
   display: flex;
   align-items: center;
@@ -205,6 +240,14 @@ useKeyboardShortcuts({
   .search-bar {
     margin: 0 1rem;
     max-width: 300px;
+  }
+
+  .library-nav {
+    margin-left: $spacing-sm;
+
+    span {
+      display: none;
+    }
   }
 }
 

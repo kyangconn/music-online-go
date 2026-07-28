@@ -1,5 +1,7 @@
 {
   "edit_title": "编辑音乐",
+  "title": "标题",
+  "cover": "音乐封面",
   "edit_subtitle": "修改基础信息，或替换音频和封面文件",
   "current_cover": "当前封面",
   "replace_cover": "替换封面",
@@ -19,11 +21,14 @@
   "title_artist_required": "标题和作者不能为空",
   "load_detail_failed": "加载音乐详情失败",
   "filter_artist": "按作者筛选",
+  "filter_album": "按专辑筛选",
+  "filter_album_artist": "按专辑艺术家筛选",
+  "filter_genre": "按流派筛选",
   "filter_year": "按年份筛选",
   "filter_type": "按类型筛选",
   "liked_only": "只看喜欢",
   "reset_filters": "清空筛选",
-  "filter_options_failed": "筛选选项加载失败，仍可直接输入作者",
+  "filter_options_failed": "筛选选项加载失败，仍可直接输入筛选值",
   "year": "年份",
   "track_number": "曲目编号",
   "genre": "流派",
@@ -35,5 +40,9 @@
   "disc_number": "碟片编号",
   "comment": "标签备注",
   "isrc": "ISRC",
-  "musicbrainz_ids": "MusicBrainz 标识"
+  "musicbrainz_ids": "MusicBrainz 标识",
+  "unknown_title": "未知标题",
+  "unknown_artist": "未知艺术家",
+  "unknown_album": "未知专辑",
+  "no_cover": "暂无封面"
 }

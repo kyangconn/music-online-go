@@ -19,25 +19,45 @@ const playerStore = usePlayerStore();
 const userStore = useUserStore();
 const searchQuery = ref("");
 const artistFilter = ref("");
+const albumFilter = ref("");
+const albumArtistFilter = ref("");
+const genreFilter = ref("");
 const yearFilter = ref<number>();
 const typeFilter = ref<MusicType>();
 const likedFilter = ref(false);
-const filterOptions = ref<MusicFilterOptions>({ artists: [], years: [], types: [] });
+const filterOptions = ref<MusicFilterOptions>({
+  artists: [],
+  albums: [],
+  album_artists: [],
+  genres: [],
+  years: [],
+  types: [],
+});
 
 const queryString = (value: unknown) => (typeof value === "string" ? value : "");
 const activeFilterCount = computed(
-  () => Number(Boolean(artistFilter.value)) + Number(Boolean(yearFilter.value)) + Number(Boolean(typeFilter.value)) + Number(likedFilter.value),
+	() =>
+		Number(Boolean(artistFilter.value)) +
+		Number(Boolean(albumFilter.value)) +
+		Number(Boolean(albumArtistFilter.value)) +
+		Number(Boolean(genreFilter.value)) +
+		Number(Boolean(yearFilter.value)) +
+		Number(Boolean(typeFilter.value)) +
+		Number(likedFilter.value),
 );
 
 const requestParams = computed(() => ({
   q: searchQuery.value || undefined,
   artist: artistFilter.value || undefined,
+	album: albumFilter.value || undefined,
+	album_artist: albumArtistFilter.value || undefined,
+	genre: genreFilter.value || undefined,
   year: yearFilter.value,
   type: typeFilter.value,
   liked: likedFilter.value || undefined,
 }));
 
-const { items: musicList, loading, total, currentPage, pageSize, resetAndFetch, goToPage } =
+const { items: musicList, loading, total, currentPage, pageSize, fetch: fetchMusics } =
   usePaginatedFetch<Music>("/musics", {
     initialPageSize: 12,
     errorMessageKey: "common.load_failed",
@@ -49,22 +69,31 @@ watch(
   (query) => {
     searchQuery.value = queryString(query.q);
     artistFilter.value = queryString(query.artist);
+		albumFilter.value = queryString(query.album);
+		albumArtistFilter.value = queryString(query.album_artist);
+		genreFilter.value = queryString(query.genre);
     const parsedYear = Number.parseInt(queryString(query.year), 10);
     yearFilter.value = Number.isFinite(parsedYear) && parsedYear > 0 ? parsedYear : undefined;
     const routeType = queryString(query.type);
     typeFilter.value = routeType === "single" || routeType === "album" ? routeType : undefined;
     likedFilter.value = userStore.isLoggedIn && queryString(query.liked) === "true";
-    resetAndFetch();
+		const parsedPage = Number.parseInt(queryString(query.page), 10);
+		currentPage.value = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+		void fetchMusics();
   },
   { immediate: true },
 );
 
-const buildRouteQuery = () => ({
+const buildRouteQuery = (page?: number) => ({
   ...(searchQuery.value ? { q: searchQuery.value } : {}),
   ...(artistFilter.value ? { artist: artistFilter.value } : {}),
+	...(albumFilter.value ? { album: albumFilter.value } : {}),
+	...(albumArtistFilter.value ? { album_artist: albumArtistFilter.value } : {}),
+	...(genreFilter.value ? { genre: genreFilter.value } : {}),
   ...(yearFilter.value ? { year: String(yearFilter.value) } : {}),
   ...(typeFilter.value ? { type: typeFilter.value } : {}),
   ...(likedFilter.value ? { liked: "true" } : {}),
+	...(page && page > 1 ? { page: String(page) } : {}),
 });
 
 const applyFilters = () => {
@@ -73,10 +102,17 @@ const applyFilters = () => {
 
 const resetFilters = () => {
   artistFilter.value = "";
+	albumFilter.value = "";
+	albumArtistFilter.value = "";
+	genreFilter.value = "";
   yearFilter.value = undefined;
   typeFilter.value = undefined;
   likedFilter.value = false;
   applyFilters();
+};
+
+const goToPage = (page: number) => {
+	void router.push({ name: "Home", query: buildRouteQuery(page) });
 };
 
 const clearSearch = () => {
@@ -131,6 +167,42 @@ onMounted(() => void loadFilterOptions());
         >
           <el-option v-for="artist in filterOptions.artists" :key="artist" :label="artist" :value="artist" />
         </el-select>
+		<el-select
+			v-model="albumFilter"
+			class="filter-control artist-filter"
+			:placeholder="$t('music.filter_album')"
+			clearable
+			filterable
+			allow-create
+			default-first-option
+			@change="applyFilters"
+		>
+			<el-option v-for="album in filterOptions.albums" :key="album" :label="album" :value="album" />
+		</el-select>
+		<el-select
+			v-model="albumArtistFilter"
+			class="filter-control artist-filter"
+			:placeholder="$t('music.filter_album_artist')"
+			clearable
+			filterable
+			allow-create
+			default-first-option
+			@change="applyFilters"
+		>
+			<el-option v-for="artist in filterOptions.album_artists" :key="artist" :label="artist" :value="artist" />
+		</el-select>
+		<el-select
+			v-model="genreFilter"
+			class="filter-control"
+			:placeholder="$t('music.filter_genre')"
+			clearable
+			filterable
+			allow-create
+			default-first-option
+			@change="applyFilters"
+		>
+			<el-option v-for="genre in filterOptions.genres" :key="genre" :label="genre" :value="genre" />
+		</el-select>
         <el-select
           v-model="yearFilter"
           class="filter-control"
@@ -207,7 +279,21 @@ onMounted(() => void loadFilterOptions());
             <h3 class="music-title" :title="music.title">
               <router-link :to="`/music/${music.id}`">{{ music.title }}</router-link>
             </h3>
-            <p class="music-artist">{{ music.artist }}</p>
+			<p class="music-artist">
+				<router-link
+					v-if="music.artist_keys[0]"
+					:to="{ name: 'ArtistDetail', params: { key: music.artist_keys[0] } }"
+				>
+					{{ music.artist || $t("music.unknown_artist") }}
+				</router-link>
+				<span v-else>{{ music.artist || $t("music.unknown_artist") }}</span>
+			</p>
+			<p class="music-album">
+				<router-link v-if="music.album_key" :to="{ name: 'AlbumDetail', params: { key: music.album_key } }">
+					{{ music.album || $t("music.unknown_album") }}
+				</router-link>
+				<span v-else>{{ $t("music.unknown_album") }}</span>
+			</p>
             <div class="music-meta">
               <el-icon class="like-icon"><StarFilled /></el-icon>
               <span class="like-count">{{ music.like_count ?? 0 }}</span>
@@ -341,6 +427,22 @@ onMounted(() => void loadFilterOptions());
   margin: 0;
   font-size: $fs-sm;
   color: var(--text-light);
+}
+
+.music-artist a,
+.music-album a {
+	color: inherit;
+	text-decoration: none;
+
+	&:hover {
+		color: var(--accent-color);
+	}
+}
+
+.music-album {
+	margin: 3px 0 0;
+	color: var(--text-light);
+	font-size: $fs-xs;
 }
 
 .music-meta {

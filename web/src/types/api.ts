@@ -50,6 +50,119 @@ export interface UpdateUserProfileData {
 // ---- 音乐相关 ----
 
 export type MusicType = "single" | "album";
+export type PresetID = "calm_flow" | "kinetic_pulse" | "cosmic_drift" | "bass_impact";
+export type PresetStatus = "classified" | "needs_review" | "unclassified";
+export type AnalysisStatus = "pending" | "running" | "succeeded" | "failed" | "stale" | "cancelled";
+export type AnalysisJobKind = "metadata_rules" | "audio_analysis";
+
+export interface PresetEvidence {
+  source: "genre" | "audio_feature" | "model_tag" | "external_tag";
+  key: string;
+  weight: number;
+}
+
+export interface PresetScore {
+  preset_id: PresetID;
+  score: number;
+  evidence: PresetEvidence[];
+}
+
+export interface PresetClassification {
+  primary_preset: PresetID | "";
+  automatic_preset: PresetID | "";
+  manual_preset?: PresetID;
+  effective_preset: PresetID | "";
+  effective_source: "automatic" | "manual" | "none";
+  confidence: number;
+  status: PresetStatus;
+  rule_version: string;
+  metadata_revision: number;
+  evidence_summary: string[];
+  scores: PresetScore[];
+  evaluated_at: string;
+  manual_updated_at?: string;
+}
+
+export interface MusicAnalysisSummary {
+  job_id: number;
+  status: AnalysisStatus;
+  analyzer_id: string;
+  analyzer_version: string;
+  model_version: string;
+  attempt: number;
+  error_code: string;
+  completed_at?: string;
+}
+
+export interface MusicAudioAnalysis {
+  id: number;
+  file_hash: string;
+  analyzer_id: string;
+  analyzer_version: string;
+  model_version: string;
+  status: AnalysisStatus;
+  features: Record<string, unknown>;
+  model_labels: Record<string, number>;
+  duration_ms: number;
+  processing_ms: number;
+  error_code: string;
+  error_summary: string;
+  completed_at?: string;
+}
+
+export interface MusicAnalysisJob {
+  id: number;
+  created_at: string;
+  updated_at: string;
+  kind: AnalysisJobKind;
+  music_id: number;
+  media_file_id?: number;
+  analysis_id?: number;
+  requested_by: number;
+  file_hash: string;
+  observed_file_hash: string;
+  content_revision: number;
+  metadata_revision: number;
+  rule_version: string;
+  analyzer_id: string;
+  analyzer_version: string;
+  model_version: string;
+  status: AnalysisStatus;
+  attempt: number;
+  max_attempts: number;
+  available_at?: string;
+  cancel_requested: boolean;
+  started_at?: string;
+  heartbeat_at?: string;
+  finished_at?: string;
+  error_code: string;
+  error_summary: string;
+  processing_ms: number;
+  analysis?: MusicAudioAnalysis;
+}
+
+export interface AnalysisScheduleResponse {
+  metadata_job?: MusicAnalysisJob;
+  audio_job?: MusicAnalysisJob;
+  reused: number;
+  skipped: number;
+}
+
+export interface AnalysisBackfillResponse {
+  visited: number;
+  rules_queued: number;
+  audio_queued: number;
+  reused: number;
+  skipped: number;
+  queue_rejected: number;
+}
+
+export interface AnalysisQueueMetrics {
+  statuses: Partial<Record<AnalysisStatus, number>>;
+  queue_length: number;
+  average_processing_ms: number;
+  failure_rate: number;
+}
 
 export interface Music {
   id: number;
@@ -79,6 +192,11 @@ export interface Music {
   musicbrainz_artist_ids: string[];
   musicbrainz_album_artist_ids: string[];
   metadata_revision: number;
+  artist_keys: string[];
+  album_key?: string;
+  album_artist_key?: string;
+  preset_classification?: PresetClassification;
+  audio_analysis?: MusicAnalysisSummary;
   album_id: number | null;
   intro: string;
   img: string;
@@ -163,8 +281,56 @@ export interface UpdateMusicRequest {
 
 export interface MusicFilterOptions {
   artists: string[];
+  albums: string[];
+  album_artists: string[];
+  genres: string[];
   years: number[];
   types: MusicType[];
+}
+
+export interface ArtistSummary {
+  key: string;
+  name: string;
+  musicbrainz_artist_id: string;
+  track_count: number;
+  album_count: number;
+  cover_url?: string;
+  cover_url_expires_at?: string;
+}
+
+export interface AlbumSummary {
+  key: string;
+  title: string;
+  album_artist: string;
+  album_artist_key?: string;
+  musicbrainz_release_id: string;
+  musicbrainz_release_group_id: string;
+  year: number;
+  track_count: number;
+  total_duration: number;
+  disc_count: number;
+  cover_url?: string;
+  cover_url_expires_at?: string;
+}
+
+export interface Playlist {
+  id: number;
+  created_at: string;
+  updated_at: string;
+  user_id: number;
+  name: string;
+  description: string;
+  revision: number;
+  item_count: number;
+}
+
+export interface PlaylistItem {
+  position: number;
+  music: Music;
+}
+
+export interface PlaylistDetail extends Playlist {
+  items: PlaylistItem[];
 }
 
 export interface MusicMetadataData {
@@ -290,6 +456,9 @@ export interface InstanceCapabilities {
   registration_mode: "open" | "admin";
   registration_open: boolean;
   musicbee_submit_enabled: boolean;
+  classification_enabled: boolean;
+  audio_analyzer_enabled: boolean;
+  analyze_on_upload: boolean;
 }
 
 export interface AdminCreateUserRequest {

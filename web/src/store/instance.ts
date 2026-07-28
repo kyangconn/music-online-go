@@ -8,6 +8,9 @@ const defaultCapabilities = (): InstanceCapabilities => ({
   registration_mode: "open",
   registration_open: true,
   musicbee_submit_enabled: false,
+  classification_enabled: true,
+  audio_analyzer_enabled: false,
+  analyze_on_upload: false,
 });
 
 export const useInstanceStore = defineStore("instance", () => {

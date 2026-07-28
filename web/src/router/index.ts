@@ -44,6 +44,42 @@ const routes = [
         component: () => import("@/views/user/Profile.vue"),
         meta: { requiresAuth: true },
       },
+	  {
+		path: "/artists",
+		name: "Artists",
+		component: () => import("@/views/library/Artists.vue"),
+		meta: { libraryRead: true },
+	  },
+	  {
+		path: "/artists/:key",
+		name: "ArtistDetail",
+		component: () => import("@/views/library/ArtistDetail.vue"),
+		meta: { libraryRead: true },
+	  },
+	  {
+		path: "/albums",
+		name: "Albums",
+		component: () => import("@/views/library/Albums.vue"),
+		meta: { libraryRead: true },
+	  },
+	  {
+		path: "/albums/:key",
+		name: "AlbumDetail",
+		component: () => import("@/views/library/AlbumDetail.vue"),
+		meta: { libraryRead: true },
+	  },
+	  {
+		path: "/playlists",
+		name: "Playlists",
+		component: () => import("@/views/playlist/Playlists.vue"),
+		meta: { requiresAuth: true },
+	  },
+	  {
+		path: "/playlists/:id",
+		name: "PlaylistDetail",
+		component: () => import("@/views/playlist/PlaylistDetail.vue"),
+		meta: { requiresAuth: true },
+	  },
       {
         path: "/settings",
         name: "Settings",

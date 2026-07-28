@@ -186,7 +186,7 @@ export const usePlayerStore = defineStore("player", () => {
     const track = await refreshTrackAtIndex(currentIndex.value);
     if (!audioElement || !track) return false;
 
-    if (track.path && track.path !== previousSource) {
+    if (track.path && (track.path !== previousSource || audioElement.getAttribute("src") !== track.path)) {
       pendingSeek = currentTime.value;
       audioElement.src = track.path;
       audioElement.load();
@@ -243,6 +243,24 @@ export const usePlayerStore = defineStore("player", () => {
 
     queue.value.push(track);
     return activateIndex(queue.value.length - 1);
+  };
+
+  const playCollection = async (tracks: Music[], startAt = 0) => {
+    const nextQueue = normalizeQueue(tracks);
+    if (nextQueue.length === 0) return false;
+    queue.value = nextQueue;
+    const safeIndex = clamp(Math.trunc(startAt), 0, nextQueue.length - 1);
+    return activateIndex(safeIndex);
+  };
+
+  const enqueueTracks = (tracks: Music[]) => {
+    const existingIDs = new Set(queue.value.map((track) => track.id));
+    const additions = normalizeQueue(tracks).filter((track) => !existingIDs.has(track.id));
+    if (additions.length === 0) return 0;
+    queue.value.push(...additions);
+    if (currentIndex.value < 0) currentIndex.value = 0;
+    persistState();
+    return additions.length;
   };
 
   const togglePlayback = async () => {
@@ -397,6 +415,8 @@ export const usePlayerStore = defineStore("player", () => {
     play,
     pause,
     playTrack,
+    playCollection,
+    enqueueTracks,
     togglePlayback,
     toggleTrack,
     selectQueueIndex,
