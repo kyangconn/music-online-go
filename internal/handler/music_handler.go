@@ -493,10 +493,27 @@ func (h *MusicHandler) Cover(c *gin.Context) {
 func parseMusicSearchParams(c *gin.Context) (*domain.MusicSearchParams, error) {
 	page, pageSize := parsePagination(c, 10)
 	params := &domain.MusicSearchParams{
-		Query:    c.Query("q"),
-		Artist:   c.Query("artist"),
-		Page:     page,
-		PageSize: pageSize,
+		Query:        c.Query("q"),
+		Artist:       c.Query("artist"),
+		ArtistKey:    c.Query("artist_key"),
+		Album:        c.Query("album"),
+		AlbumKey:     c.Query("album_key"),
+		AlbumArtist:  c.Query("album_artist"),
+		Genre:        c.Query("genre"),
+		Preset:       c.Query("preset"),
+		PresetStatus: c.Query("preset_status"),
+		Page:         page,
+		PageSize:     pageSize,
+	}
+	if (params.ArtistKey != "" && !domain.IsBrowseGroupKey(params.ArtistKey)) ||
+		(params.AlbumKey != "" && !domain.IsBrowseGroupKey(params.AlbumKey)) {
+		return nil, fmt.Errorf("invalid browse key filter")
+	}
+	if params.Preset != "" && !domain.IsPresetID(params.Preset) {
+		return nil, fmt.Errorf("invalid preset filter")
+	}
+	if params.PresetStatus != "" && !domain.IsPresetStatus(params.PresetStatus) {
+		return nil, fmt.Errorf("invalid preset status filter")
 	}
 
 	if rawYear := c.Query("year"); rawYear != "" {

@@ -62,6 +62,8 @@ func TestInstanceCapabilitiesAndClosedRegistration(t *testing.T) {
 	handlers := &Handlers{
 		User:     &handler.UserHandler{},
 		Music:    &handler.MusicHandler{},
+		Browse:   &handler.BrowseHandler{},
+		Playlist: &handler.PlaylistHandler{},
 		MusicTag: &handler.MusicTagHandler{},
 		Admin:    &handler.AdminHandler{},
 	}
@@ -70,7 +72,9 @@ func TestInstanceCapabilitiesAndClosedRegistration(t *testing.T) {
 		RegistrationMode:   config.RegistrationAdmin,
 		MediaURLTTLMinutes: 60,
 	}
-	registerAPIRoutes(router, handlers, nil, config.RateLimitConfig{}, access, config.IntegrationsConfig{}, "test-jwt-secret")
+	registerAPIRoutes(router, handlers, nil, config.RateLimitConfig{}, access, config.ClassificationConfig{
+		Enabled: true, AnalyzeOnUpload: true, Analyzer: config.AnalyzerConfig{Mode: "http"},
+	}, config.IntegrationsConfig{}, "test-jwt-secret")
 
 	capabilities := httptest.NewRecorder()
 	router.ServeHTTP(capabilities, httptest.NewRequest(http.MethodGet, "/api/v1/instance", nil))
@@ -81,12 +85,15 @@ func TestInstanceCapabilitiesAndClosedRegistration(t *testing.T) {
 		Data struct {
 			LibraryMode      string `json:"library_mode"`
 			RegistrationOpen bool   `json:"registration_open"`
+			AnalyzerEnabled  bool   `json:"audio_analyzer_enabled"`
+			AnalyzeOnUpload  bool   `json:"analyze_on_upload"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(capabilities.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode capabilities: %v", err)
 	}
-	if response.Data.LibraryMode != config.LibraryAccessAuthenticated || response.Data.RegistrationOpen {
+	if response.Data.LibraryMode != config.LibraryAccessAuthenticated || response.Data.RegistrationOpen ||
+		!response.Data.AnalyzerEnabled || !response.Data.AnalyzeOnUpload {
 		t.Fatalf("unexpected capabilities: %+v", response.Data)
 	}
 

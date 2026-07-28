@@ -27,6 +27,10 @@ import (
 type Handlers struct {
 	User     *handler.UserHandler
 	Music    *handler.MusicHandler
+	Browse   *handler.BrowseHandler
+	Playlist *handler.PlaylistHandler
+	Preset   *handler.PresetClassificationHandler
+	Analysis *handler.MusicAnalysisHandler
 	MusicTag *handler.MusicTagHandler
 	Admin    *handler.AdminHandler
 }
@@ -76,7 +80,7 @@ func NewWithConfig(h *Handlers, db *gorm.DB, cfg *config.Config) (*gin.Engine, e
 		time.Duration(cfg.Server.ReadinessTimeout)*time.Second,
 		cfg.Metrics,
 	)
-	registerAPIRoutes(router, h, db, cfg.RateLimit, cfg.Access, cfg.Integrations, cfg.JWT.Secret)
+	registerAPIRoutes(router, h, db, cfg.RateLimit, cfg.Access, cfg.Classification, cfg.Integrations, cfg.JWT.Secret)
 
 	return router, nil
 }
@@ -178,7 +182,7 @@ func hasMetricsToken(header, expected string) bool {
 }
 
 // registerAPIRoutes 注册所有API路由
-func registerAPIRoutes(router *gin.Engine, h *Handlers, db *gorm.DB, rateLimit config.RateLimitConfig, access config.AccessConfig, integrations config.IntegrationsConfig, jwtSecret string) {
+func registerAPIRoutes(router *gin.Engine, h *Handlers, db *gorm.DB, rateLimit config.RateLimitConfig, access config.AccessConfig, classification config.ClassificationConfig, integrations config.IntegrationsConfig, jwtSecret string) {
 	api := router.Group("/api/v1")
 	api.GET("/instance", func(c *gin.Context) {
 		handler.Success(c, gin.H{
@@ -186,16 +190,56 @@ func registerAPIRoutes(router *gin.Engine, h *Handlers, db *gorm.DB, rateLimit c
 			"registration_mode":       access.RegistrationMode,
 			"registration_open":       access.RegistrationMode == config.RegistrationOpen,
 			"musicbee_submit_enabled": strings.TrimSpace(integrations.MusicBee.SubmitToken) != "",
+			"classification_enabled":  classification.Enabled,
+			"audio_analyzer_enabled":  classification.Enabled && classification.Analyzer.Mode == "http",
+			"analyze_on_upload":       classification.Enabled && classification.AnalyzeOnUpload,
 		})
 	})
 
-	registerUserRoutes(api, h.User, h.Admin, db, rateLimit, access)
+	registerUserRoutes(api, h.User, h.Admin, h.Preset, h.Analysis, db, rateLimit, access)
 	registerMusicRoutes(api, h.Music, db, access, jwtSecret)
+	registerBrowseRoutes(api, h.Browse, db, access)
+	registerPlaylistRoutes(api, h.Playlist, db)
 	registerMusicTagRoutes(api, h.MusicTag, db, access, integrations.MusicBee)
 }
 
+func registerBrowseRoutes(api *gin.RouterGroup, browseHandler *handler.BrowseHandler, db *gorm.DB, access config.AccessConfig) {
+	browse := api.Group("")
+	browse.Use(middleware.LibraryReadMiddleware(db, access.LibraryMode))
+	{
+		browse.GET("/artists", browseHandler.ListArtists)
+		browse.GET("/artists/:key", browseHandler.GetArtist)
+		browse.GET("/albums", browseHandler.ListAlbums)
+		browse.GET("/albums/:key", browseHandler.GetAlbum)
+	}
+}
+
+func registerPlaylistRoutes(api *gin.RouterGroup, playlistHandler *handler.PlaylistHandler, db *gorm.DB) {
+	playlists := api.Group("/playlists")
+	playlists.Use(middleware.AuthMiddleware(db))
+	{
+		playlists.GET("", playlistHandler.List)
+		playlists.POST("", playlistHandler.Create)
+		playlists.GET("/:id", playlistHandler.Get)
+		playlists.PATCH("/:id", playlistHandler.Update)
+		playlists.DELETE("/:id", playlistHandler.Delete)
+		playlists.POST("/:id/items", playlistHandler.AddItem)
+		playlists.PUT("/:id/items/order", playlistHandler.ReorderItems)
+		playlists.DELETE("/:id/items/:musicID", playlistHandler.RemoveItem)
+	}
+}
+
 // registerUserRoutes 注册用户相关路由
-func registerUserRoutes(api *gin.RouterGroup, userHandler *handler.UserHandler, adminHandler *handler.AdminHandler, db *gorm.DB, rateLimit config.RateLimitConfig, access config.AccessConfig) {
+func registerUserRoutes(
+	api *gin.RouterGroup,
+	userHandler *handler.UserHandler,
+	adminHandler *handler.AdminHandler,
+	presetHandler *handler.PresetClassificationHandler,
+	analysisHandler *handler.MusicAnalysisHandler,
+	db *gorm.DB,
+	rateLimit config.RateLimitConfig,
+	access config.AccessConfig,
+) {
 	public := api.Group("/users")
 	if rateLimit.Enabled {
 		public.Use(middleware.RateLimitMiddleware(rate.Limit(rateLimit.AuthRequestsPerSecond), rateLimit.AuthBurst))
@@ -241,6 +285,19 @@ func registerUserRoutes(api *gin.RouterGroup, userHandler *handler.UserHandler, 
 			admin.GET("/media-library/scans", adminHandler.ListMediaLibraryScans)
 			admin.GET("/media-library/scans/:id", adminHandler.GetMediaLibraryScan)
 			admin.POST("/media-library/scans/:id/cancel", adminHandler.CancelMediaLibraryScan)
+			if presetHandler != nil {
+				admin.POST("/musics/:id/classification/reclassify", presetHandler.Reclassify)
+				admin.PUT("/musics/:id/classification/manual", presetHandler.SetManualPreset)
+				admin.DELETE("/musics/:id/classification/manual", presetHandler.ClearManualPreset)
+			}
+			if analysisHandler != nil {
+				admin.POST("/musics/:id/analysis", analysisHandler.ScheduleMusic)
+				admin.POST("/analysis/backfill", analysisHandler.Backfill)
+				admin.GET("/analysis/jobs", analysisHandler.ListJobs)
+				admin.GET("/analysis/jobs/:id", analysisHandler.GetJob)
+				admin.POST("/analysis/jobs/:id/cancel", analysisHandler.CancelJob)
+				admin.GET("/analysis/metrics", analysisHandler.Metrics)
+			}
 		}
 	}
 }

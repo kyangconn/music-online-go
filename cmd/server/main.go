@@ -20,6 +20,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/kyangconn/music-online-go/internal/config"
+	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/kyangconn/music-online-go/internal/handler"
 	"github.com/kyangconn/music-online-go/internal/pkg/database"
 	pklog "github.com/kyangconn/music-online-go/internal/pkg/log"
@@ -76,18 +77,22 @@ func main() {
 		}
 	}()
 
-	handlers, mediaLibraryService := initDependencies()
+	handlers, mediaLibraryService, analysisService := initDependencies()
 	r, err := router.NewWithConfig(handlers, database.DB, config.AppConfig)
 	if err != nil {
 		pklog.Fatalf("Failed to configure router: %v", err)
 	}
 	configureStaticAssets(r)
-	scannerContext, stopScanner := context.WithCancel(context.Background())
-	if err := mediaLibraryService.Start(scannerContext); err != nil {
+	workerContext, stopWorkers := context.WithCancel(context.Background())
+	if err := mediaLibraryService.Start(workerContext); err != nil {
 		pklog.Fatalf("Failed to start media library scanner: %v", err)
 	}
+	if err := analysisService.Start(workerContext); err != nil {
+		stopWorkers()
+		pklog.Fatalf("Failed to start music analysis worker: %v", err)
+	}
 	startServer(r)
-	stopScanner()
+	stopWorkers()
 	shutdownContext, cancelShutdown := context.WithTimeout(
 		context.Background(),
 		time.Duration(config.AppConfig.Server.ShutdownTimeout)*time.Second,
@@ -95,6 +100,9 @@ func main() {
 	defer cancelShutdown()
 	if err := mediaLibraryService.Shutdown(shutdownContext); err != nil {
 		pklog.Errorf("Media library scanner did not stop cleanly: %v", err)
+	}
+	if err := analysisService.Shutdown(shutdownContext); err != nil {
+		pklog.Errorf("Music analysis worker did not stop cleanly: %v", err)
 	}
 }
 
@@ -116,21 +124,42 @@ func setEnvIfNotEmpty(key, val string) {
 	}
 }
 
-func initDependencies() (*router.Handlers, service.MediaLibraryService) {
+func initDependencies() (*router.Handlers, service.MediaLibraryService, service.MusicAnalysisService) {
 	userRepo := repository.NewUserRepository(database.DB)
 	userService := service.NewUserService(userRepo)
 
-	musicRepo := repository.NewMusicRepository(database.DB)
-	mediaLibraryRepo := repository.NewMediaLibraryRepository(database.DB)
+	classificationConfig := config.AppConfig.Classification
+	presetPolicy := domain.PresetRulePolicy{
+		Enabled: classificationConfig.Enabled, AutoThreshold: classificationConfig.AutoThreshold,
+		ReviewMargin: classificationConfig.ReviewMargin, CalmFlowWeight: classificationConfig.CalmFlowWeight,
+		KineticPulseWeight: classificationConfig.KineticPulseWeight, CosmicDriftWeight: classificationConfig.CosmicDriftWeight,
+		BassImpactWeight: classificationConfig.BassImpactWeight,
+	}
+	musicRepo := repository.NewMusicRepository(database.DB, presetPolicy)
+	browseRepo := repository.NewBrowseRepository(database.DB)
+	playlistRepo := repository.NewPlaylistRepository(database.DB)
+	presetRepo := repository.NewPresetRepository(database.DB, presetPolicy)
+	analysisRepo := repository.NewMusicAnalysisRepository(database.DB)
+	mediaLibraryRepo := repository.NewMediaLibraryRepository(database.DB, presetPolicy)
 	mediaLibraryService := service.NewMediaLibraryService(mediaLibraryRepo, musicRepo, config.AppConfig.Library, config.AppConfig.Server)
-	musicService := service.NewMusicServiceWithConfig(musicRepo, mediaLibraryService, config.AppConfig)
+	analysisService := service.NewMusicAnalysisService(analysisRepo, presetRepo, mediaLibraryService, classificationConfig)
+	mediaLibraryService.SetAnalysisScheduler(analysisService)
+	musicService := service.NewMusicServiceWithAnalysis(musicRepo, mediaLibraryService, config.AppConfig, presetRepo, analysisRepo)
+	musicService.SetAnalysisScheduler(analysisService)
+	browseService := service.NewBrowseService(browseRepo, config.AppConfig)
+	playlistService := service.NewPlaylistService(playlistRepo, musicService)
+	presetService := service.NewPresetClassificationService(presetRepo, classificationConfig.Enabled)
 
 	return &router.Handlers{
 		User:     handler.NewUserHandler(userService),
 		Music:    handler.NewMusicHandlerWithAccess(musicService, config.AppConfig.Access),
+		Browse:   handler.NewBrowseHandler(browseService),
+		Playlist: handler.NewPlaylistHandler(playlistService),
+		Preset:   handler.NewPresetClassificationHandler(presetService),
+		Analysis: handler.NewMusicAnalysisHandler(analysisService),
 		MusicTag: handler.NewMusicTagHandler(musicService),
 		Admin:    handler.NewAdminHandlerWithConfig(userService, musicService, mediaLibraryService, config.AppConfig),
-	}, mediaLibraryService
+	}, mediaLibraryService, analysisService
 }
 
 func bootstrapAdmin(ctx context.Context) error {

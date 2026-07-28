@@ -11,6 +11,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/kyangconn/music-online-go/internal/config"
+	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/kyangconn/music-online-go/internal/handler"
 	"github.com/kyangconn/music-online-go/internal/middleware"
 	"github.com/kyangconn/music-online-go/internal/pkg/database"
@@ -41,6 +42,10 @@ func TestMain(m *testing.M) {
 		Library: config.LibraryConfig{Scanner: config.LibraryScannerConfig{
 			Enabled: true, MaxFileSizeMB: 1,
 		}},
+		Classification: config.ClassificationConfig{
+			Enabled: true, AutoThreshold: 0.65, ReviewMargin: 0.12,
+			CalmFlowWeight: 1, KineticPulseWeight: 1, CosmicDriftWeight: 1, BassImpactWeight: 1,
+		},
 	}
 
 	gin.SetMode(gin.TestMode)
@@ -55,13 +60,28 @@ func TestMain(m *testing.M) {
 	userRepo := repository.NewUserRepository(database.DB)
 	userService := service.NewUserService(userRepo)
 
-	musicRepo := repository.NewMusicRepository(database.DB)
-	mediaLibraryRepo := repository.NewMediaLibraryRepository(database.DB)
+	presetPolicy := domain.DefaultPresetRulePolicy()
+	musicRepo := repository.NewMusicRepository(database.DB, presetPolicy)
+	browseRepo := repository.NewBrowseRepository(database.DB)
+	playlistRepo := repository.NewPlaylistRepository(database.DB)
+	presetRepo := repository.NewPresetRepository(database.DB, presetPolicy)
+	analysisRepo := repository.NewMusicAnalysisRepository(database.DB)
+	mediaLibraryRepo := repository.NewMediaLibraryRepository(database.DB, presetPolicy)
 	mediaLibraryService := service.NewMediaLibraryService(mediaLibraryRepo, musicRepo, config.AppConfig.Library)
-	musicService := service.NewMusicService(musicRepo, mediaLibraryService)
+	analysisService := service.NewMusicAnalysisService(analysisRepo, presetRepo, mediaLibraryService, config.AppConfig.Classification)
+	mediaLibraryService.SetAnalysisScheduler(analysisService)
+	musicService := service.NewMusicServiceWithAnalysis(musicRepo, mediaLibraryService, config.AppConfig, presetRepo, analysisRepo)
+	musicService.SetAnalysisScheduler(analysisService)
+	browseService := service.NewBrowseService(browseRepo, config.AppConfig)
+	playlistService := service.NewPlaylistService(playlistRepo, musicService)
+	presetService := service.NewPresetClassificationService(presetRepo, true)
 
 	userHandler := handler.NewUserHandler(userService)
 	musicHandler := handler.NewMusicHandler(musicService)
+	browseHandler := handler.NewBrowseHandler(browseService)
+	playlistHandler := handler.NewPlaylistHandler(playlistService)
+	presetHandler := handler.NewPresetClassificationHandler(presetService)
+	analysisHandler := handler.NewMusicAnalysisHandler(analysisService)
 	musicTagHandler := handler.NewMusicTagHandler(musicService)
 	adminHandler := handler.NewAdminHandler(userService, musicService, mediaLibraryService)
 
@@ -122,6 +142,15 @@ func TestMain(m *testing.M) {
 			admin.GET("/media-library/scans", adminHandler.ListMediaLibraryScans)
 			admin.GET("/media-library/scans/:id", adminHandler.GetMediaLibraryScan)
 			admin.POST("/media-library/scans/:id/cancel", adminHandler.CancelMediaLibraryScan)
+			admin.POST("/musics/:id/classification/reclassify", presetHandler.Reclassify)
+			admin.PUT("/musics/:id/classification/manual", presetHandler.SetManualPreset)
+			admin.DELETE("/musics/:id/classification/manual", presetHandler.ClearManualPreset)
+			admin.POST("/musics/:id/analysis", analysisHandler.ScheduleMusic)
+			admin.POST("/analysis/backfill", analysisHandler.Backfill)
+			admin.GET("/analysis/jobs", analysisHandler.ListJobs)
+			admin.GET("/analysis/jobs/:id", analysisHandler.GetJob)
+			admin.POST("/analysis/jobs/:id/cancel", analysisHandler.CancelJob)
+			admin.GET("/analysis/metrics", analysisHandler.Metrics)
 		}
 	}
 
@@ -137,6 +166,28 @@ func TestMain(m *testing.M) {
 	api.GET("/upload-policy", musicHandler.UploadPolicy)
 	api.GET("/users/:id/musics", middleware.OptionalAuthMiddleware(), musicHandler.ListUserMusic)
 	api.GET("/users/:id/likes", middleware.OptionalAuthMiddleware(), musicHandler.ListUserLikedMusic)
+
+	browse := api.Group("")
+	browse.Use(middleware.OptionalAuthMiddleware())
+	{
+		browse.GET("/artists", browseHandler.ListArtists)
+		browse.GET("/artists/:key", browseHandler.GetArtist)
+		browse.GET("/albums", browseHandler.ListAlbums)
+		browse.GET("/albums/:key", browseHandler.GetAlbum)
+	}
+
+	playlists := api.Group("/playlists")
+	playlists.Use(middleware.AuthMiddleware(database.DB))
+	{
+		playlists.GET("", playlistHandler.List)
+		playlists.POST("", playlistHandler.Create)
+		playlists.GET("/:id", playlistHandler.Get)
+		playlists.PATCH("/:id", playlistHandler.Update)
+		playlists.DELETE("/:id", playlistHandler.Delete)
+		playlists.POST("/:id/items", playlistHandler.AddItem)
+		playlists.PUT("/:id/items/order", playlistHandler.ReorderItems)
+		playlists.DELETE("/:id/items/:musicID", playlistHandler.RemoveItem)
+	}
 
 	musicProtected := api.Group("/musics")
 	musicProtected.Use(middleware.AuthMiddleware(database.DB))

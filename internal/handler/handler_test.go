@@ -302,6 +302,234 @@ func TestCanonicalMusicMetadataRoundTrip(t *testing.T) {
 	}
 }
 
+func TestBrowseEndpointsExposeStableArtistAlbumAndFacetFilters(t *testing.T) {
+	token := registerAndLogin(t, "browse-contract")
+	artistID := "123e4567-e89b-42d3-a456-426614174020"
+	releaseID := "123e4567-e89b-42d3-a456-426614174021"
+	for _, body := range []string{
+		fmt.Sprintf(`{"title":"Second","artist":"Browse Contract Artist","artists":["Browse Contract Artist"],"album":"Release","album_artist":"Browse Contract Artist","year":2024,"track_number":2,"disc_number":1,"genres":["Ambient / Electronic"],"musicbrainz_artist_ids":[%q],"musicbrainz_release_id":%q}`, artistID, releaseID),
+		fmt.Sprintf(`{"title":"First","artist":"BROWSE CONTRACT ARTIST","artists":["BROWSE CONTRACT ARTIST"],"album":"release","album_artist":"Browse Contract Artist","year":2024,"track_number":1,"disc_number":1,"genres":["Ambient"],"musicbrainz_artist_ids":[%q],"musicbrainz_release_id":%q}`, artistID, releaseID),
+	} {
+		createMusicFromJSON(t, token, body)
+	}
+
+	artists := httptest.NewRecorder()
+	testRouter.ServeHTTP(artists, httptest.NewRequest(http.MethodGet, "/api/v1/artists?q=Browse%20Contract", nil))
+	if artists.Code != http.StatusOK {
+		t.Fatalf("list artists: %d %s", artists.Code, artists.Body.String())
+	}
+	var artistResponse struct {
+		Data struct {
+			Items []domain.ArtistSummary `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(artists.Body.Bytes(), &artistResponse); err != nil {
+		t.Fatalf("decode artists: %v", err)
+	}
+	wantedArtistKey := "mbid_" + artistID
+	var stableArtist *domain.ArtistSummary
+	for index := range artistResponse.Data.Items {
+		if artistResponse.Data.Items[index].Key == wantedArtistKey {
+			stableArtist = &artistResponse.Data.Items[index]
+			break
+		}
+	}
+	if stableArtist == nil || stableArtist.TrackCount != 2 || stableArtist.AlbumCount != 1 {
+		t.Fatalf("stable artist aggregation missing: %+v", artistResponse.Data.Items)
+	}
+
+	albums := httptest.NewRecorder()
+	testRouter.ServeHTTP(albums, httptest.NewRequest(http.MethodGet, "/api/v1/albums?artist_key="+wantedArtistKey+"&genre=ambient&year=2024", nil))
+	if albums.Code != http.StatusOK {
+		t.Fatalf("list albums: %d %s", albums.Code, albums.Body.String())
+	}
+	var albumResponse struct {
+		Data struct {
+			Items []domain.AlbumSummary `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(albums.Body.Bytes(), &albumResponse); err != nil {
+		t.Fatalf("decode albums: %v", err)
+	}
+	if len(albumResponse.Data.Items) != 1 || albumResponse.Data.Items[0].Key != "mbid_"+releaseID || albumResponse.Data.Items[0].TrackCount != 2 {
+		t.Fatalf("stable album aggregation missing: %+v", albumResponse.Data.Items)
+	}
+
+	tracks := httptest.NewRecorder()
+	path := "/api/v1/musics?album_key=" + albumResponse.Data.Items[0].Key + "&page_size=10"
+	testRouter.ServeHTTP(tracks, httptest.NewRequest(http.MethodGet, path, nil))
+	var trackResponse struct {
+		Data struct {
+			Items []domain.MusicResponse `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(tracks.Body.Bytes(), &trackResponse); err != nil {
+		t.Fatalf("decode album tracks: %v", err)
+	}
+	if tracks.Code != http.StatusOK || len(trackResponse.Data.Items) != 2 || trackResponse.Data.Items[0].Title != "First" ||
+		trackResponse.Data.Items[0].AlbumKey != "mbid_"+releaseID {
+		t.Fatalf("album track order/identity: status=%d items=%+v", tracks.Code, trackResponse.Data.Items)
+	}
+
+	filteredTracks := httptest.NewRecorder()
+	path = "/api/v1/musics?album_key=" + albumResponse.Data.Items[0].Key + "&q=First&year=2024&page_size=10"
+	testRouter.ServeHTTP(filteredTracks, httptest.NewRequest(http.MethodGet, path, nil))
+	if err := json.Unmarshal(filteredTracks.Body.Bytes(), &trackResponse); err != nil {
+		t.Fatalf("decode filtered album tracks: %v", err)
+	}
+	if filteredTracks.Code != http.StatusOK || len(trackResponse.Data.Items) != 1 || trackResponse.Data.Items[0].Title != "First" {
+		t.Fatalf("combined album query filters: status=%d items=%+v", filteredTracks.Code, trackResponse.Data.Items)
+	}
+}
+
+func TestPlaylistEndpointsArePrivateOrderedAndOwnerScoped(t *testing.T) {
+	ownerToken := registerAndLogin(t, "playlist-owner")
+	otherToken := registerAndLogin(t, "playlist-other")
+	firstID := createMusic(t, ownerToken, "Playlist First")
+	secondID := createMusic(t, ownerToken, "Playlist Second")
+
+	create := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playlists", strings.NewReader(`{"name":"Private list","description":"Owner only"}`))
+	req.Header.Set("Authorization", "Bearer "+ownerToken)
+	req.Header.Set("Content-Type", "application/json")
+	testRouter.ServeHTTP(create, req)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create playlist: %d %s", create.Code, create.Body.String())
+	}
+	var created struct {
+		Data domain.PlaylistDetailResponse `json:"data"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode playlist: %v", err)
+	}
+	playlistPath := "/api/v1/playlists/" + strconv.Itoa(int(created.Data.ID))
+
+	for _, musicID := range []uint{firstID, secondID, firstID} {
+		add := httptest.NewRecorder()
+		req = httptest.NewRequest(http.MethodPost, playlistPath+"/items", strings.NewReader(fmt.Sprintf(`{"music_id":%d}`, musicID)))
+		req.Header.Set("Authorization", "Bearer "+ownerToken)
+		req.Header.Set("Content-Type", "application/json")
+		testRouter.ServeHTTP(add, req)
+		if add.Code != http.StatusOK {
+			t.Fatalf("add playlist item: %d %s", add.Code, add.Body.String())
+		}
+	}
+
+	reorder := httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, playlistPath+"/items/order", strings.NewReader(fmt.Sprintf(`{"music_ids":[%d,%d]}`, secondID, firstID)))
+	req.Header.Set("Authorization", "Bearer "+ownerToken)
+	req.Header.Set("Content-Type", "application/json")
+	testRouter.ServeHTTP(reorder, req)
+	if reorder.Code != http.StatusOK {
+		t.Fatalf("reorder playlist: %d %s", reorder.Code, reorder.Body.String())
+	}
+	var reordered struct {
+		Data domain.PlaylistDetailResponse `json:"data"`
+	}
+	if err := json.Unmarshal(reorder.Body.Bytes(), &reordered); err != nil {
+		t.Fatalf("decode reordered playlist: %v", err)
+	}
+	if len(reordered.Data.Items) != 2 || reordered.Data.Items[0].Music.ID != secondID || reordered.Data.Items[1].Music.ID != firstID {
+		t.Fatalf("playlist order = %+v", reordered.Data.Items)
+	}
+
+	for name, testCase := range map[string]struct {
+		authorization string
+		want          int
+	}{
+		"anonymous":  {want: http.StatusUnauthorized},
+		"other user": {authorization: "Bearer " + otherToken, want: http.StatusNotFound},
+	} {
+		t.Run(name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, playlistPath, nil)
+			if testCase.authorization != "" {
+				request.Header.Set("Authorization", testCase.authorization)
+			}
+			testRouter.ServeHTTP(response, request)
+			if response.Code != testCase.want {
+				t.Fatalf("status = %d, want %d: %s", response.Code, testCase.want, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestPresetClassificationFiltersAndAdminOverride(t *testing.T) {
+	ownerToken := registerAndLogin(t, "preset-owner")
+	musicID := createMusicFromJSON(t, ownerToken, `{
+		"title":"Preset fixture","artist":"Classifier","genres":["Dubstep"],"metadata_revision":1
+	}`)
+
+	list := httptest.NewRecorder()
+	testRouter.ServeHTTP(list, httptest.NewRequest(http.MethodGet, "/api/v1/musics?preset=bass_impact&page_size=10", nil))
+	if list.Code != http.StatusOK {
+		t.Fatalf("automatic preset filter: %d %s", list.Code, list.Body.String())
+	}
+	var listed struct {
+		Data struct {
+			Items []domain.MusicResponse `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(list.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("decode classified music: %v", err)
+	}
+	if len(listed.Data.Items) != 1 || listed.Data.Items[0].ID != musicID ||
+		listed.Data.Items[0].PresetClassification == nil ||
+		listed.Data.Items[0].PresetClassification.AutomaticPreset != domain.PresetBassImpact {
+		t.Fatalf("classified music response = %+v", listed.Data.Items)
+	}
+
+	forbidden := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut,
+		fmt.Sprintf("/api/v1/users/admin/musics/%d/classification/manual", musicID),
+		strings.NewReader(`{"preset":"calm_flow"}`))
+	req.Header.Set("Authorization", "Bearer "+ownerToken)
+	req.Header.Set("Content-Type", "application/json")
+	testRouter.ServeHTTP(forbidden, req)
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("non-admin manual override: %d %s", forbidden.Code, forbidden.Body.String())
+	}
+
+	_, administratorID := registerAndLoginWithID(t, "preset-admin")
+	if err := database.DB.Model(&domain.User{}).Where("id = ?", administratorID).Update("role", "admin").Error; err != nil {
+		t.Fatalf("promote classification admin: %v", err)
+	}
+	administratorToken := loginUser(t, "preset-admin")
+	manualPath := fmt.Sprintf("/api/v1/users/admin/musics/%d/classification/manual", musicID)
+	override := httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, manualPath, strings.NewReader(`{"preset":"calm_flow"}`))
+	req.Header.Set("Authorization", "Bearer "+administratorToken)
+	req.Header.Set("Content-Type", "application/json")
+	testRouter.ServeHTTP(override, req)
+	if override.Code != http.StatusOK || !strings.Contains(override.Body.String(), `"effective_source":"manual"`) {
+		t.Fatalf("admin manual override: %d %s", override.Code, override.Body.String())
+	}
+
+	reclassify := httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost,
+		fmt.Sprintf("/api/v1/users/admin/musics/%d/classification/reclassify", musicID), nil)
+	req.Header.Set("Authorization", "Bearer "+administratorToken)
+	testRouter.ServeHTTP(reclassify, req)
+	if reclassify.Code != http.StatusOK || !strings.Contains(reclassify.Body.String(), `"manual_preset":"calm_flow"`) ||
+		!strings.Contains(reclassify.Body.String(), `"automatic_preset":"bass_impact"`) {
+		t.Fatalf("reclassification must preserve manual override: %d %s", reclassify.Code, reclassify.Body.String())
+	}
+
+	clear := httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodDelete, manualPath, nil)
+	req.Header.Set("Authorization", "Bearer "+administratorToken)
+	testRouter.ServeHTTP(clear, req)
+	if clear.Code != http.StatusOK || strings.Contains(clear.Body.String(), `"manual_preset"`) {
+		t.Fatalf("clear manual override: %d %s", clear.Code, clear.Body.String())
+	}
+
+	invalid := httptest.NewRecorder()
+	testRouter.ServeHTTP(invalid, httptest.NewRequest(http.MethodGet, "/api/v1/musics?preset=not-a-preset", nil))
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid preset filter: %d %s", invalid.Code, invalid.Body.String())
+	}
+}
+
 func TestStableRecordingIDOutranksTextAndArtistIDNeverIdentifiesATrack(t *testing.T) {
 	token := registerAndLogin(t, "stable-id-matching")
 	recordingID := "123e4567-e89b-42d3-a456-426614174010"
@@ -511,6 +739,94 @@ func TestMusicUpdateDeleteRequiresOwner(t *testing.T) {
 	testRouter.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("owner delete: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminMusicAnalysisQueueAPI(t *testing.T) {
+	userToken := registerAndLogin(t, "analysisqueueuser")
+	musicID := createMusicFromJSON(t, userToken, `{"title":"Queued Trance","artist":"Fixture Artist","genres":["Trance"]}`)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/users/admin/musics/"+strconv.Itoa(int(musicID))+"/analysis", strings.NewReader(`{"include_audio":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+userToken)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("non-admin analysis schedule: expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+
+	_, adminID := registerAndLoginWithID(t, "analysisqueueadmin")
+	if err := database.DB.Model(&domain.User{}).Where("id = ?", adminID).Update("role", "admin").Error; err != nil {
+		t.Fatalf("promote analysis admin: %v", err)
+	}
+	adminToken := loginUser(t, "analysisqueueadmin")
+
+	schedule := func(force bool) (int, struct {
+		Data domain.AnalysisScheduleResponse `json:"data"`
+	}) {
+		body := `{"include_audio":false}`
+		if force {
+			body = `{"include_audio":false,"force":true}`
+		}
+		response := httptest.NewRecorder()
+		request, _ := http.NewRequest("POST", "/api/v1/users/admin/musics/"+strconv.Itoa(int(musicID))+"/analysis", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Authorization", "Bearer "+adminToken)
+		testRouter.ServeHTTP(response, request)
+		var parsed struct {
+			Data domain.AnalysisScheduleResponse `json:"data"`
+		}
+		if response.Code == http.StatusAccepted {
+			if err := json.Unmarshal(response.Body.Bytes(), &parsed); err != nil {
+				t.Fatalf("parse analysis schedule: %v", err)
+			}
+		}
+		return response.Code, parsed
+	}
+
+	code, first := schedule(false)
+	if code != http.StatusAccepted || first.Data.MetadataJob == nil || first.Data.MetadataJob.Status != domain.AnalysisStatusPending {
+		t.Fatalf("analysis schedule response: code=%d data=%+v", code, first.Data)
+	}
+	code, repeated := schedule(false)
+	if code != http.StatusAccepted || repeated.Data.MetadataJob == nil || repeated.Data.MetadataJob.ID != first.Data.MetadataJob.ID || repeated.Data.Reused != 1 {
+		t.Fatalf("repeated analysis schedule: code=%d data=%+v", code, repeated.Data)
+	}
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("GET", "/api/v1/users/admin/analysis/jobs?music_id="+strconv.Itoa(int(musicID))+"&status=pending", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"total":1`) {
+		t.Fatalf("list analysis jobs: expected one pending job, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("POST", "/api/v1/users/admin/analysis/jobs/"+strconv.Itoa(int(first.Data.MetadataJob.ID))+"/cancel", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"status":"cancelled"`) {
+		t.Fatalf("cancel analysis job: got %d: %s", w.Code, w.Body.String())
+	}
+	code, forced := schedule(true)
+	if code != http.StatusAccepted || forced.Data.MetadataJob == nil || forced.Data.MetadataJob.ID != first.Data.MetadataJob.ID || forced.Data.MetadataJob.Status != domain.AnalysisStatusPending {
+		t.Fatalf("force analysis schedule: code=%d data=%+v", code, forced.Data)
+	}
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("GET", "/api/v1/users/admin/analysis/metrics", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"queue_length":1`) {
+		t.Fatalf("analysis metrics: got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("GET", "/api/v1/users/admin/analysis/jobs?status=unknown", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	testRouter.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid analysis status: expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -1039,7 +1355,7 @@ func TestDeleteMusicRemovesDatabaseRelationsAndMedia(t *testing.T) {
 
 func TestDeleteAccountRequiresPasswordAndRemovesOwnedData(t *testing.T) {
 	token, userID := registerAndLoginWithID(t, "delete-account-user")
-	musicID := createMusic(t, token, "Account Lifecycle Song")
+	musicID := createMusicFromJSON(t, token, `{"title":"Account Lifecycle Song","artist":"Test Artist","album":"Cleanup Album","genres":["Ambient"],"type":"single"}`)
 	if w := uploadMusicFiles(t, token, musicID); w.Code != http.StatusOK {
 		t.Fatalf("upload: expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -1049,6 +1365,13 @@ func TestDeleteAccountRequiresPasswordAndRemovesOwnedData(t *testing.T) {
 		t.Fatalf("find uploaded music: %v", err)
 	}
 	musicDir := filepath.Dir(stored.Path)
+	playlist := &domain.Playlist{UserID: userID, Name: "Account cleanup", Revision: 1}
+	if err := database.DB.Create(playlist).Error; err != nil {
+		t.Fatalf("create account playlist: %v", err)
+	}
+	if err := database.DB.Create(&domain.PlaylistItem{PlaylistID: playlist.ID, MusicID: musicID, Position: 0}).Error; err != nil {
+		t.Fatalf("create account playlist item: %v", err)
+	}
 
 	w := deleteAccount(t, token, "wrong-password")
 	if w.Code != http.StatusBadRequest {
@@ -1076,6 +1399,27 @@ func TestDeleteAccountRequiresPasswordAndRemovesOwnedData(t *testing.T) {
 	}
 	if musicCount != 0 {
 		t.Fatalf("owned music rows after deletion = %d, want 0", musicCount)
+	}
+	for _, check := range []struct {
+		label string
+		model any
+		query string
+		value uint
+	}{
+		{label: "playlist", model: &domain.Playlist{}, query: "id = ?", value: playlist.ID},
+		{label: "playlist item", model: &domain.PlaylistItem{}, query: "playlist_id = ?", value: playlist.ID},
+		{label: "media file", model: &domain.MediaFile{}, query: "music_id = ?", value: musicID},
+		{label: "artist credit", model: &domain.MusicArtistCredit{}, query: "music_id = ?", value: musicID},
+		{label: "album membership", model: &domain.MusicAlbumMembership{}, query: "music_id = ?", value: musicID},
+		{label: "genre facet", model: &domain.MusicGenreFacet{}, query: "music_id = ?", value: musicID},
+	} {
+		var count int64
+		if err := database.DB.Unscoped().Model(check.model).Where(check.query, check.value).Count(&count).Error; err != nil {
+			t.Fatalf("count account %s rows: %v", check.label, err)
+		}
+		if count != 0 {
+			t.Fatalf("account %s rows after deletion = %d, want 0", check.label, count)
+		}
 	}
 	if _, err := os.Stat(musicDir); !os.IsNotExist(err) {
 		t.Fatalf("owned music directory still exists or stat failed: %v", err)
