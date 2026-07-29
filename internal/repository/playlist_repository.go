@@ -205,7 +205,7 @@ func ensureOwnedPlaylist(tx *gorm.DB, id, userID uint) error {
 	// PostgreSQL needs an explicit row lock so concurrent instances cannot
 	// assign positions from the same snapshot. SQLite deployments already use a
 	// single writer connection and do not support SELECT ... FOR UPDATE.
-	if tx.Dialector.Name() == "postgres" {
+	if tx.Name() == "postgres" {
 		query = query.Clauses(clause.Locking{Strength: "UPDATE"})
 	}
 	var playlist domain.Playlist

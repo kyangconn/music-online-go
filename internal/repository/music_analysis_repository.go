@@ -207,7 +207,7 @@ func (r *musicAnalysisRepository) ClaimNext(ctx context.Context, owner string, l
 			"status = ? AND cancel_requested = ? AND (available_at IS NULL OR available_at <= ?)",
 			domain.AnalysisStatusPending, false, now,
 		).Order("id ASC")
-		if tx.Dialector.Name() == "postgres" {
+		if tx.Name() == "postgres" {
 			query = query.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"})
 		}
 		var job domain.MusicAnalysisJob
