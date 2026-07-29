@@ -1412,6 +1412,9 @@ func TestDeleteAccountRequiresPasswordAndRemovesOwnedData(t *testing.T) {
 		{label: "artist credit", model: &domain.MusicArtistCredit{}, query: "music_id = ?", value: musicID},
 		{label: "album membership", model: &domain.MusicAlbumMembership{}, query: "music_id = ?", value: musicID},
 		{label: "genre facet", model: &domain.MusicGenreFacet{}, query: "music_id = ?", value: musicID},
+		{label: "preset classification", model: &domain.MusicPresetClassification{}, query: "music_id = ?", value: musicID},
+		{label: "preset scores", model: &domain.MusicPresetScore{}, query: "music_id = ?", value: musicID},
+		{label: "analysis job", model: &domain.MusicAnalysisJob{}, query: "music_id = ?", value: musicID},
 	} {
 		var count int64
 		if err := database.DB.Unscoped().Model(check.model).Where(check.query, check.value).Count(&count).Error; err != nil {
