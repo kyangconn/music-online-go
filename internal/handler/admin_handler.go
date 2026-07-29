@@ -3,6 +3,7 @@
 package handler
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,7 +15,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/kyangconn/music-online-go/internal/config"
 	"github.com/kyangconn/music-online-go/internal/domain"
-	"github.com/kyangconn/music-online-go/internal/pkg/database"
 	"github.com/kyangconn/music-online-go/internal/pkg/password"
 	"github.com/kyangconn/music-online-go/internal/repository"
 	"github.com/kyangconn/music-online-go/internal/service"
@@ -31,29 +31,26 @@ type AdminHandler struct {
 	mediaLibraryService service.MediaLibraryService
 	serverConfig        config.ServerConfig
 	databaseConfig      config.DatabaseConfig
+	databaseStats       *sql.DB
 }
 
-func NewAdminHandler(userService service.UserService, musicService service.MusicService, mediaLibraryServices ...service.MediaLibraryService) *AdminHandler {
-	var mediaLibraryService service.MediaLibraryService
-	if len(mediaLibraryServices) > 0 {
-		mediaLibraryService = mediaLibraryServices[0]
-	}
-	return NewAdminHandlerWithConfig(userService, musicService, mediaLibraryService, config.AppConfig)
-}
-
-// NewAdminHandlerWithConfig keeps system-info output tied to the same
-// validated startup snapshot used to construct the rest of the application.
-func NewAdminHandlerWithConfig(userService service.UserService, musicService service.MusicService, mediaLibraryService service.MediaLibraryService, cfg *config.Config) *AdminHandler {
-	handler := &AdminHandler{
+// NewAdminHandler snapshots configuration and database instrumentation from
+// the composition root instead of consulting mutable package globals.
+func NewAdminHandler(
+	userService service.UserService,
+	musicService service.MusicService,
+	mediaLibraryService service.MediaLibraryService,
+	cfg config.Config,
+	databaseStats *sql.DB,
+) *AdminHandler {
+	return &AdminHandler{
 		userService:         userService,
 		musicService:        musicService,
 		mediaLibraryService: mediaLibraryService,
+		serverConfig:        cfg.Server,
+		databaseConfig:      cfg.Database,
+		databaseStats:       databaseStats,
 	}
-	if cfg != nil {
-		handler.serverConfig = cfg.Server
-		handler.databaseConfig = cfg.Database
-	}
-	return handler
 }
 
 type SystemInfoResponse struct {
@@ -105,12 +102,7 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 
-	sqlDB, err := database.DB.DB()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "database not initialized"})
-		return
-	}
-	dbStats := sqlDB.Stats()
+	dbStats := h.databaseStats.Stats()
 
 	host := c.Request.Host
 	if host == "" {

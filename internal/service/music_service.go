@@ -50,13 +50,21 @@ type MusicService interface {
 	GetCoverPath(ctx context.Context, id uint) (string, error)
 	GetUploadPolicy() UploadPolicy
 	UploadBodyLimit() int64
-	SetAnalysisScheduler(scheduler MusicAnalysisScheduler)
 	// Admin
 	AdminDelete(ctx context.Context, id uint) error
 }
+
+// MediaStorage is the complete physical-media boundary required by music
+// mutations. Keeping persistence and resolution together prevents uploads
+// from silently bypassing the MediaFile source-of-truth table.
+type MediaStorage interface {
+	MediaPathResolver
+	ManagedMediaSourcePersister
+}
+
 type musicService struct {
 	repo         repository.MusicRepository
-	pathResolver MediaPathResolver
+	storage      MediaStorage
 	serverConfig config.ServerConfig
 	presenter    musicPresenter
 	uploadPolicy UploadPolicy
@@ -65,58 +73,26 @@ type musicService struct {
 	analyzer     MusicAnalysisScheduler
 }
 
-func NewMusicService(repo repository.MusicRepository, pathResolvers ...MediaPathResolver) MusicService {
-	var pathResolver MediaPathResolver
-	if len(pathResolvers) > 0 {
-		pathResolver = pathResolvers[0]
-	}
-	return NewMusicServiceWithConfig(repo, pathResolver, config.AppConfig)
-}
-
-func NewMusicServiceWithConfig(
+// NewMusicService accepts only the fully wired production dependency set. The
+// configuration snapshot must already have passed config.Validate.
+func NewMusicService(
 	repo repository.MusicRepository,
-	pathResolver MediaPathResolver,
-	cfg *config.Config,
-	presetRepositories ...repository.PresetRepository,
-) MusicService {
-	return NewMusicServiceWithAnalysis(repo, pathResolver, cfg, firstPresetRepository(presetRepositories), nil)
-}
-
-func NewMusicServiceWithAnalysis(
-	repo repository.MusicRepository,
-	pathResolver MediaPathResolver,
-	cfg *config.Config,
+	storage MediaStorage,
+	cfg config.Config,
 	presetRepo repository.PresetRepository,
 	analysisRepo repository.MusicAnalysisRepository,
+	analyzer MusicAnalysisScheduler,
 ) MusicService {
-	serverConfig := config.ServerConfig{
-		UploadDir:      "uploads",
-		MaxAudioSizeMB: config.DefaultMaxAudioSizeMB,
-		MaxCoverSizeMB: config.DefaultMaxCoverSizeMB,
-	}
-	if cfg != nil {
-		serverConfig = cfg.Server
-	}
 	return &musicService{
 		repo:         repo,
-		pathResolver: pathResolver,
-		serverConfig: serverConfig,
-		presenter:    newMusicPresenter(cfg),
-		uploadPolicy: UploadPolicyFromServerConfig(serverConfig),
+		storage:      storage,
+		serverConfig: cfg.Server,
+		presenter:    newMusicPresenter(cfg.Access, cfg.JWT),
+		uploadPolicy: UploadPolicyFromServerConfig(cfg.Server),
 		presetRepo:   presetRepo,
 		analysisRepo: analysisRepo,
+		analyzer:     analyzer,
 	}
-}
-
-func firstPresetRepository(values []repository.PresetRepository) repository.PresetRepository {
-	if len(values) == 0 {
-		return nil
-	}
-	return values[0]
-}
-
-func (s *musicService) SetAnalysisScheduler(scheduler MusicAnalysisScheduler) {
-	s.analyzer = scheduler
 }
 
 func (s *musicService) GetUploadPolicy() UploadPolicy {
@@ -362,13 +338,6 @@ func (s *musicService) deleteMusic(ctx context.Context, id uint) error {
 	return nil
 }
 
-func cleanupMusicUploadDirectory(id uint) {
-	if config.AppConfig == nil || config.AppConfig.Server.UploadDir == "" {
-		return
-	}
-	cleanupMusicUploadDirectoryAt(config.AppConfig.Server.UploadDir, id)
-}
-
 func cleanupMusicUploadDirectoryAt(uploadDir string, id uint) {
 	if strings.TrimSpace(uploadDir) == "" {
 		return
@@ -413,8 +382,8 @@ func (s *musicService) GetAudioPath(ctx context.Context, id uint) (string, error
 	if music.Path == "" {
 		return "", ErrMediaNotFound
 	}
-	if music.MediaRelativePath != "" && s.pathResolver != nil {
-		return s.pathResolver.ResolveMusicPath(ctx, music)
+	if music.MediaRelativePath != "" {
+		return s.storage.ResolveMusicPath(ctx, music)
 	}
 	return secureManagedMediaPathAt(s.serverConfig.UploadDir, music.Path)
 }
@@ -442,19 +411,13 @@ func (s *musicService) toEnrichedResponses(ctx context.Context, musics []*domain
 	if err != nil {
 		return nil, err
 	}
-	classifications := make(map[uint]*domain.MusicPresetClassification)
-	if s.presetRepo != nil {
-		classifications, err = s.presetRepo.FindByMusicIDs(ctx, ids)
-		if err != nil {
-			return nil, err
-		}
+	classifications, err := s.presetRepo.FindByMusicIDs(ctx, ids)
+	if err != nil {
+		return nil, err
 	}
-	analysisJobs := make(map[uint]*domain.MusicAnalysisJob)
-	if s.analysisRepo != nil {
-		analysisJobs, err = s.analysisRepo.LatestAudioJobsByMusicIDs(ctx, ids)
-		if err != nil {
-			return nil, err
-		}
+	analysisJobs, err := s.analysisRepo.LatestAudioJobsByMusicIDs(ctx, ids)
+	if err != nil {
+		return nil, err
 	}
 	responses := make([]*domain.MusicResponse, 0, len(musics))
 	for _, m := range musics {
@@ -483,10 +446,7 @@ func (s *musicService) guardReadOnlyMediaSource(ctx context.Context, music *doma
 	if music.SourceReadOnly {
 		return ErrForbidden
 	}
-	if s.pathResolver == nil {
-		return nil
-	}
-	readOnly, err := s.pathResolver.HasReadOnlyMediaSource(ctx, music.ID)
+	readOnly, err := s.storage.HasReadOnlyMediaSource(ctx, music.ID)
 	if err != nil {
 		return err
 	}
@@ -514,20 +474,16 @@ func (s *musicService) enrichMusicResponse(ctx context.Context, resp *domain.Mus
 	} else {
 		resp.IsLiked = false
 	}
-	if s.presetRepo != nil {
-		classifications, err := s.presetRepo.FindByMusicIDs(ctx, []uint{resp.ID})
-		if err != nil {
-			return err
-		}
-		resp.PresetClassification = classifications[resp.ID].ToResponse()
+	classifications, err := s.presetRepo.FindByMusicIDs(ctx, []uint{resp.ID})
+	if err != nil {
+		return err
 	}
-	if s.analysisRepo != nil {
-		jobs, err := s.analysisRepo.LatestAudioJobsByMusicIDs(ctx, []uint{resp.ID})
-		if err != nil {
-			return err
-		}
-		resp.AudioAnalysis = jobs[resp.ID].ToSummary()
+	resp.PresetClassification = classifications[resp.ID].ToResponse()
+	jobs, err := s.analysisRepo.LatestAudioJobsByMusicIDs(ctx, []uint{resp.ID})
+	if err != nil {
+		return err
 	}
+	resp.AudioAnalysis = jobs[resp.ID].ToSummary()
 	return nil
 }
 
@@ -635,11 +591,7 @@ func (s *musicService) UploadFiles(ctx context.Context, userID uint, role string
 
 	var persistErr error
 	if audioHeader != nil {
-		if persister, ok := s.pathResolver.(ManagedMediaSourcePersister); ok {
-			persistErr = persister.PersistManagedMusicSource(ctx, music)
-		} else {
-			persistErr = s.repo.Update(ctx, music)
-		}
+		persistErr = s.storage.PersistManagedMusicSource(ctx, music)
 	} else {
 		persistErr = s.repo.Update(ctx, music)
 	}
@@ -650,7 +602,7 @@ func (s *musicService) UploadFiles(ctx context.Context, userID uint, role string
 	for _, file := range staged {
 		file.commit()
 	}
-	if audioHeader != nil && s.analyzer != nil {
+	if audioHeader != nil {
 		scheduleCtx, cancelSchedule := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		if err := s.analyzer.ScheduleContentAnalysis(scheduleCtx, music.ID, userID); err != nil {
 			// Analysis is derived work. A full queue or unavailable analyzer must

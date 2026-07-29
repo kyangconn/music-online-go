@@ -30,12 +30,8 @@ func TestMediaLibraryScanIsAdditiveAndPreservesChangedSources(t *testing.T) {
 
 	managedDir := t.TempDir()
 	externalDir := t.TempDir()
-	originalConfig := config.AppConfig
-	config.AppConfig = &config.Config{Server: config.ServerConfig{UploadDir: managedDir, MaxCoverSizeMB: 1}}
-	t.Cleanup(func() { config.AppConfig = originalConfig })
-
-	libraryRepo := repository.NewMediaLibraryRepository(db)
-	musicRepo := repository.NewMusicRepository(db)
+	libraryRepo := repository.NewMediaLibraryRepository(db, domain.PresetRulePolicy{})
+	musicRepo := repository.NewMusicRepository(db, domain.PresetRulePolicy{})
 	root := &domain.MediaLibraryRoot{Name: "Archive", Path: externalDir, Enabled: true, ReadOnly: true, CreatedBy: 1}
 	if err := libraryRepo.CreateRoot(context.Background(), root); err != nil {
 		t.Fatalf("create root: %v", err)
@@ -43,12 +39,12 @@ func TestMediaLibraryScanIsAdditiveAndPreservesChangedSources(t *testing.T) {
 	path := filepath.Join(externalDir, "track.wav")
 	writeMinimalWAV(t, path, "Track", "Artist", 8000)
 
-	svc := NewMediaLibraryService(libraryRepo, musicRepo, config.LibraryConfig{
+	svc := newTestMediaLibraryService(libraryRepo, musicRepo, config.LibraryConfig{
 		Scanner: config.LibraryScannerConfig{
 			Enabled: true, MaxFileSizeMB: 1, MaxTagSizeMB: 16, MinFileAgeSeconds: 0,
 			RetryMaxAttempts: 3, RetryInitialSeconds: 1, RetryMaxSeconds: 2,
 		},
-	}).(*mediaLibraryService)
+	}, config.ServerConfig{UploadDir: managedDir, MaxCoverSizeMB: 1}, mediafs.NewSystemProber())
 	first := runMediaLibraryScan(t, svc, root.ID)
 	if first.Status != domain.MediaScanStatusSucceeded || first.ImportedCount != 1 || first.FailedCount != 0 {
 		t.Fatalf("unexpected first scan: %+v", first)
@@ -99,11 +95,11 @@ func TestMediaLibraryScanIsAdditiveAndPreservesChangedSources(t *testing.T) {
 
 func TestMediaLibraryRootRegistrationDoesNotProbeUnavailablePath(t *testing.T) {
 	repo := &mediaLibraryRepositoryStub{}
-	originalConfig := config.AppConfig
 	managedDir := t.TempDir()
-	config.AppConfig = &config.Config{Server: config.ServerConfig{UploadDir: managedDir}}
-	t.Cleanup(func() { config.AppConfig = originalConfig })
-	svc := NewMediaLibraryService(repo, &mediaLibraryMusicRepositoryStub{}, config.LibraryConfig{}).(*mediaLibraryService)
+	svc := newTestMediaLibraryService(
+		repo, &mediaLibraryMusicRepositoryStub{}, config.LibraryConfig{},
+		config.ServerConfig{UploadDir: managedDir, MaxCoverSizeMB: 1}, mediafs.NewSystemProber(),
+	)
 	unavailable := filepath.Join(t.TempDir(), "not-mounted")
 
 	created, err := svc.CreateRoot(context.Background(), 7, &domain.CreateMediaLibraryRootRequest{Name: "NFS", Path: unavailable})
@@ -121,8 +117,8 @@ func TestMediaLibraryOfflineNFSUsesPersistedRetryState(t *testing.T) {
 		&domain.MediaFile{}, &domain.MediaScanJob{}, &domain.MediaScanIssue{},
 	)
 
-	libraryRepo := repository.NewMediaLibraryRepository(db)
-	musicRepo := repository.NewMusicRepository(db)
+	libraryRepo := repository.NewMediaLibraryRepository(db, domain.PresetRulePolicy{})
+	musicRepo := repository.NewMusicRepository(db, domain.PresetRulePolicy{})
 	root := &domain.MediaLibraryRoot{
 		Name: "Offline NFS", Path: filepath.Join(t.TempDir(), "not-mounted"), StorageKind: domain.MediaStorageKindNFS,
 		Enabled: true, ReadOnly: true, CreatedBy: 1,
@@ -130,7 +126,7 @@ func TestMediaLibraryOfflineNFSUsesPersistedRetryState(t *testing.T) {
 	if err := libraryRepo.CreateRoot(context.Background(), root); err != nil {
 		t.Fatalf("create NFS root: %v", err)
 	}
-	svc := NewMediaLibraryServiceWithProber(
+	svc := newTestMediaLibraryService(
 		libraryRepo,
 		musicRepo,
 		config.LibraryConfig{Scanner: config.LibraryScannerConfig{
@@ -141,7 +137,7 @@ func TestMediaLibraryOfflineNFSUsesPersistedRetryState(t *testing.T) {
 		fixedMediaProber{result: mediafs.Result{
 			Status: mediafs.StatusOffline, Code: "network_unreachable", Message: "NFS endpoint is unreachable", Retryable: true,
 		}},
-	).(*mediaLibraryService)
+	)
 
 	job := runMediaLibraryScan(t, svc, root.ID)
 	if job.Status != domain.MediaScanStatusRetryWait || job.Attempt != 1 || job.FailureCode != "network_unreachable" || !job.FailureRetryable {
@@ -159,8 +155,8 @@ func TestMediaLibraryOfflineNFSUsesPersistedRetryState(t *testing.T) {
 func TestReadOnlyPhysicalSourceProtectsHashLinkedTrack(t *testing.T) {
 	db := openMediaLibraryTestDB(t, "source-policy.db", &domain.Music{}, &domain.MediaFile{})
 
-	musicRepo := repository.NewMusicRepository(db)
-	libraryRepo := repository.NewMediaLibraryRepository(db)
+	musicRepo := repository.NewMusicRepository(db, domain.PresetRulePolicy{})
+	libraryRepo := repository.NewMediaLibraryRepository(db, domain.PresetRulePolicy{})
 	music := &domain.Music{Title: "Owned upload", Artist: "Artist", UserID: 7, Type: domain.MusicTypeSingle}
 	if err := musicRepo.Create(context.Background(), music); err != nil {
 		t.Fatalf("create user-owned music: %v", err)
@@ -173,17 +169,20 @@ func TestReadOnlyPhysicalSourceProtectsHashLinkedTrack(t *testing.T) {
 		t.Fatalf("link read-only physical source: %v", err)
 	}
 
-	libraryService := NewMediaLibraryServiceWithProber(
+	libraryService := newTestMediaLibraryService(
 		libraryRepo,
 		musicRepo,
 		config.LibraryConfig{},
 		config.ServerConfig{UploadDir: t.TempDir(), MaxCoverSizeMB: 1},
 		fixedMediaProber{},
 	)
-	musicService := NewMusicServiceWithConfig(musicRepo, libraryService, &config.Config{
-		Server: config.ServerConfig{UploadDir: t.TempDir(), MaxAudioSizeMB: 1, MaxCoverSizeMB: 1},
-		Access: config.AccessConfig{LibraryMode: config.LibraryAccessPublic, MediaURLTTLMinutes: 60},
-	})
+	cfg := config.DefaultConfig()
+	cfg.Server = config.ServerConfig{UploadDir: t.TempDir(), MaxAudioSizeMB: 1, MaxCoverSizeMB: 1}
+	cfg.Access = config.AccessConfig{LibraryMode: config.LibraryAccessPublic, MediaURLTTLMinutes: 60}
+	musicService := NewMusicService(
+		musicRepo, libraryService, cfg,
+		emptyPresetRepository{}, emptyAnalysisRepository{}, discardAnalysisScheduler{},
+	)
 	newTitle := "User rewrite"
 	if _, err := musicService.Update(context.Background(), 7, "user", music.ID, &domain.UpdateMusicRequest{Title: &newTitle}); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("ordinary owner update error = %v, want forbidden", err)
@@ -255,6 +254,18 @@ func (s *mediaLibraryRepositoryStub) FindRootState(context.Context, uint) (*doma
 
 type mediaLibraryMusicRepositoryStub struct {
 	repository.MusicRepository
+}
+
+func newTestMediaLibraryService(
+	repo repository.MediaLibraryRepository,
+	musicRepo repository.MusicRepository,
+	cfg config.LibraryConfig,
+	serverConfig config.ServerConfig,
+	prober mediafs.Prober,
+) *mediaLibraryService {
+	service := newMediaLibraryService(repo, musicRepo, cfg, serverConfig, prober)
+	service.analyzer = discardAnalysisScheduler{}
+	return service
 }
 
 func runMediaLibraryScan(t *testing.T, svc *mediaLibraryService, rootID uint) *domain.MediaScanJob {

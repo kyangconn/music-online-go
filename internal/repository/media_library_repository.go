@@ -62,11 +62,7 @@ type mediaLibraryRepository struct {
 	presetPolicy domain.PresetRulePolicy
 }
 
-func NewMediaLibraryRepository(db *gorm.DB, presetPolicies ...domain.PresetRulePolicy) MediaLibraryRepository {
-	var presetPolicy domain.PresetRulePolicy
-	if len(presetPolicies) > 0 {
-		presetPolicy = presetPolicies[0]
-	}
+func NewMediaLibraryRepository(db *gorm.DB, presetPolicy domain.PresetRulePolicy) MediaLibraryRepository {
 	return &mediaLibraryRepository{db: db, presetPolicy: presetPolicy}
 }
 

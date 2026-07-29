@@ -20,7 +20,6 @@ import (
 
 	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/kyangconn/music-online-go/internal/pkg/database"
-	"github.com/kyangconn/music-online-go/internal/service"
 	"github.com/pquerna/otp/totp"
 )
 
@@ -873,7 +872,7 @@ func TestUploadRequestBodyValidation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create oversized multipart file: %v", err)
 		}
-		payload := make([]byte, service.UploadRequestBodyLimit()+1)
+		payload := make([]byte, testUploadBodyLimit+1)
 		copy(payload, validAudioBytes)
 		if _, err := part.Write(payload); err != nil {
 			t.Fatalf("write oversized multipart file: %v", err)

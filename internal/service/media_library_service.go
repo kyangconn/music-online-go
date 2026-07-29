@@ -71,7 +71,6 @@ type MediaLibraryService interface {
 	GetScanJob(ctx context.Context, id uint) (*domain.MediaScanJobDetail, error)
 	CancelScan(ctx context.Context, id uint) (*domain.MediaScanJob, error)
 	ProbeRoot(ctx context.Context, id uint) (*domain.MediaLibraryRootHealthResponse, error)
-	SetAnalysisScheduler(scheduler MusicAnalysisScheduler)
 	Start(ctx context.Context) error
 	Shutdown(ctx context.Context) error
 }
@@ -93,10 +92,6 @@ type mediaLibraryService struct {
 	wg      sync.WaitGroup
 }
 
-func (s *mediaLibraryService) SetAnalysisScheduler(scheduler MusicAnalysisScheduler) {
-	s.analyzer = scheduler
-}
-
 type resolvedMediaRoot struct {
 	ID                 uint
 	Key                string
@@ -110,32 +105,16 @@ type resolvedMediaRoot struct {
 	ReadOnly           bool
 }
 
-func NewMediaLibraryService(repo repository.MediaLibraryRepository, musicRepo repository.MusicRepository, cfg config.LibraryConfig, serverConfigs ...config.ServerConfig) MediaLibraryService {
-	serverConfig := config.ServerConfig{UploadDir: "uploads", MaxCoverSizeMB: config.DefaultMaxCoverSizeMB}
-	if len(serverConfigs) > 0 {
-		serverConfig = serverConfigs[0]
-	} else if config.AppConfig != nil {
-		serverConfig = config.AppConfig.Server
-	}
-	return NewMediaLibraryServiceWithProber(repo, musicRepo, cfg, serverConfig, mediafs.NewSystemProber())
-}
-
-// NewMediaLibraryServiceWithProber keeps platform I/O behind a small boundary;
-// deterministic tests can model NFS/SMB failures without requiring those mounts.
-func NewMediaLibraryServiceWithProber(repo repository.MediaLibraryRepository, musicRepo repository.MusicRepository, cfg config.LibraryConfig, serverConfig config.ServerConfig, prober mediafs.Prober) MediaLibraryService {
-	managedPath := strings.TrimSpace(serverConfig.UploadDir)
-	if managedPath == "" {
-		managedPath = "uploads"
-	}
-	if prober == nil {
-		prober = mediafs.NewSystemProber()
-	}
+// newMediaLibraryService constructs the path, root-health and scanner core.
+// It stays private because the public music subsystem constructor completes
+// the analysis scheduling cycle before any service can be observed by callers.
+func newMediaLibraryService(repo repository.MediaLibraryRepository, musicRepo repository.MusicRepository, cfg config.LibraryConfig, serverConfig config.ServerConfig, prober mediafs.Prober) *mediaLibraryService {
 	return &mediaLibraryService{
 		repo:          repo,
 		musicRepo:     musicRepo,
 		config:        cfg,
 		prober:        prober,
-		managedPath:   managedPath,
+		managedPath:   strings.TrimSpace(serverConfig.UploadDir),
 		maxCoverBytes: int64(serverConfig.MaxCoverSizeMB) * 1024 * 1024,
 		workerID:      newMediaWorkerID(),
 	}

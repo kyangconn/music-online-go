@@ -49,11 +49,7 @@ type musicRepository struct {
 	presetPolicy domain.PresetRulePolicy
 }
 
-func NewMusicRepository(db *gorm.DB, presetPolicies ...domain.PresetRulePolicy) MusicRepository {
-	var presetPolicy domain.PresetRulePolicy
-	if len(presetPolicies) > 0 {
-		presetPolicy = presetPolicies[0]
-	}
+func NewMusicRepository(db *gorm.DB, presetPolicy domain.PresetRulePolicy) MusicRepository {
 	return &musicRepository{db: db, presetPolicy: presetPolicy}
 }
 

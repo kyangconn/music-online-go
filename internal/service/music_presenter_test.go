@@ -12,10 +12,10 @@ import (
 
 func TestMusicPresenterSharesPrivateTokenSemanticsWithBrowseCovers(t *testing.T) {
 	now := time.Date(2026, time.July, 26, 12, 0, 0, 0, time.UTC)
-	presenter := newMusicPresenter(&config.Config{
-		Access: config.AccessConfig{LibraryMode: config.LibraryAccessAuthenticated, MediaURLTTLMinutes: 15},
-		JWT:    config.JWTConfig{Secret: "private-media-test-secret"},
-	})
+	presenter := newMusicPresenter(
+		config.AccessConfig{LibraryMode: config.LibraryAccessAuthenticated, MediaURLTTLMinutes: 15},
+		config.JWTConfig{Secret: "private-media-test-secret"},
+	)
 	presenter.now = func() time.Time { return now }
 
 	response := presenter.music(&domain.Music{ID: 42, Title: "Track", Artist: "Artist", Path: "audio.flac", Img: "cover.jpg"})
@@ -33,7 +33,8 @@ func TestMusicPresenterSharesPrivateTokenSemanticsWithBrowseCovers(t *testing.T)
 }
 
 func TestMusicPresenterLeavesPublicMediaURLsUnsigned(t *testing.T) {
-	presenter := newMusicPresenter(nil)
+	defaults := config.DefaultConfig()
+	presenter := newMusicPresenter(defaults.Access, defaults.JWT)
 	response := presenter.music(&domain.Music{ID: 7, Title: "Track", Artist: "Artist", Path: "audio.flac", Img: "cover.jpg"})
 	if response.Path != "/api/v1/musics/7/stream" || response.Img != "/api/v1/musics/7/cover" || response.MediaURLExpiresAt != nil {
 		t.Fatalf("public music response = %+v", response)

@@ -58,42 +58,17 @@ type UploadPolicy struct {
 	CoverExtensions   []string `json:"cover_extensions"`
 }
 
-func CurrentUploadPolicy() UploadPolicy {
-	serverConfig := config.ServerConfig{
-		MaxAudioSizeMB: config.DefaultMaxAudioSizeMB,
-		MaxCoverSizeMB: config.DefaultMaxCoverSizeMB,
-	}
-	if config.AppConfig != nil {
-		serverConfig = config.AppConfig.Server
-	}
-	return UploadPolicyFromServerConfig(serverConfig)
-}
-
 func UploadPolicyFromServerConfig(serverConfig config.ServerConfig) UploadPolicy {
 	maxAudioMB := serverConfig.MaxAudioSizeMB
 	maxCoverMB := serverConfig.MaxCoverSizeMB
-	if maxAudioMB <= 0 {
-		maxAudioMB = config.DefaultMaxAudioSizeMB
-	}
-	if maxCoverMB <= 0 {
-		maxCoverMB = config.DefaultMaxCoverSizeMB
-	}
 	return UploadPolicy{
-		MaxAudioSizeBytes: maxSizeBytes(maxAudioMB, config.DefaultMaxAudioSizeMB),
-		MaxCoverSizeBytes: maxSizeBytes(maxCoverMB, config.DefaultMaxCoverSizeMB),
+		MaxAudioSizeBytes: maxSizeBytes(maxAudioMB),
+		MaxCoverSizeBytes: maxSizeBytes(maxCoverMB),
 		MaxAudioSizeMB:    maxAudioMB,
 		MaxCoverSizeMB:    maxCoverMB,
 		AudioExtensions:   sortedExtensions(allowedAudioExts),
 		CoverExtensions:   sortedExtensions(allowedCoverExts),
 	}
-}
-
-// UploadRequestBodyLimit returns the aggregate multipart request limit. The
-// bounded overhead leaves room for multipart boundaries and headers without
-// allowing arbitrary non-file form data to bypass the configured file limits.
-func UploadRequestBodyLimit() int64 {
-	policy := CurrentUploadPolicy()
-	return policy.MaxAudioSizeBytes + policy.MaxCoverSizeBytes + multipartOverheadBytes
 }
 
 func validateUploadedAudioFileWithLimit(header *multipart.FileHeader, maxBytes int64) error {
@@ -254,12 +229,8 @@ func isADTSFrame(data []byte) bool {
 	return len(data) >= 2 && data[0] == 0xff && data[1]&0xf0 == 0xf0
 }
 
-func maxSizeBytes(configuredMB int, fallbackMB int) int64 {
-	mb := configuredMB
-	if mb <= 0 {
-		mb = fallbackMB
-	}
-	return int64(mb) * 1024 * 1024
+func maxSizeBytes(configuredMB int) int64 {
+	return int64(configuredMB) * 1024 * 1024
 }
 
 func formatUploadSize(bytes int64) string {

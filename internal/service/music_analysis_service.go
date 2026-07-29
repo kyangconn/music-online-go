@@ -89,30 +89,6 @@ func newMusicAnalysisServiceWithAnalyzer(
 	cfg config.ClassificationConfig,
 	analyzer audioAnalyzer,
 ) MusicAnalysisService {
-	if cfg.Analyzer.Concurrency <= 0 {
-		cfg.Analyzer.Concurrency = 1
-	}
-	if cfg.Analyzer.QueueLimit <= 0 {
-		cfg.Analyzer.QueueLimit = 1000
-	}
-	if cfg.Analyzer.TimeoutSeconds <= 0 {
-		cfg.Analyzer.TimeoutSeconds = 300
-	}
-	if cfg.Analyzer.MaxFileSizeMB <= 0 {
-		cfg.Analyzer.MaxFileSizeMB = 2048
-	}
-	if cfg.Analyzer.MaxDurationSeconds <= 0 {
-		cfg.Analyzer.MaxDurationSeconds = 1800
-	}
-	if cfg.Analyzer.RetryMaxAttempts <= 0 {
-		cfg.Analyzer.RetryMaxAttempts = 3
-	}
-	if cfg.Analyzer.RetryInitialSeconds <= 0 {
-		cfg.Analyzer.RetryInitialSeconds = 30
-	}
-	if cfg.Analyzer.RetryMaxSeconds < cfg.Analyzer.RetryInitialSeconds {
-		cfg.Analyzer.RetryMaxSeconds = 900
-	}
 	return &musicAnalysisService{
 		repo: repo, presetRepo: presetRepo, pathResolver: pathResolver,
 		config: cfg, analyzer: analyzer, workerID: newAnalysisWorkerID(),
@@ -120,9 +96,6 @@ func newMusicAnalysisServiceWithAnalyzer(
 }
 
 func (service *musicAnalysisService) ScheduleContentAnalysis(ctx context.Context, musicID, requestedBy uint) error {
-	if service.repo == nil {
-		return nil
-	}
 	candidate, err := service.repo.FindCandidate(ctx, musicID)
 	if err != nil {
 		return err
@@ -320,9 +293,6 @@ func (service *musicAnalysisService) Start(parent context.Context) error {
 	if service.started {
 		return nil
 	}
-	if service.repo == nil {
-		return errors.New("music analysis repository is nil")
-	}
 	if err := service.repo.RecoverExpired(parent); err != nil {
 		return fmt.Errorf("recover interrupted music analyses: %w", err)
 	}
@@ -476,9 +446,6 @@ func (service *musicAnalysisService) processJob(ctx context.Context, job *domain
 }
 
 func (service *musicAnalysisService) processMetadataJob(ctx context.Context, job *domain.MusicAnalysisJob) error {
-	if service.presetRepo == nil {
-		return newAnalyzerFailure("classification_unavailable", false, "preset classification repository is unavailable", nil)
-	}
 	candidate, err := service.repo.FindCandidate(ctx, job.MusicID)
 	if err != nil {
 		return newAnalyzerFailure("music_unavailable", false, "music record is unavailable", err)
@@ -511,9 +478,6 @@ func (service *musicAnalysisService) processAudioJob(ctx context.Context, job *d
 		job.AnalysisID = &cached.ID
 		job.ObservedFileHash = job.FileHash
 		return service.applyAudioClassification(ctx, job.MusicID, cached)
-	}
-	if service.pathResolver == nil {
-		return newAnalyzerFailure("audio_source_unavailable", false, "audio source resolver is unavailable", nil)
 	}
 	path, err := service.pathResolver.ResolveMusicPath(ctx, candidate.Music)
 	if err != nil {
@@ -580,9 +544,6 @@ func (service *musicAnalysisService) applyAudioClassification(
 	musicID uint,
 	analysis *domain.MusicAudioAnalysis,
 ) error {
-	if service.presetRepo == nil {
-		return nil
-	}
 	if _, err := service.presetRepo.ReclassifyWithAudio(ctx, musicID, analysis); err != nil {
 		if errors.Is(err, repository.ErrPresetAnalysisMismatch) {
 			return errAnalysisContentStale

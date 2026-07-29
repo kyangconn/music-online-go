@@ -28,17 +28,9 @@ type MusicHandler struct {
 	privateMedia bool
 }
 
-func NewMusicHandler(musicService service.MusicService) *MusicHandler {
-	access := config.AccessConfig{}
-	if config.AppConfig != nil {
-		access = config.AppConfig.Access
-	}
-	return NewMusicHandlerWithAccess(musicService, access)
-}
-
-// NewMusicHandlerWithAccess snapshots the cache policy at startup instead of
+// NewMusicHandler snapshots the cache policy at startup instead of
 // consulting mutable process-global configuration for every media response.
-func NewMusicHandlerWithAccess(musicService service.MusicService, access config.AccessConfig) *MusicHandler {
+func NewMusicHandler(musicService service.MusicService, access config.AccessConfig) *MusicHandler {
 	return &MusicHandler{
 		service:      musicService,
 		privateMedia: access.LibraryMode == config.LibraryAccessAuthenticated,

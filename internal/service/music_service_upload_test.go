@@ -55,7 +55,7 @@ func TestUploadFilesRestoresExistingFilesWhenDatabaseUpdateFails(t *testing.T) {
 		music:     &domain.Music{ID: 1, UserID: 7, Path: audioPath, Img: coverPath},
 		updateErr: errors.New("database write failed"),
 	}
-	svc := NewMusicService(repo)
+	svc := newUploadMusicService(repo, uploadDir)
 	newAudio := append([]byte("ID3\x04\x00\x00\x00\x00\x00\x10"), []byte("new audio")...)
 	newCover := append([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}, bytes.Repeat([]byte{0}, 24)...)
 
@@ -89,7 +89,7 @@ func TestUploadFilesReplacesExistingFileOnWindowsCompatiblePath(t *testing.T) {
 	audioPath := filepath.Join(musicDir, "audio.mp3")
 	writeTestFile(t, audioPath, []byte("old audio"))
 	repo := &uploadMusicRepositoryStub{music: &domain.Music{ID: 1, UserID: 7, Path: audioPath}}
-	svc := NewMusicService(repo)
+	svc := newUploadMusicService(repo, uploadDir)
 	newAudio := append([]byte("ID3\x04\x00\x00\x00\x00\x00\x10"), []byte("replacement")...)
 
 	_, err := svc.UploadFiles(
@@ -122,7 +122,7 @@ func TestUploadFilesRemovesPreviousExtensionOnlyAfterCommit(t *testing.T) {
 	oldPath := filepath.Join(musicDir, "audio.mp3")
 	writeTestFile(t, oldPath, []byte("old audio"))
 	repo := &uploadMusicRepositoryStub{music: &domain.Music{ID: 1, UserID: 7, Path: oldPath}}
-	svc := NewMusicService(repo)
+	svc := newUploadMusicService(repo, uploadDir)
 	newAudio := append([]byte("fLaC"), []byte("replacement")...)
 
 	_, err := svc.UploadFiles(
@@ -159,7 +159,7 @@ func TestUploadFilesNeverDeletesReadOnlyLibrarySource(t *testing.T) {
 		ID: 1, UserID: 0, Path: externalPath, MediaRootID: 12,
 		MediaRelativePath: "source.flac", MediaSourceKey: &sourceKey, SourceReadOnly: true,
 	}}
-	svc := NewMusicService(repo)
+	svc := newUploadMusicService(repo, uploadDir)
 	replacement := append([]byte("fLaC"), []byte("managed replacement")...)
 
 	if _, err := svc.UploadFiles(
@@ -184,15 +184,56 @@ func TestUploadFilesNeverDeletesReadOnlyLibrarySource(t *testing.T) {
 
 func configureUploadTest(t *testing.T) string {
 	t.Helper()
-	originalConfig := config.AppConfig
-	uploadDir := t.TempDir()
-	config.AppConfig = &config.Config{Server: config.ServerConfig{
-		MaxAudioSizeMB: 1,
-		MaxCoverSizeMB: 1,
-		UploadDir:      uploadDir,
-	}}
-	t.Cleanup(func() { config.AppConfig = originalConfig })
-	return uploadDir
+	return t.TempDir()
+}
+
+func newUploadMusicService(repo repository.MusicRepository, uploadDir string) MusicService {
+	cfg := config.DefaultConfig()
+	cfg.Server.UploadDir = uploadDir
+	cfg.Server.MaxAudioSizeMB = 1
+	cfg.Server.MaxCoverSizeMB = 1
+	return NewMusicService(
+		repo, uploadMediaStorage{repo: repo}, cfg,
+		emptyPresetRepository{}, emptyAnalysisRepository{}, discardAnalysisScheduler{},
+	)
+}
+
+type uploadMediaStorage struct {
+	repo repository.MusicRepository
+}
+
+func (storage uploadMediaStorage) ResolveMusicPath(_ context.Context, music *domain.Music) (string, error) {
+	return music.Path, nil
+}
+
+func (uploadMediaStorage) HasReadOnlyMediaSource(context.Context, uint) (bool, error) {
+	return false, nil
+}
+
+func (storage uploadMediaStorage) PersistManagedMusicSource(ctx context.Context, music *domain.Music) error {
+	return storage.repo.Update(ctx, music)
+}
+
+type discardAnalysisScheduler struct{}
+
+func (discardAnalysisScheduler) ScheduleContentAnalysis(context.Context, uint, uint) error {
+	return nil
+}
+
+type emptyPresetRepository struct {
+	repository.PresetRepository
+}
+
+func (emptyPresetRepository) FindByMusicIDs(context.Context, []uint) (map[uint]*domain.MusicPresetClassification, error) {
+	return map[uint]*domain.MusicPresetClassification{}, nil
+}
+
+type emptyAnalysisRepository struct {
+	repository.MusicAnalysisRepository
+}
+
+func (emptyAnalysisRepository) LatestAudioJobsByMusicIDs(context.Context, []uint) (map[uint]*domain.MusicAnalysisJob, error) {
+	return map[uint]*domain.MusicAnalysisJob{}, nil
 }
 
 func makeMultipartFileHeader(t *testing.T, field, name string, content []byte) *multipart.FileHeader {

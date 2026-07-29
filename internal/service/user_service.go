@@ -50,7 +50,8 @@ type UserService interface {
 }
 
 type userService struct {
-	userRepo repository.UserRepository
+	userRepo  repository.UserRepository
+	uploadDir string
 }
 
 type BootstrapAdminRequest struct {
@@ -64,8 +65,8 @@ type BootstrapAdminRequest struct {
 // dummyPasswordHash keeps failed login timing closer when the account does not exist.
 const dummyPasswordHash = "$2a$10$OLIc7WDuS61Ho.Ezf91LNO9AOgRWT3WbAmBnvG2OrzkqLR9vOCnpC"
 
-func NewUserService(userRepo repository.UserRepository) UserService {
-	return &userService{userRepo: userRepo}
+func NewUserService(userRepo repository.UserRepository, uploadDir string) UserService {
+	return &userService{userRepo: userRepo, uploadDir: uploadDir}
 }
 
 func (s *userService) Register(ctx context.Context, req *domain.RegisterRequest) (*domain.UserResponse, error) {
@@ -118,10 +119,6 @@ func (s *userService) BootstrapAdmin(ctx context.Context, req BootstrapAdminRequ
 	if err := password.ValidateNewPassword(req.Password); err != nil {
 		return nil, false, fmt.Errorf("%w: %w", ErrBootstrapAdminConfig, err)
 	}
-	if req.FullName == "" {
-		req.FullName = "Administrator"
-	}
-
 	existing, err := s.userRepo.FindByUsername(ctx, req.Username)
 	if err != nil {
 		if !errors.Is(err, repository.ErrUserNotFound) {
@@ -319,7 +316,7 @@ func (s *userService) DeleteUser(ctx context.Context, id uint, currentPassword s
 		return err
 	}
 	for _, musicID := range musicIDs {
-		cleanupMusicUploadDirectory(musicID)
+		cleanupMusicUploadDirectoryAt(s.uploadDir, musicID)
 	}
 	return nil
 }

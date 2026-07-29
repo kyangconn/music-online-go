@@ -19,13 +19,7 @@ type musicPresenter struct {
 	now    func() time.Time
 }
 
-func newMusicPresenter(cfg *config.Config) musicPresenter {
-	access := config.AccessConfig{LibraryMode: config.LibraryAccessPublic, MediaURLTTLMinutes: 60}
-	jwtConfig := config.JWTConfig{}
-	if cfg != nil {
-		access = cfg.Access
-		jwtConfig = cfg.JWT
-	}
+func newMusicPresenter(access config.AccessConfig, jwtConfig config.JWTConfig) musicPresenter {
 	return musicPresenter{access: access, jwt: jwtConfig, now: time.Now}
 }
 

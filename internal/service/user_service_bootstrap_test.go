@@ -44,7 +44,7 @@ func newBootstrapUserService(t *testing.T) service.UserService {
 		JWT: config.JWTConfig{Secret: "test-secret", ExpireHour: 24},
 	}
 
-	return service.NewUserService(repository.NewUserRepository(db))
+	return service.NewUserService(repository.NewUserRepository(db), t.TempDir())
 }
 
 func TestBootstrapAdminCreatesAdmin(t *testing.T) {

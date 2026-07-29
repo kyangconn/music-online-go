@@ -23,8 +23,8 @@ type browseService struct {
 	presenter musicPresenter
 }
 
-func NewBrowseService(repo repository.BrowseRepository, cfg *config.Config) BrowseService {
-	return &browseService{repo: repo, presenter: newMusicPresenter(cfg)}
+func NewBrowseService(repo repository.BrowseRepository, cfg config.Config) BrowseService {
+	return &browseService{repo: repo, presenter: newMusicPresenter(cfg.Access, cfg.JWT)}
 }
 
 func (s *browseService) ListArtists(ctx context.Context, params domain.BrowseArtistParams) ([]*domain.ArtistSummary, int64, error) {

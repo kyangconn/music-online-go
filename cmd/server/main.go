@@ -20,7 +20,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/kyangconn/music-online-go/internal/config"
-	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/kyangconn/music-online-go/internal/handler"
 	"github.com/kyangconn/music-online-go/internal/pkg/database"
 	pklog "github.com/kyangconn/music-online-go/internal/pkg/log"
@@ -77,8 +76,11 @@ func main() {
 		}
 	}()
 
-	handlers, mediaLibraryService, analysisService := initDependencies()
-	r, err := router.NewWithConfig(handlers, database.DB, config.AppConfig)
+	handlers, mediaLibraryService, analysisService, err := initDependencies()
+	if err != nil {
+		pklog.Fatalf("Failed to initialize application dependencies: %v", err)
+	}
+	r, err := router.New(handlers, database.DB, *config.AppConfig)
 	if err != nil {
 		pklog.Fatalf("Failed to configure router: %v", err)
 	}
@@ -124,42 +126,39 @@ func setEnvIfNotEmpty(key, val string) {
 	}
 }
 
-func initDependencies() (*router.Handlers, service.MediaLibraryService, service.MusicAnalysisService) {
+func initDependencies() (*router.Handlers, service.MediaLibraryService, service.MusicAnalysisService, error) {
 	userRepo := repository.NewUserRepository(database.DB)
-	userService := service.NewUserService(userRepo)
+	userService := service.NewUserService(userRepo, config.AppConfig.Server.UploadDir)
 
 	classificationConfig := config.AppConfig.Classification
-	presetPolicy := domain.PresetRulePolicy{
-		Enabled: classificationConfig.Enabled, AutoThreshold: classificationConfig.AutoThreshold,
-		ReviewMargin: classificationConfig.ReviewMargin, CalmFlowWeight: classificationConfig.CalmFlowWeight,
-		KineticPulseWeight: classificationConfig.KineticPulseWeight, CosmicDriftWeight: classificationConfig.CosmicDriftWeight,
-		BassImpactWeight: classificationConfig.BassImpactWeight,
-	}
+	presetPolicy := classificationConfig.PresetRulePolicy()
 	musicRepo := repository.NewMusicRepository(database.DB, presetPolicy)
 	browseRepo := repository.NewBrowseRepository(database.DB)
 	playlistRepo := repository.NewPlaylistRepository(database.DB)
 	presetRepo := repository.NewPresetRepository(database.DB, presetPolicy)
 	analysisRepo := repository.NewMusicAnalysisRepository(database.DB)
 	mediaLibraryRepo := repository.NewMediaLibraryRepository(database.DB, presetPolicy)
-	mediaLibraryService := service.NewMediaLibraryService(mediaLibraryRepo, musicRepo, config.AppConfig.Library, config.AppConfig.Server)
-	analysisService := service.NewMusicAnalysisService(analysisRepo, presetRepo, mediaLibraryService, classificationConfig)
-	mediaLibraryService.SetAnalysisScheduler(analysisService)
-	musicService := service.NewMusicServiceWithAnalysis(musicRepo, mediaLibraryService, config.AppConfig, presetRepo, analysisRepo)
-	musicService.SetAnalysisScheduler(analysisService)
-	browseService := service.NewBrowseService(browseRepo, config.AppConfig)
-	playlistService := service.NewPlaylistService(playlistRepo, musicService)
+	subsystem := service.NewMusicSubsystem(service.MusicSubsystemRepositories{
+		Music: musicRepo, Preset: presetRepo, Analysis: analysisRepo, MediaLibrary: mediaLibraryRepo,
+	}, *config.AppConfig)
+	browseService := service.NewBrowseService(browseRepo, *config.AppConfig)
+	playlistService := service.NewPlaylistService(playlistRepo, subsystem.Music)
 	presetService := service.NewPresetClassificationService(presetRepo, classificationConfig.Enabled)
+	sqlDB, err := database.DB.DB()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("get database statistics handle: %w", err)
+	}
 
 	return &router.Handlers{
 		User:     handler.NewUserHandler(userService),
-		Music:    handler.NewMusicHandlerWithAccess(musicService, config.AppConfig.Access),
+		Music:    handler.NewMusicHandler(subsystem.Music, config.AppConfig.Access),
 		Browse:   handler.NewBrowseHandler(browseService),
 		Playlist: handler.NewPlaylistHandler(playlistService),
 		Preset:   handler.NewPresetClassificationHandler(presetService),
-		Analysis: handler.NewMusicAnalysisHandler(analysisService),
-		MusicTag: handler.NewMusicTagHandler(musicService),
-		Admin:    handler.NewAdminHandlerWithConfig(userService, musicService, mediaLibraryService, config.AppConfig),
-	}, mediaLibraryService, analysisService
+		Analysis: handler.NewMusicAnalysisHandler(subsystem.Analysis),
+		MusicTag: handler.NewMusicTagHandler(subsystem.Music),
+		Admin:    handler.NewAdminHandler(userService, subsystem.Music, subsystem.MediaLibrary, *config.AppConfig, sqlDB),
+	}, subsystem.MediaLibrary, subsystem.Analysis, nil
 }
 
 func bootstrapAdmin(ctx context.Context) error {
@@ -169,7 +168,7 @@ func bootstrapAdmin(ctx context.Context) error {
 	}
 
 	userRepo := repository.NewUserRepository(database.DB)
-	userService := service.NewUserService(userRepo)
+	userService := service.NewUserService(userRepo, config.AppConfig.Server.UploadDir)
 	user, created, err := userService.BootstrapAdmin(ctx, service.BootstrapAdminRequest{
 		Username:      cfg.Username,
 		Email:         cfg.Email,

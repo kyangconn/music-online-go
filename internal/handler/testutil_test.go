@@ -21,6 +21,7 @@ import (
 
 var testRouter *gin.Engine
 var testUploadDir string
+var testUploadBodyLimit int64
 
 func TestMain(m *testing.M) {
 	var err error
@@ -28,25 +29,21 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	config.AppConfig = &config.Config{
-		Database: config.DatabaseConfig{
-			Type:                         "sqlite",
-			Path:                         ":memory:",
-			LogLevel:                     "auto",
-			ConnectTimeoutSeconds:        10,
-			ConnectionMaxLifetimeMinutes: 60,
-			ConnectionMaxIdleTimeMinutes: 10,
-		},
-		Server: config.ServerConfig{UploadDir: testUploadDir, MaxAudioSizeMB: 1, MaxCoverSizeMB: 1},
-		JWT:    config.JWTConfig{Secret: "test-secret", ExpireHour: 24},
-		Library: config.LibraryConfig{Scanner: config.LibraryScannerConfig{
-			Enabled: true, MaxFileSizeMB: 1,
-		}},
-		Classification: config.ClassificationConfig{
-			Enabled: true, AutoThreshold: 0.65, ReviewMargin: 0.12,
-			CalmFlowWeight: 1, KineticPulseWeight: 1, CosmicDriftWeight: 1, BassImpactWeight: 1,
-		},
+	testConfig := config.DefaultConfig()
+	testConfig.Database = config.DatabaseConfig{
+		Type:                         "sqlite",
+		Path:                         ":memory:",
+		LogLevel:                     "auto",
+		ConnectTimeoutSeconds:        10,
+		ConnectionMaxLifetimeMinutes: 60,
+		ConnectionMaxIdleTimeMinutes: 10,
 	}
+	testConfig.Server.UploadDir = testUploadDir
+	testConfig.Server.MaxAudioSizeMB = 1
+	testConfig.Server.MaxCoverSizeMB = 1
+	testConfig.JWT = config.JWTConfig{Secret: "test-secret", ExpireHour: 24}
+	testConfig.Library.Scanner.MaxFileSizeMB = 1
+	config.AppConfig = &testConfig
 
 	gin.SetMode(gin.TestMode)
 
@@ -58,7 +55,7 @@ func TestMain(m *testing.M) {
 	}
 
 	userRepo := repository.NewUserRepository(database.DB)
-	userService := service.NewUserService(userRepo)
+	userService := service.NewUserService(userRepo, config.AppConfig.Server.UploadDir)
 
 	presetPolicy := domain.DefaultPresetRulePolicy()
 	musicRepo := repository.NewMusicRepository(database.DB, presetPolicy)
@@ -67,23 +64,26 @@ func TestMain(m *testing.M) {
 	presetRepo := repository.NewPresetRepository(database.DB, presetPolicy)
 	analysisRepo := repository.NewMusicAnalysisRepository(database.DB)
 	mediaLibraryRepo := repository.NewMediaLibraryRepository(database.DB, presetPolicy)
-	mediaLibraryService := service.NewMediaLibraryService(mediaLibraryRepo, musicRepo, config.AppConfig.Library)
-	analysisService := service.NewMusicAnalysisService(analysisRepo, presetRepo, mediaLibraryService, config.AppConfig.Classification)
-	mediaLibraryService.SetAnalysisScheduler(analysisService)
-	musicService := service.NewMusicServiceWithAnalysis(musicRepo, mediaLibraryService, config.AppConfig, presetRepo, analysisRepo)
-	musicService.SetAnalysisScheduler(analysisService)
-	browseService := service.NewBrowseService(browseRepo, config.AppConfig)
-	playlistService := service.NewPlaylistService(playlistRepo, musicService)
+	subsystem := service.NewMusicSubsystem(service.MusicSubsystemRepositories{
+		Music: musicRepo, Preset: presetRepo, Analysis: analysisRepo, MediaLibrary: mediaLibraryRepo,
+	}, *config.AppConfig)
+	testUploadBodyLimit = subsystem.Music.UploadBodyLimit()
+	browseService := service.NewBrowseService(browseRepo, *config.AppConfig)
+	playlistService := service.NewPlaylistService(playlistRepo, subsystem.Music)
 	presetService := service.NewPresetClassificationService(presetRepo, true)
 
 	userHandler := handler.NewUserHandler(userService)
-	musicHandler := handler.NewMusicHandler(musicService)
+	musicHandler := handler.NewMusicHandler(subsystem.Music, config.AppConfig.Access)
 	browseHandler := handler.NewBrowseHandler(browseService)
 	playlistHandler := handler.NewPlaylistHandler(playlistService)
 	presetHandler := handler.NewPresetClassificationHandler(presetService)
-	analysisHandler := handler.NewMusicAnalysisHandler(analysisService)
-	musicTagHandler := handler.NewMusicTagHandler(musicService)
-	adminHandler := handler.NewAdminHandler(userService, musicService, mediaLibraryService)
+	analysisHandler := handler.NewMusicAnalysisHandler(subsystem.Analysis)
+	musicTagHandler := handler.NewMusicTagHandler(subsystem.Music)
+	sqlDB, err := database.DB.DB()
+	if err != nil {
+		panic(err)
+	}
+	adminHandler := handler.NewAdminHandler(userService, subsystem.Music, subsystem.MediaLibrary, *config.AppConfig, sqlDB)
 
 	testRouter = gin.New()
 	testRouter.Use(gin.Recovery())

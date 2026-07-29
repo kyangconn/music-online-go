@@ -42,7 +42,7 @@ func openBrowseRepositoryTestDB(t *testing.T) *gorm.DB {
 
 func TestMusicRepositoryLoadsEngagementInBatch(t *testing.T) {
 	db := openBrowseRepositoryTestDB(t)
-	repo := NewMusicRepository(db)
+	repo := NewMusicRepository(db, domain.PresetRulePolicy{})
 	ctx := context.Background()
 	tracks := []*domain.Music{{Title: "One", Artist: "Artist"}, {Title: "Two", Artist: "Artist"}}
 	for _, track := range tracks {
@@ -72,7 +72,7 @@ func TestMusicRepositoryLoadsEngagementInBatch(t *testing.T) {
 
 func TestMusicRepositoryReplacesBrowseProjectionWithCanonicalMetadata(t *testing.T) {
 	db := openBrowseRepositoryTestDB(t)
-	repo := NewMusicRepository(db)
+	repo := NewMusicRepository(db, domain.PresetRulePolicy{})
 	ctx := context.Background()
 	music := &domain.Music{
 		Title: "Track", Artist: "Original Artist", Artists: domain.StringList{"Original Artist"},
@@ -112,7 +112,7 @@ func TestMusicRepositoryReplacesBrowseProjectionWithCanonicalMetadata(t *testing
 
 func TestBrowseRepositoryGroupsStableIdentitiesAndOrdersAlbumTracks(t *testing.T) {
 	db := openBrowseRepositoryTestDB(t)
-	musicRepo := NewMusicRepository(db)
+	musicRepo := NewMusicRepository(db, domain.PresetRulePolicy{})
 	browseRepo := NewBrowseRepository(db)
 	ctx := context.Background()
 	artistID := "123e4567-e89b-42d3-a456-426614174010"
@@ -151,7 +151,7 @@ func TestBrowseRepositoryGroupsStableIdentitiesAndOrdersAlbumTracks(t *testing.T
 
 func TestPlaylistRepositoryEnforcesOwnershipIdempotencyAndOrder(t *testing.T) {
 	db := openBrowseRepositoryTestDB(t)
-	musicRepo := NewMusicRepository(db)
+	musicRepo := NewMusicRepository(db, domain.PresetRulePolicy{})
 	playlistRepo := NewPlaylistRepository(db)
 	ctx := context.Background()
 	for _, user := range []domain.User{

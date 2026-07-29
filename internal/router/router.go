@@ -35,17 +35,9 @@ type Handlers struct {
 	Admin    *handler.AdminHandler
 }
 
-// New keeps the historical constructor for tests and embedders. Production
-// startup should use NewWithConfig so the router owns one validated snapshot.
-func New(h *Handlers, db *gorm.DB) (*gin.Engine, error) {
-	return NewWithConfig(h, db, config.AppConfig)
-}
-
-// NewWithConfig 创建并配置Gin路由器。
-func NewWithConfig(h *Handlers, db *gorm.DB, cfg *config.Config) (*gin.Engine, error) {
-	if cfg == nil {
-		return nil, fmt.Errorf("configure router: config is nil")
-	}
+// New creates the router from the validated startup snapshot supplied by the
+// composition root.
+func New(h *Handlers, db *gorm.DB, cfg config.Config) (*gin.Engine, error) {
 	switch cfg.Server.Mode {
 	case "release":
 		gin.SetMode(gin.ReleaseMode)

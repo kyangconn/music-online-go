@@ -152,7 +152,7 @@ func TestLoginFallbackToEmail(t *testing.T) {
 			return user, nil
 		},
 	}
-	svc := service.NewUserService(repo)
+	svc := service.NewUserService(repo, t.TempDir())
 
 	resp, err := svc.Login(context.Background(), &domain.LoginRequest{Username: "u@example.com", Password: "pwd12345"})
 	if err != nil {
@@ -172,7 +172,7 @@ func TestLoginDBErrorNotSwallowed(t *testing.T) {
 			return nil, dbErr
 		},
 	}
-	svc := service.NewUserService(repo)
+	svc := service.NewUserService(repo, t.TempDir())
 
 	_, err := svc.Login(context.Background(), &domain.LoginRequest{Username: "someone", Password: "x"})
 	if err == nil {
@@ -193,7 +193,7 @@ func TestLoginUserNotFound(t *testing.T) {
 			return nil, repository.ErrUserNotFound
 		},
 	}
-	svc := service.NewUserService(repo)
+	svc := service.NewUserService(repo, t.TempDir())
 
 	_, err := svc.Login(context.Background(), &domain.LoginRequest{Username: "ghost", Password: "x"})
 	assertLoginErrIs(t, err, service.ErrInvalidCredentials)
@@ -207,7 +207,7 @@ func TestLoginWrongPassword(t *testing.T) {
 			return user, nil
 		},
 	}
-	svc := service.NewUserService(repo)
+	svc := service.NewUserService(repo, t.TempDir())
 
 	_, err := svc.Login(context.Background(), &domain.LoginRequest{Username: "alice", Password: "wrong"})
 	assertLoginErrIs(t, err, service.ErrInvalidCredentials)
@@ -220,7 +220,7 @@ func TestLoginOversizedPasswordIsInvalidCredentials(t *testing.T) {
 			return user, nil
 		},
 	}
-	svc := service.NewUserService(repo)
+	svc := service.NewUserService(repo, t.TempDir())
 
 	_, err := svc.Login(context.Background(), &domain.LoginRequest{
 		Username: "alice",
@@ -237,7 +237,7 @@ func TestLoginValidCredentials(t *testing.T) {
 			return user, nil
 		},
 	}
-	svc := service.NewUserService(repo)
+	svc := service.NewUserService(repo, t.TempDir())
 
 	resp, err := svc.Login(context.Background(), &domain.LoginRequest{Username: "bob", Password: "secret123"})
 	if err != nil {
@@ -257,7 +257,7 @@ func TestRegisterRejectsOversizedPasswordBeforeCreate(t *testing.T) {
 		created = true
 		return nil
 	}}
-	svc := service.NewUserService(repo)
+	svc := service.NewUserService(repo, t.TempDir())
 
 	_, err := svc.Register(context.Background(), &domain.RegisterRequest{
 		Username: "too-long",
@@ -283,7 +283,7 @@ func TestChangePasswordRejectsOversizedPasswordBeforeUpdate(t *testing.T) {
 			return nil
 		},
 	}
-	svc := service.NewUserService(repo)
+	svc := service.NewUserService(repo, t.TempDir())
 
 	err := svc.ChangePassword(context.Background(), 1, "current-password", strings.Repeat("a", 73))
 
@@ -305,7 +305,7 @@ func TestDeleteUserRejectsIncorrectPassword(t *testing.T) {
 			return nil
 		},
 	}
-	svc := service.NewUserService(repo)
+	svc := service.NewUserService(repo, t.TempDir())
 
 	err := svc.DeleteUser(context.Background(), 1, "wrong-password")
 
@@ -327,7 +327,7 @@ func TestDeleteUserProtectsLastActiveAdmin(t *testing.T) {
 			return nil
 		},
 	}
-	svc := service.NewUserService(repo)
+	svc := service.NewUserService(repo, t.TempDir())
 
 	err := svc.DeleteUser(context.Background(), 1, "correct-password")
 
@@ -338,10 +338,7 @@ func TestDeleteUserProtectsLastActiveAdmin(t *testing.T) {
 }
 
 func TestDeleteUserCleansOwnedMusicDirectoriesAfterDatabaseDelete(t *testing.T) {
-	originalConfig := config.AppConfig
 	uploadDir := t.TempDir()
-	config.AppConfig = &config.Config{Server: config.ServerConfig{UploadDir: uploadDir}}
-	t.Cleanup(func() { config.AppConfig = originalConfig })
 
 	user := makeActiveUser(t, "delete-user", "correct-password")
 	for _, id := range []uint{10, 11} {
@@ -362,7 +359,7 @@ func TestDeleteUserCleansOwnedMusicDirectoriesAfterDatabaseDelete(t *testing.T) 
 			return nil
 		},
 	}
-	svc := service.NewUserService(repo)
+	svc := service.NewUserService(repo, uploadDir)
 
 	if err := svc.DeleteUser(context.Background(), 1, "correct-password"); err != nil {
 		t.Fatalf("delete user: %v", err)
