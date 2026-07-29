@@ -28,6 +28,7 @@ A small self-hosted music platform for individuals, families, and small teams. I
 - Library search supports artist, album, album artist, genre, release year, type, and liked-state filters, with filters and pagination preserved in the URL.
 - Signed-in users can create private playlists and add, remove, or reorder tracks. Deleting music also removes stale playlist references.
 - Public and authenticated-only instance modes apply the same access policy to tracks, aggregates, covers, and audio.
+- Four explainable scene presets work offline from metadata and may add bounded model/DSP evidence. Low-confidence output enters an administrator review queue, and re-analysis never erases a manual correction.
 
 ## Project Structure
 
@@ -100,6 +101,7 @@ Frontend output goes to `cmd/server/dist/` and is embedded into the Go binary.
 
 ```bash
 make test       # Backend and frontend tests
+make test-cover-fe # Frontend coverage summary
 make check      # Non-mutating Go vet, frontend typecheck, and ESLint
 make verify     # Tests plus all non-mutating checks
 make lint       # Go fmt/vet plus frontend ESLint fixes
@@ -399,6 +401,8 @@ Use NFS/SMB for read-only media sources, not for the SQLite database or writable
 
 The local rule layer stores four independent scores, a rule version, and stable evidence keys, and it may abstain. Administrator overrides are stored separately from automatic output, so reclassification never erases a manual choice. Tuning weights do not change the stable preset IDs used by the API and database.
 
+When classification is enabled, users can browse and play confirmed tracks through Scene Presets; uncertain tracks are never forced into one of the four collections. The admin UI exposes an explicit review queue, evidence, and analysis provenance, and accepts up to 100 selected tracks per batch. Assigning or clearing a batch is one database transaction: any missing track rolls the whole request back. A manually resolved track leaves the review queue and returns to its automatic state when the override is cleared.
+
 ### Optional HTTP analyzer and durable jobs
 
 The base image does not install FFmpeg, Python, or a model runtime. When an analyzer is enabled, job state stays in the existing SQLite/PostgreSQL database: one worker is the default, claims use leases and a fencing generation, and startup recovers expired `running` work. Requests are idempotent across a track content hash, content revision, and analyzer/model versions; byte-identical physical sources reuse a `music_audio_analyses` artifact. A full queue, offline analyzer, timeout, damaged file, or cancellation never rolls back an already successful upload, directory import, or playback operation.
@@ -418,20 +422,37 @@ The body is a controlled stream selected by the server media-root resolver. No h
   "analyzer_version": "1.0.0",
   "model_version": "model-v1",
   "duration_ms": 213000,
-  "features": { "bpm": 128.0, "danceability": 0.82 },
+  "features": {
+    "bpm": 128.0,
+    "bpm_confidence": 0.86,
+    "bpm_candidates": [{ "bpm": 128.0, "confidence": 0.86 }],
+    "danceability": 0.82,
+    "energy": 0.77,
+    "pulse_clarity": 0.74
+  },
   "model_labels": { "trance": 0.74, "progressive house": 0.43 }
 }
 ```
 
 All three version values must exactly match configuration. Model-label scores must be in `0..1`, numbers must be finite, and object depth, key count, arrays, and strings are bounded. The server recomputes SHA-256 while streaming; a mismatch marks the job `stale` and discards the result.
 
-No default model image is selected yet. Once an image implements this contract and a secret of at least 32 bytes is available, start the isolated optional profile with:
+`hybrid-v1` consumes only the stable top-level features below. Unknown or nested vendor data remains in the durable artifact but cannot silently become a classification rule:
+
+- tempo: `bpm` (`20..400`), `bpm_confidence`, and at most eight `{bpm, confidence}` candidates; BPM is folded for half/double time and contributes only a weak affinity, never a hard boundary;
+- activity and rhythm: `energy`, `arousal`, `dynamic_smoothness`, `dynamic_range_normalized`, `danceability`, `onset_rate_normalized`, `pulse_clarity`, and `high_energy_segment_ratio`;
+- spectrum and texture: `spectral_centroid_normalized`, `spectral_flatness`, `spectral_flux`, `roughness`, `loudness_normalized`, `bass_energy_ratio`, `sub_bass_energy_ratio`, and `drop_contrast`;
+- tonality, space, and voice: `tonal_strength`, `harmonicity`, `spatiality`, `instrumental_probability`, and `vocal_probability`.
+
+Except for `bpm`, these scalars must be normalized to `0..1` under the analyzer's versioned definition; do not place raw LUFS, Hz, or uncalibrated distances in the named fields. Model labels pass through the same genre normalizer and have a lower contribution ceiling than local tags; DSP is lower again. An Instrumental tag supports Calm Flow only when low energy and low arousal or smooth dynamics corroborate it. The artifact SHA-256 must also match the track's current content, so old-file evidence cannot classify replaced audio.
+
+No default model image is selected yet. See the [audio analyzer candidate and benchmark protocol](docs/audio-analysis-benchmark-EN.md) for candidate screening, artifact-level licensing boundaries, gold-set splits, and reproducible commands. Once an image passes that gate, implements this contract, and a secret of at least 32 bytes is available, start the isolated optional profile with:
 
 ```bash
-docker compose --env-file .env -f compose.yaml -f compose.analyzer.yaml --profile analyzer up -d
+make docker-config-analyzer
+make docker-up-analyzer
 ```
 
-Prefer writing the shared secret to `./secrets/analyzer_token` and additionally layering `-f compose.analyzer-secrets.yaml`; the analyzer image must then support `ANALYZER_TOKEN_FILE`. The overlay does not publish the analyzer port and applies a read-only root filesystem, dropped capabilities, PID/CPU/memory bounds, and bounded temporary storage. Administrators can explicitly backfill, inspect metrics, retry, and cancel jobs through the UI or `/api/v1/users/admin/analysis/*`.
+Prefer writing the shared secret to `./secrets/analyzer_token` and using `make docker-config-analyzer-secrets` / `make docker-up-analyzer-secrets`; the analyzer image must then support `ANALYZER_TOKEN_FILE`. The overlay does not publish the analyzer port and applies a read-only root filesystem, dropped capabilities, PID/CPU/memory bounds, and bounded temporary storage. Administrators can explicitly backfill, inspect metrics, retry, and cancel jobs through the UI or `/api/v1/users/admin/analysis/*`.
 
 ### Database
 

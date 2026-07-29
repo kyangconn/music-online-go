@@ -29,6 +29,7 @@
 - 音乐列表可按艺术家、专辑、专辑艺术家、流派、发行年份、类型和收藏状态筛选，筛选与分页保留在 URL 中。
 - 登录用户可创建仅自己可见的播放列表，添加、移除和排序曲目；删除音乐时会同步清理播放列表引用。
 - 公开或登录后访问两种实例模式共用同一套列表、聚合、封面和音频访问策略。
+- 四类场景预设以可解释的元数据规则离线工作，可选叠加音频模型/DSP 弱证据；低置信度结果进入管理员审核队列，人工修正不会被重新分析覆盖。
 
 ## 项目结构
 
@@ -98,8 +99,9 @@ make build-be   # 仅后端（需已有前端产物）
 ## 测试 & Lint
 
 ```bash
-make test       # Go 测试 + 前端 ESLint
+make test       # Go 测试 + 前端 Vitest
 make test-cover # Go 测试 + 函数级覆盖率汇总
+make test-cover-fe # 前端覆盖率汇总
 make check      # 非修改型检查：Go vet + 前端 typecheck/ESLint
 make verify     # Go 测试 + check
 make lint       # 修改型检查：Go fmt + Go vet + 前端 ESLint --fix
@@ -437,6 +439,8 @@ NFS/SMB 只用于媒体来源，不建议承载 SQLite 数据库文件或 `/data
 
 规则层只读取规范化后的本地标签，保存四类独立分数、规则版本和证据，并允许弃权。管理员人工选择与自动结果分开保存，后续重新分类不会覆盖人工选择。权重用于真实曲库校准，不改变 API/数据库中的稳定预设标识。
 
+启用分类时，用户可从“场景预设”浏览并播放已确认曲目；待确认结果不会被强行放进四个合集。管理员后台提供明确的待确认队列、证据与分析产物来源，并可在当前列表中批量选择最多 100 首曲目。批量指定或清除人工预设在一个数据库事务内完成，任意曲目不存在时整批回滚；人工处理后的曲目会退出待确认队列，清除后按自动状态重新进入。
+
 #### 可选 HTTP analyzer 与持久任务
 
 基础镜像不会安装 FFmpeg、Python 或模型运行时。启用 analyzer 后，应用只把任务状态保存在现有 SQLite/PostgreSQL 中：默认单 worker 领取带租约和 fencing generation 的任务，重启会回收过期的 `running` 任务；重复请求按曲目内容哈希、内容修订及分析器/模型版本幂等复用。相同字节的多个物理来源共享 `music_audio_analyses` 产物。队列满、分析器离线、超时、损坏文件或取消均不会回滚已经成功的上传、目录导入或播放。
@@ -456,20 +460,38 @@ NFS/SMB 只用于媒体来源，不建议承载 SQLite 数据库文件或 `/data
   "analyzer_version": "1.0.0",
   "model_version": "model-v1",
   "duration_ms": 213000,
-  "features": { "bpm": 128.0, "danceability": 0.82 },
+  "features": {
+    "bpm": 128.0,
+    "bpm_confidence": 0.86,
+    "bpm_candidates": [{ "bpm": 128.0, "confidence": 0.86 }],
+    "danceability": 0.82,
+    "energy": 0.77,
+    "pulse_clarity": 0.74
+  },
   "model_labels": { "trance": 0.74, "progressive house": 0.43 }
 }
 ```
 
 三个版本字段必须与配置完全一致；模型标签分数必须在 `0..1`，数值必须有限，嵌套深度、键数、数组和字符串都有上限。服务端在流式发送时重新计算 SHA-256；与任务哈希不符时任务标记为 `stale`，结果不会入库。
 
-仓库暂不指定默认模型镜像。准备好实现上述契约的镜像和至少 32 字节密钥后，可使用隔离的可选 profile：
+`hybrid-v1` 只消费下列稳定的顶层特征；未知或嵌套的厂商字段会原样保存在分析产物中，但不会静默变成分类规则：
+
+- 拍速：`bpm`（`20..400`）、`bpm_confidence` 和最多八个 `{bpm, confidence}` 候选。拍速会折叠 half-time/double-time 后仅作弱亲和度，不设硬分界。
+- 活动与节奏：`energy`、`arousal`、`dynamic_smoothness`、`dynamic_range_normalized`、`danceability`、`onset_rate_normalized`、`pulse_clarity`、`high_energy_segment_ratio`。
+- 频谱与质感：`spectral_centroid_normalized`、`spectral_flatness`、`spectral_flux`、`roughness`、`loudness_normalized`、`bass_energy_ratio`、`sub_bass_energy_ratio`、`drop_contrast`。
+- 调性、空间与人声：`tonal_strength`、`harmonicity`、`spatiality`、`instrumental_probability`、`vocal_probability`。
+
+除 `bpm` 外，上述标量都必须由 analyzer 按其版本化定义归一化到 `0..1`；不要把原始 LUFS、Hz 或未标定距离直接塞入同名字段。模型标签会经过同一流派规范化器，权重上限低于本地标签；DSP 再低一级。“纯音乐”只有同时获得低能量和低唤醒度/平滑动态证据时才支持静谧心流。分析产物还必须与曲目当前 SHA-256 匹配，旧文件结果不会被误用于新内容。
+
+仓库暂不指定默认模型镜像。候选筛选、许可证边界、gold set 拆分和可复现命令见
+[音频分析候选与基准协议](docs/audio-analysis-benchmark.md)。准备好通过该门槛、实现上述契约的镜像和至少 32 字节密钥后，可使用隔离的可选 profile：
 
 ```bash
-docker compose --env-file .env -f compose.yaml -f compose.analyzer.yaml --profile analyzer up -d
+make docker-config-analyzer
+make docker-up-analyzer
 ```
 
-推荐把共享密钥写入 `./secrets/analyzer_token`，再额外叠加 `-f compose.analyzer-secrets.yaml`；analyzer 镜像也必须支持 `ANALYZER_TOKEN_FILE`。该 overlay 默认不发布 analyzer 端口，并限制只读根文件系统、capabilities、PID、CPU、内存和临时目录。管理员可通过后台或 `/api/v1/users/admin/analysis/*` 显式回填、查看指标、重试和取消任务。
+推荐把共享密钥写入 `./secrets/analyzer_token`，并改用 `make docker-config-analyzer-secrets` / `make docker-up-analyzer-secrets`；analyzer 镜像也必须支持 `ANALYZER_TOKEN_FILE`。该 overlay 默认不发布 analyzer 端口，并限制只读根文件系统、capabilities、PID、CPU、内存和临时目录。管理员可通过后台或 `/api/v1/users/admin/analysis/*` 显式回填、查看指标、重试和取消任务。
 
 #### database
 
