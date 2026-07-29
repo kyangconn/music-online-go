@@ -1,4 +1,4 @@
-package service
+package mediametadata
 
 import (
 	"bytes"
@@ -113,7 +113,7 @@ func TestReadScannedAudioMetadataPreservesPicardIdentifiers(t *testing.T) {
 		t.Fatalf("write tagged MP3: %v", err)
 	}
 
-	metadata, _, err := readScannedAudioMetadata(path, maxEmbeddedTagBytes, 10*1024*1024)
+	metadata, _, err := Read(path, maxEmbeddedTagBytes, 10*1024*1024)
 	if err != nil {
 		t.Fatalf("read tagged MP3: %v", err)
 	}
