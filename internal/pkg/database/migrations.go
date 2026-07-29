@@ -220,6 +220,16 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version: 10,
+		name:    "link_preset_audio_analysis",
+		up: func(db *gorm.DB) error {
+			if err := db.AutoMigrate(&domain.MusicPresetClassification{}); err != nil {
+				return fmt.Errorf("link preset classification to audio analysis: %w", err)
+			}
+			return nil
+		},
+	},
 }
 
 func addLibraryBrowseAndPlaylists(db *gorm.DB) error {

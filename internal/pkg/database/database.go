@@ -100,12 +100,23 @@ func getDialector(cfg config.DatabaseConfig) (gorm.Dialector, error) {
 		if err != nil {
 			return nil, err
 		}
-		return sqlite.Open(path), nil
+		return sqlite.Open(sqliteDSN(path)), nil
 	case "postgres":
 		return postgres.Open(postgresDSN(cfg)), nil
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", cfg.Type)
 	}
+}
+
+// sqliteDSN enables foreign-key enforcement on every connection opened by the
+// driver. A one-off PRAGMA is connection-local and would be lost if database/sql
+// replaces a pooled connection.
+func sqliteDSN(path string) string {
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	return path + separator + "_pragma=foreign_keys(1)"
 }
 
 func postgresDSN(cfg config.DatabaseConfig) string {

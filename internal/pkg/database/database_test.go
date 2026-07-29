@@ -119,11 +119,36 @@ func TestGORMLoggerRedactsQueryParameters(t *testing.T) {
 func openTestDatabase(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(sqliteDSN(":memory:")), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open in-memory database: %v", err)
 	}
 	return db
+}
+
+func TestSQLiteDSNEnablesForeignKeysForEveryConnection(t *testing.T) {
+	tests := []struct {
+		path string
+		want string
+	}{
+		{path: "music.db", want: "music.db?_pragma=foreign_keys(1)"},
+		{path: ":memory:", want: ":memory:?_pragma=foreign_keys(1)"},
+		{path: "file:music.db?cache=shared", want: "file:music.db?cache=shared&_pragma=foreign_keys(1)"},
+	}
+	for _, tt := range tests {
+		if got := sqliteDSN(tt.path); got != tt.want {
+			t.Fatalf("sqliteDSN(%q) = %q, want %q", tt.path, got, tt.want)
+		}
+	}
+
+	db := openTestDatabase(t)
+	var enabled int
+	if err := db.Raw("PRAGMA foreign_keys").Scan(&enabled).Error; err != nil {
+		t.Fatalf("read foreign-key pragma: %v", err)
+	}
+	if enabled != 1 {
+		t.Fatalf("foreign-key enforcement = %d, want 1", enabled)
+	}
 }
 
 func TestMigrateFreshDatabaseAndRemainIdempotent(t *testing.T) {
@@ -143,6 +168,7 @@ func TestMigrateFreshDatabaseAndRemainIdempotent(t *testing.T) {
 	if db.Migrator().HasTable("music_tags") || db.Migrator().HasTable("legacy_music_tags_v1") {
 		t.Fatal("fresh database should not retain a legacy metadata table")
 	}
+	assertSQLitePresetAudioForeignKey(t, db)
 
 	var firstRun []schemaMigration
 	if err := db.Order("version ASC").Find(&firstRun).Error; err != nil {
@@ -365,4 +391,29 @@ func TestMigrateBackfillsExistingMusicFileHashes(t *testing.T) {
 			t.Fatalf("music analysis index %q was not created", index)
 		}
 	}
+	if !DB.Migrator().HasColumn(&domain.MusicPresetClassification{}, "AudioAnalysisID") ||
+		!DB.Migrator().HasIndex(&domain.MusicPresetClassification{}, "idx_preset_audio_analysis") {
+		t.Fatal("preset classification audio-analysis provenance was not migrated")
+	}
+	assertSQLitePresetAudioForeignKey(t, DB)
+}
+
+func assertSQLitePresetAudioForeignKey(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	var constraints []struct {
+		Table    string
+		From     string
+		To       string
+		OnDelete string `gorm:"column:on_delete"`
+	}
+	if err := db.Raw("PRAGMA foreign_key_list(music_preset_classifications)").Scan(&constraints).Error; err != nil {
+		t.Fatalf("inspect preset classification foreign keys: %v", err)
+	}
+	for _, constraint := range constraints {
+		if constraint.Table == "music_audio_analyses" && constraint.From == "audio_analysis_id" &&
+			constraint.To == "id" && strings.EqualFold(constraint.OnDelete, "SET NULL") {
+			return
+		}
+	}
+	t.Fatalf("preset audio-analysis SET NULL foreign key is missing: %+v", constraints)
 }
