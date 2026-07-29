@@ -60,29 +60,6 @@ func DefaultPresetRulePolicy() PresetRulePolicy {
 	}
 }
 
-func (policy PresetRulePolicy) normalized() PresetRulePolicy {
-	defaults := DefaultPresetRulePolicy()
-	if policy.AutoThreshold <= 0 || policy.AutoThreshold > 1 {
-		policy.AutoThreshold = defaults.AutoThreshold
-	}
-	if policy.ReviewMargin < 0 || policy.ReviewMargin > 1 {
-		policy.ReviewMargin = defaults.ReviewMargin
-	}
-	if policy.CalmFlowWeight <= 0 {
-		policy.CalmFlowWeight = defaults.CalmFlowWeight
-	}
-	if policy.KineticPulseWeight <= 0 {
-		policy.KineticPulseWeight = defaults.KineticPulseWeight
-	}
-	if policy.CosmicDriftWeight <= 0 {
-		policy.CosmicDriftWeight = defaults.CosmicDriftWeight
-	}
-	if policy.BassImpactWeight <= 0 {
-		policy.BassImpactWeight = defaults.BassImpactWeight
-	}
-	return policy
-}
-
 func IsPresetID(value string) bool {
 	for _, preset := range presetIDs {
 		if value == preset {
@@ -475,7 +452,6 @@ func BuildMusicPresetProjection(music *Music, policy PresetRulePolicy) (*MusicPr
 	if music == nil || music.ID == 0 || !policy.Enabled {
 		return nil, nil
 	}
-	policy = policy.normalized()
 	genreValues := music.Genres
 	if len(genreValues) == 0 && strings.TrimSpace(music.Genre) != "" {
 		genreValues = StringList{music.Genre}
@@ -565,7 +541,6 @@ func BuildMusicPresetProjectionWithAudio(
 	if classification == nil || audio == nil || audio.AnalysisID == 0 {
 		return classification, scores
 	}
-	policy = policy.normalized()
 	scoreByPreset := make(map[string]*MusicPresetScore, len(scores))
 	for index := range scores {
 		scoreByPreset[scores[index].PresetID] = &scores[index]

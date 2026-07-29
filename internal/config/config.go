@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/kyangconn/music-online-go/internal/pkg/password"
 	"github.com/spf13/viper"
 )
@@ -183,6 +184,109 @@ type LoggingConfig struct {
 
 var AppConfig *Config
 
+// DefaultConfig is the single source of non-secret configuration defaults.
+// Required secrets intentionally remain empty: callers that construct a
+// configuration programmatically must supply them before validation.
+func DefaultConfig() Config {
+	presetDefaults := domain.DefaultPresetRulePolicy()
+	return Config{
+		Server: ServerConfig{
+			Port:              "8080",
+			Mode:              "debug",
+			ReadHeaderTimeout: 10,
+			IdleTimeout:       60,
+			ShutdownTimeout:   15,
+			ReadinessTimeout:  2,
+			UploadDir:         "uploads",
+			MaxJSONBodySizeMB: 1,
+			MaxAudioSizeMB:    DefaultMaxAudioSizeMB,
+			MaxCoverSizeMB:    DefaultMaxCoverSizeMB,
+			AllowedOrigins:    []string{},
+			TrustedProxies:    []string{},
+		},
+		Database: DatabaseConfig{
+			Type:                         "sqlite",
+			Port:                         "5432",
+			SSLMode:                      "prefer",
+			LogLevel:                     "auto",
+			Path:                         "music.db",
+			ConnectTimeoutSeconds:        10,
+			ConnectionMaxLifetimeMinutes: 60,
+			ConnectionMaxIdleTimeMinutes: 10,
+		},
+		JWT: JWTConfig{ExpireHour: 24},
+		AdminBootstrap: AdminBootstrapConfig{
+			FullName: "Administrator",
+		},
+		Access: AccessConfig{
+			LibraryMode:        LibraryAccessPublic,
+			RegistrationMode:   RegistrationOpen,
+			MediaURLTTLMinutes: 60,
+		},
+		Library: LibraryConfig{
+			HealthCheckIntervalSeconds: 60,
+			Scanner: LibraryScannerConfig{
+				Enabled:             true,
+				MaxFileSizeMB:       2048,
+				MaxTagSizeMB:        16,
+				MinFileAgeSeconds:   30,
+				HashRecheckHours:    168,
+				RetryMaxAttempts:    5,
+				RetryInitialSeconds: 30,
+				RetryMaxSeconds:     900,
+			},
+		},
+		Classification: ClassificationConfig{
+			Enabled:            presetDefaults.Enabled,
+			AutoThreshold:      presetDefaults.AutoThreshold,
+			ReviewMargin:       presetDefaults.ReviewMargin,
+			CalmFlowWeight:     presetDefaults.CalmFlowWeight,
+			KineticPulseWeight: presetDefaults.KineticPulseWeight,
+			CosmicDriftWeight:  presetDefaults.CosmicDriftWeight,
+			BassImpactWeight:   presetDefaults.BassImpactWeight,
+			Analyzer: AnalyzerConfig{
+				Mode:                "disabled",
+				TimeoutSeconds:      300,
+				Concurrency:         1,
+				QueueLimit:          1000,
+				MaxFileSizeMB:       2048,
+				MaxDurationSeconds:  1800,
+				RetryMaxAttempts:    3,
+				RetryInitialSeconds: 30,
+				RetryMaxSeconds:     900,
+			},
+		},
+		RateLimit: RateLimitConfig{
+			Enabled:                 true,
+			GlobalRequestsPerSecond: 20,
+			GlobalBurst:             50,
+			AuthRequestsPerSecond:   1,
+			AuthBurst:               5,
+		},
+		Logging: LoggingConfig{
+			Level:      "info",
+			AccessLog:  true,
+			MaxSizeMB:  50,
+			MaxBackups: 3,
+			MaxAgeDays: 28,
+			Compress:   true,
+			LocalTime:  true,
+		},
+	}
+}
+
+func (cfg ClassificationConfig) PresetRulePolicy() domain.PresetRulePolicy {
+	return domain.PresetRulePolicy{
+		Enabled:            cfg.Enabled,
+		AutoThreshold:      cfg.AutoThreshold,
+		ReviewMargin:       cfg.ReviewMargin,
+		CalmFlowWeight:     cfg.CalmFlowWeight,
+		KineticPulseWeight: cfg.KineticPulseWeight,
+		CosmicDriftWeight:  cfg.CosmicDriftWeight,
+		BassImpactWeight:   cfg.BassImpactWeight,
+	}
+}
+
 func LoadConfig() error {
 	// A private Viper instance prevents tests or future reload attempts from
 	// mutating the process-wide parser while the validated config is in use.
@@ -198,86 +302,7 @@ func LoadConfig() error {
 		v.SetConfigFile(envPath)
 	}
 
-	// 设置默认值
-	v.SetDefault("server.listen_address", "")
-	v.SetDefault("server.port", "8080")
-	v.SetDefault("server.mode", "debug")
-	v.SetDefault("server.read_header_timeout", 10)
-	v.SetDefault("server.read_timeout", 0)
-	v.SetDefault("server.write_timeout", 0)
-	v.SetDefault("server.idle_timeout", 60)
-	v.SetDefault("server.shutdown_timeout", 15)
-	v.SetDefault("server.readiness_timeout", 2)
-	v.SetDefault("server.upload_dir", "uploads")
-	v.SetDefault("server.log_file", "")
-	v.SetDefault("server.max_json_body_size_mb", 1)
-	v.SetDefault("server.max_audio_size_mb", DefaultMaxAudioSizeMB)
-	v.SetDefault("server.max_cover_size_mb", DefaultMaxCoverSizeMB)
-	v.SetDefault("server.allowed_origins", []string{})
-	v.SetDefault("server.trusted_proxies", []string{})
-	v.SetDefault("database.type", "sqlite")
-	v.SetDefault("database.path", "music.db")
-	v.SetDefault("database.port", "5432")
-	v.SetDefault("database.sslmode", "prefer")
-	v.SetDefault("database.log_level", "auto")
-	v.SetDefault("database.connect_timeout_seconds", 10)
-	v.SetDefault("database.max_open_connections", 0)
-	v.SetDefault("database.max_idle_connections", 0)
-	v.SetDefault("database.connection_max_lifetime_minutes", 60)
-	v.SetDefault("database.connection_max_idle_time_minutes", 10)
-	v.SetDefault("jwt.expire_hour", 24)
-	v.SetDefault("metrics.enabled", false)
-	v.SetDefault("metrics.token", "")
-	v.SetDefault("admin.bootstrap.enabled", false)
-	v.SetDefault("admin.bootstrap.full_name", "Administrator")
-	v.SetDefault("admin.bootstrap.reset_password", false)
-	v.SetDefault("access.library_mode", LibraryAccessPublic)
-	v.SetDefault("access.registration_mode", RegistrationOpen)
-	v.SetDefault("access.media_url_ttl_minutes", 60)
-	v.SetDefault("library.health_check_interval_seconds", 60)
-	v.SetDefault("library.scanner.enabled", true)
-	v.SetDefault("library.scanner.max_file_size_mb", 2048)
-	v.SetDefault("library.scanner.max_tag_size_mb", 16)
-	v.SetDefault("library.scanner.min_file_age_seconds", 30)
-	v.SetDefault("library.scanner.hash_recheck_hours", 168)
-	v.SetDefault("library.scanner.retry_max_attempts", 5)
-	v.SetDefault("library.scanner.retry_initial_seconds", 30)
-	v.SetDefault("library.scanner.retry_max_seconds", 900)
-	v.SetDefault("classification.enabled", true)
-	v.SetDefault("classification.analyze_on_upload", false)
-	v.SetDefault("classification.auto_threshold", 0.65)
-	v.SetDefault("classification.review_margin", 0.12)
-	v.SetDefault("classification.weights.calm_flow", 1.0)
-	v.SetDefault("classification.weights.kinetic_pulse", 1.0)
-	v.SetDefault("classification.weights.cosmic_drift", 1.0)
-	v.SetDefault("classification.weights.bass_impact", 1.0)
-	v.SetDefault("classification.analyzer.mode", "disabled")
-	v.SetDefault("classification.analyzer.endpoint", "")
-	v.SetDefault("classification.analyzer.id", "")
-	v.SetDefault("classification.analyzer.version", "")
-	v.SetDefault("classification.analyzer.model_version", "")
-	v.SetDefault("classification.analyzer.timeout_seconds", 300)
-	v.SetDefault("classification.analyzer.concurrency", 1)
-	v.SetDefault("classification.analyzer.queue_limit", 1000)
-	v.SetDefault("classification.analyzer.max_file_size_mb", 2048)
-	v.SetDefault("classification.analyzer.max_duration_seconds", 1800)
-	v.SetDefault("classification.analyzer.retry_max_attempts", 3)
-	v.SetDefault("classification.analyzer.retry_initial_seconds", 30)
-	v.SetDefault("classification.analyzer.retry_max_seconds", 900)
-	v.SetDefault("integrations.musicbee.submit_token", "")
-	v.SetDefault("integrations.musicbee.submit_username", "")
-	v.SetDefault("rate_limit.enabled", true)
-	v.SetDefault("rate_limit.global_requests_per_second", 20.0)
-	v.SetDefault("rate_limit.global_burst", 50)
-	v.SetDefault("rate_limit.auth_requests_per_second", 1.0)
-	v.SetDefault("rate_limit.auth_burst", 5)
-	v.SetDefault("logging.max_size_mb", 50)
-	v.SetDefault("logging.level", "info")
-	v.SetDefault("logging.access_log", true)
-	v.SetDefault("logging.max_backups", 3)
-	v.SetDefault("logging.max_age_days", 28)
-	v.SetDefault("logging.compress", true)
-	v.SetDefault("logging.local_time", true)
+	setViperDefaults(v, DefaultConfig())
 
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -451,6 +476,88 @@ func LoadConfig() error {
 	}
 	AppConfig = loaded
 	return nil
+}
+
+func setViperDefaults(v *viper.Viper, defaults Config) {
+	v.SetDefault("server.listen_address", defaults.Server.ListenAddress)
+	v.SetDefault("server.port", defaults.Server.Port)
+	v.SetDefault("server.mode", defaults.Server.Mode)
+	v.SetDefault("server.read_header_timeout", defaults.Server.ReadHeaderTimeout)
+	v.SetDefault("server.read_timeout", defaults.Server.ReadTimeout)
+	v.SetDefault("server.write_timeout", defaults.Server.WriteTimeout)
+	v.SetDefault("server.idle_timeout", defaults.Server.IdleTimeout)
+	v.SetDefault("server.shutdown_timeout", defaults.Server.ShutdownTimeout)
+	v.SetDefault("server.readiness_timeout", defaults.Server.ReadinessTimeout)
+	v.SetDefault("server.upload_dir", defaults.Server.UploadDir)
+	v.SetDefault("server.log_file", defaults.Server.LogFile)
+	v.SetDefault("server.max_json_body_size_mb", defaults.Server.MaxJSONBodySizeMB)
+	v.SetDefault("server.max_audio_size_mb", defaults.Server.MaxAudioSizeMB)
+	v.SetDefault("server.max_cover_size_mb", defaults.Server.MaxCoverSizeMB)
+	v.SetDefault("server.allowed_origins", defaults.Server.AllowedOrigins)
+	v.SetDefault("server.trusted_proxies", defaults.Server.TrustedProxies)
+	v.SetDefault("database.type", defaults.Database.Type)
+	v.SetDefault("database.path", defaults.Database.Path)
+	v.SetDefault("database.port", defaults.Database.Port)
+	v.SetDefault("database.sslmode", defaults.Database.SSLMode)
+	v.SetDefault("database.log_level", defaults.Database.LogLevel)
+	v.SetDefault("database.connect_timeout_seconds", defaults.Database.ConnectTimeoutSeconds)
+	v.SetDefault("database.max_open_connections", defaults.Database.MaxOpenConnections)
+	v.SetDefault("database.max_idle_connections", defaults.Database.MaxIdleConnections)
+	v.SetDefault("database.connection_max_lifetime_minutes", defaults.Database.ConnectionMaxLifetimeMinutes)
+	v.SetDefault("database.connection_max_idle_time_minutes", defaults.Database.ConnectionMaxIdleTimeMinutes)
+	v.SetDefault("jwt.expire_hour", defaults.JWT.ExpireHour)
+	v.SetDefault("metrics.enabled", defaults.Metrics.Enabled)
+	v.SetDefault("metrics.token", defaults.Metrics.Token)
+	v.SetDefault("admin.bootstrap.enabled", defaults.AdminBootstrap.Enabled)
+	v.SetDefault("admin.bootstrap.full_name", defaults.AdminBootstrap.FullName)
+	v.SetDefault("admin.bootstrap.reset_password", defaults.AdminBootstrap.ResetPassword)
+	v.SetDefault("access.library_mode", defaults.Access.LibraryMode)
+	v.SetDefault("access.registration_mode", defaults.Access.RegistrationMode)
+	v.SetDefault("access.media_url_ttl_minutes", defaults.Access.MediaURLTTLMinutes)
+	v.SetDefault("library.health_check_interval_seconds", defaults.Library.HealthCheckIntervalSeconds)
+	v.SetDefault("library.scanner.enabled", defaults.Library.Scanner.Enabled)
+	v.SetDefault("library.scanner.max_file_size_mb", defaults.Library.Scanner.MaxFileSizeMB)
+	v.SetDefault("library.scanner.max_tag_size_mb", defaults.Library.Scanner.MaxTagSizeMB)
+	v.SetDefault("library.scanner.min_file_age_seconds", defaults.Library.Scanner.MinFileAgeSeconds)
+	v.SetDefault("library.scanner.hash_recheck_hours", defaults.Library.Scanner.HashRecheckHours)
+	v.SetDefault("library.scanner.retry_max_attempts", defaults.Library.Scanner.RetryMaxAttempts)
+	v.SetDefault("library.scanner.retry_initial_seconds", defaults.Library.Scanner.RetryInitialSeconds)
+	v.SetDefault("library.scanner.retry_max_seconds", defaults.Library.Scanner.RetryMaxSeconds)
+	v.SetDefault("classification.enabled", defaults.Classification.Enabled)
+	v.SetDefault("classification.analyze_on_upload", defaults.Classification.AnalyzeOnUpload)
+	v.SetDefault("classification.auto_threshold", defaults.Classification.AutoThreshold)
+	v.SetDefault("classification.review_margin", defaults.Classification.ReviewMargin)
+	v.SetDefault("classification.weights.calm_flow", defaults.Classification.CalmFlowWeight)
+	v.SetDefault("classification.weights.kinetic_pulse", defaults.Classification.KineticPulseWeight)
+	v.SetDefault("classification.weights.cosmic_drift", defaults.Classification.CosmicDriftWeight)
+	v.SetDefault("classification.weights.bass_impact", defaults.Classification.BassImpactWeight)
+	v.SetDefault("classification.analyzer.mode", defaults.Classification.Analyzer.Mode)
+	v.SetDefault("classification.analyzer.endpoint", defaults.Classification.Analyzer.Endpoint)
+	v.SetDefault("classification.analyzer.id", defaults.Classification.Analyzer.ID)
+	v.SetDefault("classification.analyzer.version", defaults.Classification.Analyzer.Version)
+	v.SetDefault("classification.analyzer.model_version", defaults.Classification.Analyzer.ModelVersion)
+	v.SetDefault("classification.analyzer.timeout_seconds", defaults.Classification.Analyzer.TimeoutSeconds)
+	v.SetDefault("classification.analyzer.concurrency", defaults.Classification.Analyzer.Concurrency)
+	v.SetDefault("classification.analyzer.queue_limit", defaults.Classification.Analyzer.QueueLimit)
+	v.SetDefault("classification.analyzer.max_file_size_mb", defaults.Classification.Analyzer.MaxFileSizeMB)
+	v.SetDefault("classification.analyzer.max_duration_seconds", defaults.Classification.Analyzer.MaxDurationSeconds)
+	v.SetDefault("classification.analyzer.retry_max_attempts", defaults.Classification.Analyzer.RetryMaxAttempts)
+	v.SetDefault("classification.analyzer.retry_initial_seconds", defaults.Classification.Analyzer.RetryInitialSeconds)
+	v.SetDefault("classification.analyzer.retry_max_seconds", defaults.Classification.Analyzer.RetryMaxSeconds)
+	v.SetDefault("integrations.musicbee.submit_token", defaults.Integrations.MusicBee.SubmitToken)
+	v.SetDefault("integrations.musicbee.submit_username", defaults.Integrations.MusicBee.SubmitUsername)
+	v.SetDefault("rate_limit.enabled", defaults.RateLimit.Enabled)
+	v.SetDefault("rate_limit.global_requests_per_second", defaults.RateLimit.GlobalRequestsPerSecond)
+	v.SetDefault("rate_limit.global_burst", defaults.RateLimit.GlobalBurst)
+	v.SetDefault("rate_limit.auth_requests_per_second", defaults.RateLimit.AuthRequestsPerSecond)
+	v.SetDefault("rate_limit.auth_burst", defaults.RateLimit.AuthBurst)
+	v.SetDefault("logging.max_size_mb", defaults.Logging.MaxSizeMB)
+	v.SetDefault("logging.level", defaults.Logging.Level)
+	v.SetDefault("logging.access_log", defaults.Logging.AccessLog)
+	v.SetDefault("logging.max_backups", defaults.Logging.MaxBackups)
+	v.SetDefault("logging.max_age_days", defaults.Logging.MaxAgeDays)
+	v.SetDefault("logging.compress", defaults.Logging.Compress)
+	v.SetDefault("logging.local_time", defaults.Logging.LocalTime)
 }
 
 const maxSecretFileBytes = 64 << 10

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/spf13/viper"
 )
 
@@ -35,6 +36,20 @@ func TestValidateJWTSecret(t *testing.T) {
 				t.Errorf("ValidateJWTSecret(%q, %q) error = %v, wantErr = %v", tt.secret, tt.mode, err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestDefaultConfigIsACompleteValidatedBaselineAfterSecrets(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.JWT.Secret = "0123456789abcdef0123456789abcdef"
+	if err := Validate(&cfg); err != nil {
+		t.Fatalf("default config with required JWT secret should validate: %v", err)
+	}
+
+	policy := cfg.Classification.PresetRulePolicy()
+	wantPolicy := domain.DefaultPresetRulePolicy()
+	if !reflect.DeepEqual(policy, wantPolicy) {
+		t.Fatalf("classification policy = %#v, want canonical defaults %#v", policy, wantPolicy)
 	}
 }
 
