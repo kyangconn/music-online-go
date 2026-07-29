@@ -510,7 +510,7 @@ func (service *musicAnalysisService) processAudioJob(ctx context.Context, job *d
 	if cached != nil {
 		job.AnalysisID = &cached.ID
 		job.ObservedFileHash = job.FileHash
-		return nil
+		return service.applyAudioClassification(ctx, job.MusicID, cached)
 	}
 	if service.pathResolver == nil {
 		return newAnalyzerFailure("audio_source_unavailable", false, "audio source resolver is unavailable", nil)
@@ -572,6 +572,26 @@ func (service *musicAnalysisService) processAudioJob(ctx context.Context, job *d
 		return newAnalyzerFailure("analysis_cache_write_failed", true, "analysis result could not be saved", err)
 	}
 	job.AnalysisID = &analysis.ID
+	return service.applyAudioClassification(ctx, job.MusicID, analysis)
+}
+
+func (service *musicAnalysisService) applyAudioClassification(
+	ctx context.Context,
+	musicID uint,
+	analysis *domain.MusicAudioAnalysis,
+) error {
+	if service.presetRepo == nil {
+		return nil
+	}
+	if _, err := service.presetRepo.ReclassifyWithAudio(ctx, musicID, analysis); err != nil {
+		if errors.Is(err, repository.ErrPresetAnalysisMismatch) {
+			return errAnalysisContentStale
+		}
+		if errors.Is(err, repository.ErrMusicNotFound) {
+			return newAnalyzerFailure("music_unavailable", false, "music record is unavailable", err)
+		}
+		return newAnalyzerFailure("classification_failed", true, "audio classification could not be saved", err)
+	}
 	return nil
 }
 

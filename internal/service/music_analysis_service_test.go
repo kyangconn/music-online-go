@@ -68,6 +68,17 @@ func TestMusicAnalysisWorkerReusesContentArtifact(t *testing.T) {
 	if firstJob.Analysis == nil || firstJob.Analysis.ProcessingMS <= 0 {
 		t.Fatalf("analysis processing time was not persisted: %+v", firstJob.Analysis)
 	}
+	classifications, err := presetRepo.FindByMusicIDs(context.Background(), []uint{first.ID, second.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, music := range []*domain.Music{first, second} {
+		classification := classifications[music.ID]
+		if classification == nil || classification.RuleVersion != domain.PresetHybridRuleVersion ||
+			classification.AudioAnalysisID == nil || *classification.AudioAnalysisID != *firstJob.AnalysisID {
+			t.Fatalf("music %d hybrid classification = %+v", music.ID, classification)
+		}
+	}
 }
 
 func TestMusicAnalysisWorkerCancelsRunningAnalyzer(t *testing.T) {
