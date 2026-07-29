@@ -1,4 +1,4 @@
-.PHONY: help install-fe install-fe-dev build build-fe build-be build-silent dev dev-fe dev-be test test-be test-fe test-cover test-cover-fe check verify check-fe check-be typecheck-fe lint lint-fe lint-be audit-be docker docker-config docker-config-media docker-config-postgres docker-config-secrets docker-config-musicbee-secrets docker-config-postgres-secrets docker-up docker-up-media docker-up-postgres docker-up-secrets docker-up-musicbee-secrets docker-up-postgres-secrets docker-down clean
+.PHONY: help install-fe install-fe-dev build build-fe build-be build-silent dev dev-fe dev-be test test-be test-fe test-cover test-cover-fe benchmark-analysis check verify check-fe check-be typecheck-fe lint lint-fe lint-be audit-be docker docker-config docker-config-media docker-config-postgres docker-config-secrets docker-config-musicbee-secrets docker-config-postgres-secrets docker-config-analyzer docker-config-analyzer-secrets docker-up docker-up-media docker-up-postgres docker-up-secrets docker-up-musicbee-secrets docker-up-postgres-secrets docker-up-analyzer docker-up-analyzer-secrets docker-down clean
 
 .DEFAULT_GOAL := help
 
@@ -56,12 +56,16 @@ help: ## Show available commands
 	@echo "  make docker-config-secrets  Validate the SQLite Compose secrets override"
 	@echo "  make docker-config-musicbee-secrets Validate JWT + MusicBee secret overrides"
 	@echo "  make docker-config-postgres-secrets Validate PostgreSQL + secrets overrides"
+	@echo "  make docker-config-analyzer Validate the optional analyzer profile"
+	@echo "  make docker-config-analyzer-secrets Validate analyzer with a file-backed token"
 	@echo "  make docker-up              Start the SQLite Compose deployment"
 	@echo "  make docker-up-media        Start SQLite with a read-only media mount"
 	@echo "  make docker-up-postgres     Start the PostgreSQL Compose deployment"
 	@echo "  make docker-up-secrets      Start SQLite with a Docker secret"
 	@echo "  make docker-up-musicbee-secrets Start SQLite with JWT + MusicBee secrets"
 	@echo "  make docker-up-postgres-secrets Start PostgreSQL with Docker secrets"
+	@echo "  make docker-up-analyzer      Start SQLite with the optional analyzer profile"
+	@echo "  make docker-up-analyzer-secrets Start analyzer with a file-backed token"
 	@echo "  make docker-down            Stop Compose services (preserves data volumes)"
 	@echo "  make clean          Remove build artifacts"
 
@@ -170,6 +174,12 @@ docker-config-musicbee-secrets: ## Validate SQLite with JWT and MusicBee secrets
 docker-config-postgres-secrets: ## Validate PostgreSQL with JWT and database secrets
 	docker compose -f compose.yaml -f compose.postgres.yaml -f compose.secrets.yaml -f compose.postgres-secrets.yaml config --quiet
 
+docker-config-analyzer: ## Validate the optional HTTP analyzer profile
+	docker compose -f compose.yaml -f compose.analyzer.yaml --profile analyzer config --quiet
+
+docker-config-analyzer-secrets: ## Validate analyzer with a file-backed shared token
+	docker compose -f compose.yaml -f compose.analyzer.yaml -f compose.analyzer-secrets.yaml --profile analyzer config --quiet
+
 docker-up: ## Start the default SQLite Compose deployment
 	docker compose -f compose.yaml up -d --build
 
@@ -187,6 +197,12 @@ docker-up-musicbee-secrets: ## Start SQLite with JWT and MusicBee credentials su
 
 docker-up-postgres-secrets: ## Start PostgreSQL with JWT and database passwords supplied as Docker secrets
 	docker compose -f compose.yaml -f compose.postgres.yaml -f compose.secrets.yaml -f compose.postgres-secrets.yaml up -d --build
+
+docker-up-analyzer: ## Start SQLite with the optional HTTP analyzer profile
+	docker compose -f compose.yaml -f compose.analyzer.yaml --profile analyzer up -d --build
+
+docker-up-analyzer-secrets: ## Start analyzer with a file-backed shared token
+	docker compose -f compose.yaml -f compose.analyzer.yaml -f compose.analyzer-secrets.yaml --profile analyzer up -d --build
 
 docker-down: ## Stop Compose services without deleting persistent volumes
 	docker compose -f compose.yaml down --remove-orphans
