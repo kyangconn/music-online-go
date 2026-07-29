@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "manifest_sha256": "398594a17abb61d5bbbe838204b85059cb3262a121a033705ea4ef642e52209c",
+  "candidate": {
+    "id": "schema-fixture",
+    "implementation_version": "fixture-v1",
+    "model_version": "rules-only-fixture",
+    "model_digest": "none",
+    "runtime_kind": "in_process",
+    "code_license": "MIT",
+    "model_license": "N/A (synthetic schema fixture)",
+    "image_size_bytes": 0,
+    "base_image_size_bytes": 0
+  },
+  "samples": [
+    {
+      "id": "synthetic-calm-calibration-001",
+      "scores": {
+        "calm_flow": 0.9,
+        "kinetic_pulse": 0.1,
+        "cosmic_drift": 0.15,
+        "bass_impact": 0.05
+      },
+      "cpu_time_ms": 0.5,
+      "peak_memory_bytes": 10485760
+    },
+    {
+      "id": "synthetic-kinetic-calibration-001",
+      "scores": {
+        "calm_flow": 0.05,
+        "kinetic_pulse": 0.88,
+        "cosmic_drift": 0.2,
+        "bass_impact": 0.3
+      },
+      "cpu_time_ms": 0.6,
+      "peak_memory_bytes": 10485760
+    },
+    {
+      "id": "synthetic-cosmic-calibration-001",
+      "scores": {
+        "calm_flow": 0.1,
+        "kinetic_pulse": 0.2,
+        "cosmic_drift": 0.86,
+        "bass_impact": 0.05
+      },
+      "cpu_time_ms": 0.5,
+      "peak_memory_bytes": 10485760
+    },
+    {
+      "id": "synthetic-bass-calibration-001",
+      "scores": {
+        "calm_flow": 0.05,
+        "kinetic_pulse": 0.25,
+        "cosmic_drift": 0.1,
+        "bass_impact": 0.92
+      },
+      "cpu_time_ms": 0.7,
+      "peak_memory_bytes": 10485760
+    },
+    {
+      "id": "synthetic-negative-calibration-001",
+      "scores": {
+        "calm_flow": 0.2,
+        "kinetic_pulse": 0.2,
+        "cosmic_drift": 0.2,
+        "bass_impact": 0.2
+      },
+      "cpu_time_ms": 0.4,
+      "peak_memory_bytes": 10485760
+    },
+    {
+      "id": "synthetic-calm-001",
+      "scores": {
+        "calm_flow": 0.9,
+        "kinetic_pulse": 0.1,
+        "cosmic_drift": 0.15,
+        "bass_impact": 0.05
+      },
+      "cpu_time_ms": 0.5,
+      "peak_memory_bytes": 10485760
+    },
+    {
+      "id": "synthetic-kinetic-001",
+      "scores": {
+        "calm_flow": 0.05,
+        "kinetic_pulse": 0.88,
+        "cosmic_drift": 0.2,
+        "bass_impact": 0.3
+      },
+      "cpu_time_ms": 0.6,
+      "peak_memory_bytes": 10485760
+    },
+    {
+      "id": "synthetic-cosmic-001",
+      "scores": {
+        "calm_flow": 0.1,
+        "kinetic_pulse": 0.2,
+        "cosmic_drift": 0.86,
+        "bass_impact": 0.05
+      },
+      "cpu_time_ms": 0.5,
+      "peak_memory_bytes": 10485760
+    },
+    {
+      "id": "synthetic-bass-001",
+      "scores": {
+        "calm_flow": 0.05,
+        "kinetic_pulse": 0.25,
+        "cosmic_drift": 0.1,
+        "bass_impact": 0.92
+      },
+      "cpu_time_ms": 0.7,
+      "peak_memory_bytes": 10485760
+    },
+    {
+      "id": "synthetic-negative-001",
+      "scores": {
+        "calm_flow": 0.2,
+        "kinetic_pulse": 0.2,
+        "cosmic_drift": 0.2,
+        "bass_impact": 0.2
+      },
+      "cpu_time_ms": 0.4,
+      "peak_memory_bytes": 10485760
+    }
+  ]
+}

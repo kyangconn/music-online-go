@@ -46,6 +46,7 @@ help: ## Show available commands
 	@echo "  make test           Run backend + frontend tests"
 	@echo "  make test-cover     Run Go tests with a coverage summary"
 	@echo "  make test-cover-fe  Run frontend tests with a coverage summary"
+	@echo "  make benchmark-analysis ARGS='...' Compare analyzer result files"
 	@echo ""
 	@echo "=== Docker ==="
 	@echo "  make docker                 Build Docker image"
@@ -108,6 +109,9 @@ test-cover: ## Run Go tests and print statement coverage by function
 
 test-cover-fe: ## Run frontend tests and print coverage
 	pnpm --dir $(FE_DIR) test:coverage
+
+benchmark-analysis: ## Compare analyzer candidates (pass -manifest/-result through ARGS)
+	go run ./cmd/analysis-benchmark $(ARGS)
 
 check: check-be check-fe ## Run non-mutating checks
 

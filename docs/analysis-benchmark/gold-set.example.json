@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "id": "music-online-schema-example",
+  "revision": "fixture-v1",
+  "auto_threshold": 0.65,
+  "review_margin": 0.12,
+  "high_confidence_threshold": 0.8,
+  "samples": [
+    {
+      "id": "synthetic-calm-calibration-001",
+      "audio_ref": "private-audio/synthetic-calm-calibration-001.wav",
+      "expected_preset": "calm_flow",
+      "split": "calibration",
+      "groups": ["synthetic-calm-calibration"]
+    },
+    {
+      "id": "synthetic-kinetic-calibration-001",
+      "audio_ref": "private-audio/synthetic-kinetic-calibration-001.wav",
+      "expected_preset": "kinetic_pulse",
+      "split": "calibration",
+      "groups": ["synthetic-kinetic-calibration"]
+    },
+    {
+      "id": "synthetic-cosmic-calibration-001",
+      "audio_ref": "private-audio/synthetic-cosmic-calibration-001.wav",
+      "expected_preset": "cosmic_drift",
+      "split": "calibration",
+      "groups": ["synthetic-cosmic-calibration"]
+    },
+    {
+      "id": "synthetic-bass-calibration-001",
+      "audio_ref": "private-audio/synthetic-bass-calibration-001.wav",
+      "expected_preset": "bass_impact",
+      "split": "calibration",
+      "groups": ["synthetic-bass-calibration"]
+    },
+    {
+      "id": "synthetic-negative-calibration-001",
+      "audio_ref": "private-audio/synthetic-negative-calibration-001.wav",
+      "expected_preset": "none",
+      "split": "calibration",
+      "groups": ["synthetic-negative-calibration"]
+    },
+    {
+      "id": "synthetic-calm-001",
+      "audio_ref": "private-audio/synthetic-calm-001.wav",
+      "expected_preset": "calm_flow",
+      "split": "evaluation",
+      "groups": ["synthetic-calm-evaluation"]
+    },
+    {
+      "id": "synthetic-kinetic-001",
+      "audio_ref": "private-audio/synthetic-kinetic-001.wav",
+      "expected_preset": "kinetic_pulse",
+      "split": "evaluation",
+      "groups": ["synthetic-kinetic-evaluation"]
+    },
+    {
+      "id": "synthetic-cosmic-001",
+      "audio_ref": "private-audio/synthetic-cosmic-001.wav",
+      "expected_preset": "cosmic_drift",
+      "split": "evaluation",
+      "groups": ["synthetic-cosmic-evaluation"]
+    },
+    {
+      "id": "synthetic-bass-001",
+      "audio_ref": "private-audio/synthetic-bass-001.wav",
+      "expected_preset": "bass_impact",
+      "split": "evaluation",
+      "groups": ["synthetic-bass-evaluation"]
+    },
+    {
+      "id": "synthetic-negative-001",
+      "audio_ref": "private-audio/synthetic-negative-001.wav",
+      "expected_preset": "none",
+      "split": "evaluation",
+      "groups": ["synthetic-negative-evaluation"]
+    }
+  ]
+}
