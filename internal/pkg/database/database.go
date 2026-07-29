@@ -57,14 +57,18 @@ func Connect() error {
 func newGORMLogger(level logger.LogLevel) logger.Interface {
 	return logger.New(
 		stdlog.New(os.Stdout, "\r\n", stdlog.LstdFlags),
-		logger.Config{
-			SlowThreshold:             200 * time.Millisecond,
-			LogLevel:                  level,
-			IgnoreRecordNotFoundError: false,
-			ParameterizedQueries:      true,
-			Colorful:                  false,
-		},
+		gormLoggerConfig(level),
 	)
+}
+
+func gormLoggerConfig(level logger.LogLevel) logger.Config {
+	return logger.Config{
+		SlowThreshold:             200 * time.Millisecond,
+		LogLevel:                  level,
+		IgnoreRecordNotFoundError: true,
+		ParameterizedQueries:      true,
+		Colorful:                  false,
+	}
 }
 
 func gormLogLevel(configured, serverMode string) logger.LogLevel {

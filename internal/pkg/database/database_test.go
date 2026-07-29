@@ -111,6 +111,9 @@ func TestGORMLoggerRedactsQueryParameters(t *testing.T) {
 	if params != nil {
 		t.Fatalf("parameterized logger retained sensitive parameters: %#v", params)
 	}
+	if !gormLoggerConfig(logger.Info).IgnoreRecordNotFoundError {
+		t.Fatal("expected record-not-found noise to be suppressed")
+	}
 }
 
 func openTestDatabase(t *testing.T) *gorm.DB {
