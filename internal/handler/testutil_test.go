@@ -128,6 +128,7 @@ func TestMain(m *testing.M) {
 		admin := protected.Group("/admin")
 		admin.Use(middleware.StrictAdminMiddleware(database.DB))
 		{
+			admin.POST("/classifications/manual-batch", presetHandler.SetManualPresets)
 			admin.GET("/users", adminHandler.ListUsers)
 			admin.POST("/users", adminHandler.CreateUser)
 			admin.PUT("/users/:id/status", adminHandler.UpdateUserStatus)
@@ -174,6 +175,7 @@ func TestMain(m *testing.M) {
 		browse.GET("/artists/:key", browseHandler.GetArtist)
 		browse.GET("/albums", browseHandler.ListAlbums)
 		browse.GET("/albums/:key", browseHandler.GetAlbum)
+		browse.GET("/presets", presetHandler.ListPresets)
 	}
 
 	playlists := api.Group("/playlists")

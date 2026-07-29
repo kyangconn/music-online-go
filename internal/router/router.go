@@ -198,12 +198,18 @@ func registerAPIRoutes(router *gin.Engine, h *Handlers, db *gorm.DB, rateLimit c
 
 	registerUserRoutes(api, h.User, h.Admin, h.Preset, h.Analysis, db, rateLimit, access)
 	registerMusicRoutes(api, h.Music, db, access, jwtSecret)
-	registerBrowseRoutes(api, h.Browse, db, access)
+	registerBrowseRoutes(api, h.Browse, h.Preset, db, access)
 	registerPlaylistRoutes(api, h.Playlist, db)
 	registerMusicTagRoutes(api, h.MusicTag, db, access, integrations.MusicBee)
 }
 
-func registerBrowseRoutes(api *gin.RouterGroup, browseHandler *handler.BrowseHandler, db *gorm.DB, access config.AccessConfig) {
+func registerBrowseRoutes(
+	api *gin.RouterGroup,
+	browseHandler *handler.BrowseHandler,
+	presetHandler *handler.PresetClassificationHandler,
+	db *gorm.DB,
+	access config.AccessConfig,
+) {
 	browse := api.Group("")
 	browse.Use(middleware.LibraryReadMiddleware(db, access.LibraryMode))
 	{
@@ -211,6 +217,9 @@ func registerBrowseRoutes(api *gin.RouterGroup, browseHandler *handler.BrowseHan
 		browse.GET("/artists/:key", browseHandler.GetArtist)
 		browse.GET("/albums", browseHandler.ListAlbums)
 		browse.GET("/albums/:key", browseHandler.GetAlbum)
+		if presetHandler != nil {
+			browse.GET("/presets", presetHandler.ListPresets)
+		}
 	}
 }
 
@@ -286,6 +295,7 @@ func registerUserRoutes(
 			admin.GET("/media-library/scans/:id", adminHandler.GetMediaLibraryScan)
 			admin.POST("/media-library/scans/:id/cancel", adminHandler.CancelMediaLibraryScan)
 			if presetHandler != nil {
+				admin.POST("/classifications/manual-batch", presetHandler.SetManualPresets)
 				admin.POST("/musics/:id/classification/reclassify", presetHandler.Reclassify)
 				admin.PUT("/musics/:id/classification/manual", presetHandler.SetManualPreset)
 				admin.DELETE("/musics/:id/classification/manual", presetHandler.ClearManualPreset)
