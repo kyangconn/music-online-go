@@ -40,6 +40,14 @@ func TestMusicAnalysisRepositoryPostgres(t *testing.T) {
 
 	first := createAnalysisMusic(t, db, strings.Repeat("1", 64))
 	second := createAnalysisMusic(t, db, strings.Repeat("2", 64))
+	presetRepo := NewPresetRepository(db, domain.DefaultPresetRulePolicy())
+	classification, err := presetRepo.ReclassifyWithAudio(ctx, first.ID, artifact)
+	if err != nil || classification.AudioAnalysisID == nil || *classification.AudioAnalysisID != artifact.ID {
+		t.Fatalf("link PostgreSQL preset provenance: classification=%+v err=%v", classification, err)
+	}
+	if _, err := presetRepo.SetManualPreset(ctx, first.ID, 2, domain.PresetCalmFlow); err != nil {
+		t.Fatalf("set PostgreSQL manual preset: %v", err)
+	}
 	for index, music := range []*domain.Music{first, second} {
 		job := newRepositoryAnalysisJob(music.ID, fmt.Sprintf("postgres-job-%d", index), music.FileHash, 2)
 		if _, created, err := repo.Enqueue(ctx, job, false, 10); err != nil || !created {
@@ -112,6 +120,13 @@ func TestMusicAnalysisRepositoryPostgres(t *testing.T) {
 	if cached, err := repo.FindCachedAnalysis(ctx, artifact.FileHash, artifact.AnalyzerID, artifact.AnalyzerVersion, artifact.ModelVersion); err != nil || cached != nil {
 		t.Fatalf("orphan PostgreSQL artifact was not removed: artifact=%+v err=%v", cached, err)
 	}
+	var preserved domain.MusicPresetClassification
+	if err := db.First(&preserved, "music_id = ?", first.ID).Error; err != nil {
+		t.Fatalf("reload PostgreSQL classification after artifact deletion: %v", err)
+	}
+	if preserved.AudioAnalysisID != nil || preserved.ManualPreset == nil || *preserved.ManualPreset != domain.PresetCalmFlow {
+		t.Fatalf("PostgreSQL SET NULL did not preserve manual classification: %+v", preserved)
+	}
 }
 
 func openMusicAnalysisPostgresTestDB(t *testing.T) *gorm.DB {
@@ -163,6 +178,7 @@ func openMusicAnalysisPostgresTestDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(
 		&domain.User{}, &domain.Music{}, &domain.MediaFile{},
 		&domain.MusicAudioAnalysis{}, &domain.MusicAnalysisJob{},
+		&domain.MusicPresetClassification{}, &domain.MusicPresetScore{},
 	); err != nil {
 		t.Fatalf("migrate PostgreSQL analysis schema: %v", err)
 	}

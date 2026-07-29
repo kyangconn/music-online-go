@@ -239,6 +239,9 @@ func (r *musicRepository) Search(ctx context.Context, params *domain.MusicSearch
 		}
 		if params.PresetStatus != "" {
 			db = db.Where("COALESCE(music_preset_classifications.status, ?) = ?", domain.PresetStatusUnclassified, params.PresetStatus)
+			if params.PresetStatus == domain.PresetStatusNeedsReview {
+				db = db.Where("music_preset_classifications.manual_preset IS NULL")
+			}
 		}
 	}
 	if params.Year != nil {

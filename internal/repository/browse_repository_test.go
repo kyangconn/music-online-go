@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -13,7 +14,8 @@ import (
 
 func openBrowseRepositoryTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "browse.db")), &gorm.Config{})
+	dsn := filepath.Join(t.TempDir(), "browse.db") + "?_pragma=foreign_keys(1)"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open browse database: %v", err)
 	}
@@ -31,6 +33,7 @@ func openBrowseRepositoryTestDB(t *testing.T) *gorm.DB {
 		&domain.User{}, &domain.Music{}, &domain.UserMusicLike{}, &domain.MusicArtistCredit{}, &domain.MusicAlbumMembership{},
 		&domain.MusicGenreFacet{}, &domain.Playlist{}, &domain.PlaylistItem{}, &domain.MediaFile{},
 		&domain.MusicPresetClassification{}, &domain.MusicPresetScore{},
+		&domain.MusicAudioAnalysis{}, &domain.MusicAnalysisJob{},
 	); err != nil {
 		t.Fatalf("migrate browse database: %v", err)
 	}
@@ -256,5 +259,68 @@ func TestPresetRepositoryKeepsManualOverrideAcrossAutomaticReclassification(t *t
 	})
 	if err != nil || total != 1 || len(rows) != 1 {
 		t.Fatalf("automatic preset filter: total=%d rows=%+v err=%v", total, rows, err)
+	}
+}
+
+func TestPresetRepositoryUsesCurrentAudioArtifactAndPreservesManualOverride(t *testing.T) {
+	db := openBrowseRepositoryTestDB(t)
+	policy := domain.DefaultPresetRulePolicy()
+	musicRepo := NewMusicRepository(db, policy)
+	presetRepo := NewPresetRepository(db, policy)
+	ctx := context.Background()
+	music := &domain.Music{Title: "Audio evidence", Artist: "Artist", FileHash: strings.Repeat("a", 64)}
+	if err := musicRepo.Create(ctx, music); err != nil {
+		t.Fatal(err)
+	}
+	features, _ := domain.NewJSONDocument(map[string]float64{"pulse_clarity": 0.8})
+	labels, _ := domain.NewJSONDocument(map[string]float64{"trance": 1})
+	analysis := &domain.MusicAudioAnalysis{
+		FileHash: music.FileHash, AnalyzerID: "fixture", AnalyzerVersion: "1", ModelVersion: "1",
+		Status: domain.AnalysisStatusSucceeded, Features: features, ModelLabels: labels,
+	}
+	if err := db.Create(analysis).Error; err != nil {
+		t.Fatal(err)
+	}
+	classified, err := presetRepo.ReclassifyWithAudio(ctx, music.ID, analysis)
+	if err != nil || classified.AutomaticPreset != domain.PresetCosmicDrift ||
+		classified.AudioAnalysisID == nil || *classified.AudioAnalysisID != analysis.ID {
+		t.Fatalf("audio classification = %+v, err=%v", classified, err)
+	}
+	if _, err := presetRepo.SetManualPreset(ctx, music.ID, 9, domain.PresetCalmFlow); err != nil {
+		t.Fatal(err)
+	}
+	job := &domain.MusicAnalysisJob{
+		Kind: domain.AnalysisJobKindAudio, IdempotencyKey: strings.Repeat("b", 64), MusicID: music.ID,
+		AnalysisID: &analysis.ID, RequestedBy: 9, FileHash: music.FileHash, Status: domain.AnalysisStatusSucceeded,
+	}
+	if err := db.Create(job).Error; err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := presetRepo.Reclassify(ctx, music.ID)
+	if err != nil || reloaded.ManualPreset == nil || *reloaded.ManualPreset != domain.PresetCalmFlow ||
+		reloaded.AutomaticPreset != domain.PresetCosmicDrift {
+		t.Fatalf("reloaded hybrid classification = %+v, err=%v", reloaded, err)
+	}
+	mismatched := *analysis
+	mismatched.FileHash = strings.Repeat("c", 64)
+	if _, err := presetRepo.ReclassifyWithAudio(ctx, music.ID, &mismatched); !errors.Is(err, ErrPresetAnalysisMismatch) {
+		t.Fatalf("mismatched artifact error = %v", err)
+	}
+	withoutHash := &domain.Music{Title: "No content", Artist: "Artist"}
+	if err := musicRepo.Create(ctx, withoutHash); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := presetRepo.ReclassifyWithAudio(ctx, withoutHash.ID, analysis); !errors.Is(err, ErrPresetAnalysisMismatch) {
+		t.Fatalf("artifact used without current content hash: %v", err)
+	}
+	if err := db.Delete(analysis).Error; err != nil {
+		t.Fatalf("delete shared audio artifact: %v", err)
+	}
+	var afterArtifactDelete domain.MusicPresetClassification
+	if err := db.First(&afterArtifactDelete, "music_id = ?", music.ID).Error; err != nil {
+		t.Fatalf("reload classification after artifact deletion: %v", err)
+	}
+	if afterArtifactDelete.AudioAnalysisID != nil {
+		t.Fatalf("deleted artifact reference was not cleared: %+v", afterArtifactDelete)
 	}
 }
