@@ -56,7 +56,7 @@ export type AnalysisStatus = "pending" | "running" | "succeeded" | "failed" | "s
 export type AnalysisJobKind = "metadata_rules" | "audio_analysis";
 
 export interface PresetEvidence {
-  source: "genre" | "audio_feature" | "model_tag" | "external_tag";
+  source: "genre" | "model" | "dsp" | "metadata_audio" | "external";
   key: string;
   weight: number;
 }
@@ -77,10 +77,22 @@ export interface PresetClassification {
   status: PresetStatus;
   rule_version: string;
   metadata_revision: number;
+  audio_analysis_id?: number;
   evidence_summary: string[];
   scores: PresetScore[];
   evaluated_at: string;
   manual_updated_at?: string;
+}
+
+export interface PresetSummary {
+  preset_id: PresetID;
+  track_count: number;
+  needs_review_count: number;
+}
+
+export interface BatchPresetOverrideResponse {
+  updated: number;
+  classifications: PresetClassification[];
 }
 
 export interface MusicAnalysisSummary {

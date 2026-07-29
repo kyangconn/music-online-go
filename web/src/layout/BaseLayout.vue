@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Collection, Download, Headset, List, Moon, Search, Sunny, UserFilled } from "@element-plus/icons-vue";
+import { Collection, Download, Headset, List, MagicStick, Moon, Search, Sunny, UserFilled } from "@element-plus/icons-vue";
 import type { InputInstance } from "element-plus";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
@@ -60,6 +60,13 @@ useKeyboardShortcuts({
           </router-link>
           <router-link :to="{ name: 'Albums' }" :aria-label="$t('library.albums')">
             <el-icon><Collection /></el-icon><span>{{ $t("library.albums") }}</span>
+          </router-link>
+          <router-link
+            v-if="instanceStore.capabilities.classification_enabled"
+            :to="{ name: 'Presets' }"
+            :aria-label="$t('classification.title')"
+          >
+            <el-icon><MagicStick /></el-icon><span>{{ $t("classification.title") }}</span>
           </router-link>
           <router-link v-if="userStore.isLoggedIn" :to="{ name: 'Playlists' }" :aria-label="$t('playlist.title')">
             <el-icon><List /></el-icon><span>{{ $t("playlist.title") }}</span>

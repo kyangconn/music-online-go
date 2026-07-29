@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { DataAnalysis, Delete, Document, Refresh, Search, View } from "@element-plus/icons-vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { DataAnalysis, Delete, Document, EditPen, Refresh, Search, View, WarningFilled } from "@element-plus/icons-vue";
+import { ElMessage, ElMessageBox, type TableInstance } from "element-plus";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
@@ -8,6 +8,7 @@ import type {
   AnalysisBackfillResponse,
   AnalysisScheduleResponse,
   AnalysisStatus,
+  BatchPresetOverrideResponse,
   Music,
   PresetClassification,
   PresetID,
@@ -18,6 +19,7 @@ import { useApiError } from "@/composables/useApiError";
 import { usePaginatedFetch } from "@/composables/usePaginatedFetch";
 import { useInstanceStore } from "@/store/instance";
 import request from "@/utils/request";
+import { presetIDs, presetTagType } from "@/utils/presets";
 
 const router = useRouter();
 const { t } = useI18n();
@@ -30,7 +32,10 @@ const busyMusicID = ref<number>();
 const analysisMusicID = ref<number>();
 const backfillBusy = ref(false);
 const evidenceMusic = ref<Music>();
-const presetIDs: PresetID[] = ["calm_flow", "kinetic_pulse", "cosmic_drift", "bass_impact"];
+const musicTable = ref<TableInstance>();
+const selectedMusics = ref<Music[]>([]);
+const batchPreset = ref<PresetID | "">("");
+const batchBusy = ref(false);
 const presetStatuses: PresetStatus[] = ["classified", "needs_review", "unclassified"];
 
 const { items: musics, loading, total, currentPage, pageSize, fetch: fetchMusics, resetAndFetch } =
@@ -69,13 +74,6 @@ const deleteMusic = async (music: Music) => {
 const presetName = (preset: PresetID | "" | undefined) =>
   preset ? t(`classification.${preset}`) : t("classification.unclassified");
 
-const presetTagType = (preset: PresetID | "" | undefined) => {
-  if (preset === "calm_flow") return "success";
-  if (preset === "kinetic_pulse") return "warning";
-  if (preset === "bass_impact") return "danger";
-  return "info";
-};
-
 const statusTagType = (status: PresetStatus | undefined) => {
   if (status === "classified") return "success";
   if (status === "needs_review") return "warning";
@@ -94,10 +92,54 @@ const updateManualPreset = async (music: Music, preset: PresetID | "") => {
       : await request.delete<PresetClassification>(`/users/admin/musics/${music.id}/classification/manual`);
     replaceClassification(music, response.data);
     ElMessage.success(t(preset ? "classification.override_saved" : "classification.override_cleared"));
+    if (statusFilter.value === "needs_review") await fetchMusics();
   } catch (error) {
     handleError(error, t(preset ? "classification.override_failed" : "classification.clear_failed"));
   } finally {
     busyMusicID.value = undefined;
+  }
+};
+
+const showReviewQueue = () => {
+  statusFilter.value = "needs_review";
+  resetAndFetch();
+};
+
+const handleSelectionChange = (selection: Music[]) => {
+  selectedMusics.value = selection;
+};
+
+const updateBatchPreset = async (preset: PresetID | null) => {
+  if (selectedMusics.value.length === 0) return;
+  const count = selectedMusics.value.length;
+  try {
+    await ElMessageBox.confirm(
+      t(preset ? "classification.batch_apply_confirm" : "classification.batch_clear_confirm", {
+        count,
+        preset: preset ? presetName(preset) : "",
+      }),
+      t("classification.batch_title"),
+      {
+        confirmButtonText: t("common.confirm"),
+        cancelButtonText: t("common.cancel"),
+        type: "warning",
+      },
+    );
+    batchBusy.value = true;
+    const response = await request.post<BatchPresetOverrideResponse>("/users/admin/classifications/manual-batch", {
+      music_ids: selectedMusics.value.map((music) => music.id),
+      preset,
+    });
+    ElMessage.success(t(preset ? "classification.batch_updated" : "classification.batch_cleared", {
+      count: response.data.updated,
+    }));
+    musicTable.value?.clearSelection();
+    selectedMusics.value = [];
+    await fetchMusics();
+  } catch (error) {
+    if (error !== "cancel") handleError(error, t("classification.batch_failed"));
+  } finally {
+    batchBusy.value = false;
   }
 };
 
@@ -109,6 +151,7 @@ const reclassify = async (music: Music) => {
     );
     replaceClassification(music, response.data);
     ElMessage.success(t("classification.reclassified"));
+    if (statusFilter.value) await fetchMusics();
   } catch (error) {
     handleError(error, t("classification.reclassify_failed"));
   } finally {
@@ -184,7 +227,10 @@ const backfillAnalysis = async (includeAudio: boolean) => {
 const evidenceLabel = (source: string, key: string) =>
   source === "genre"
     ? t("classification.evidence_genre", { key })
-    : t("classification.evidence_other", { source, key });
+    : t("classification.evidence_other", {
+        source: t(`classification.evidence_source_${source}`),
+        key,
+      });
 
 onMounted(async () => {
   await instanceStore.load();
@@ -209,6 +255,7 @@ onMounted(async () => {
       </el-input>
       <el-button type="primary" :icon="Search" @click="handleSearch">{{ $t("admin.search") }}</el-button>
       <el-select
+        v-if="instanceStore.capabilities.classification_enabled"
         v-model="presetFilter"
         clearable
         class="classification-filter"
@@ -217,7 +264,12 @@ onMounted(async () => {
       >
         <el-option v-for="preset in presetIDs" :key="preset" :label="presetName(preset)" :value="preset" />
       </el-select>
-      <el-button :icon="Refresh" :loading="backfillBusy" @click="backfillAnalysis(false)">
+      <el-button
+        v-if="instanceStore.capabilities.classification_enabled"
+        :icon="Refresh"
+        :loading="backfillBusy"
+        @click="backfillAnalysis(false)"
+      >
         {{ $t("classification.backfill_rules") }}
       </el-button>
       <el-button
@@ -229,6 +281,7 @@ onMounted(async () => {
         {{ $t("classification.backfill_audio") }}
       </el-button>
       <el-select
+        v-if="instanceStore.capabilities.classification_enabled"
         v-model="statusFilter"
         clearable
         class="classification-filter"
@@ -242,9 +295,53 @@ onMounted(async () => {
           :value="status"
         />
       </el-select>
+      <el-button
+        v-if="instanceStore.capabilities.classification_enabled"
+        :icon="WarningFilled"
+        @click="showReviewQueue"
+      >
+        {{ $t("classification.review_queue") }}
+      </el-button>
     </div>
 
-    <el-table v-loading="loading" :data="musics" size="small" class="admin-table">
+    <div v-if="instanceStore.capabilities.classification_enabled" class="batch-toolbar">
+      <span>{{ $t("classification.selected_count", { count: selectedMusics.length }) }}</span>
+      <el-select
+        v-model="batchPreset"
+        clearable
+        class="classification-filter"
+        :placeholder="$t('classification.batch_preset')"
+      >
+        <el-option v-for="preset in presetIDs" :key="preset" :label="presetName(preset)" :value="preset" />
+      </el-select>
+      <el-button
+        type="primary"
+        :icon="EditPen"
+        :loading="batchBusy"
+        :disabled="selectedMusics.length === 0 || !batchPreset"
+        @click="updateBatchPreset(batchPreset || null)"
+      >
+        {{ $t("classification.batch_apply") }}
+      </el-button>
+      <el-button
+        :loading="batchBusy"
+        :disabled="selectedMusics.length === 0"
+        @click="updateBatchPreset(null)"
+      >
+        {{ $t("classification.batch_clear") }}
+      </el-button>
+    </div>
+
+    <el-table
+      ref="musicTable"
+      v-loading="loading || batchBusy"
+      :data="musics"
+      row-key="id"
+      size="small"
+      class="admin-table"
+      @selection-change="handleSelectionChange"
+    >
+      <el-table-column v-if="instanceStore.capabilities.classification_enabled" type="selection" width="48" />
       <el-table-column width="72">
         <template #default="{ row }">
           <div class="cover-thumb">
@@ -256,7 +353,11 @@ onMounted(async () => {
       <el-table-column prop="artist" :label="$t('add.music_artist')" min-width="160" show-overflow-tooltip />
       <el-table-column prop="user_id" :label="$t('admin.uploader_id')" width="100" />
       <el-table-column prop="like_count" :label="$t('common.likes')" width="90" />
-      <el-table-column :label="$t('classification.title')" min-width="180">
+      <el-table-column
+        v-if="instanceStore.capabilities.classification_enabled"
+        :label="$t('classification.title')"
+        min-width="180"
+      >
         <template #default="{ row }">
           <el-tag :type="presetTagType(row.preset_classification?.effective_preset)" effect="plain">
             {{ presetName(row.preset_classification?.effective_preset) }}
@@ -266,19 +367,31 @@ onMounted(async () => {
           </span>
         </template>
       </el-table-column>
-      <el-table-column :label="$t('classification.filter_status')" width="130">
+      <el-table-column
+        v-if="instanceStore.capabilities.classification_enabled"
+        :label="$t('classification.filter_status')"
+        width="130"
+      >
         <template #default="{ row }">
           <el-tag :type="statusTagType(row.preset_classification?.status)" size="small">
             {{ $t(`classification.${row.preset_classification?.status || 'unclassified'}`) }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column :label="$t('classification.confidence')" width="110">
+      <el-table-column
+        v-if="instanceStore.capabilities.classification_enabled"
+        :label="$t('classification.confidence')"
+        width="110"
+      >
         <template #default="{ row }">
           {{ row.preset_classification ? `${Math.round(row.preset_classification.confidence * 100)}%` : "—" }}
         </template>
       </el-table-column>
-      <el-table-column :label="$t('classification.analysis_status')" width="140">
+      <el-table-column
+        v-if="instanceStore.capabilities.classification_enabled"
+        :label="$t('classification.analysis_status')"
+        width="140"
+      >
         <template #default="{ row }">
           <el-tooltip :content="row.audio_analysis?.error_code || ''" :disabled="!row.audio_analysis?.error_code">
             <el-tag :type="analysisStatusTagType(row.audio_analysis?.status)" size="small" effect="plain">
@@ -287,7 +400,11 @@ onMounted(async () => {
           </el-tooltip>
         </template>
       </el-table-column>
-      <el-table-column :label="$t('classification.set_manual')" min-width="190">
+      <el-table-column
+        v-if="instanceStore.capabilities.classification_enabled"
+        :label="$t('classification.set_manual')"
+        min-width="190"
+      >
         <template #default="{ row }">
           <el-select
             :model-value="row.preset_classification?.manual_preset || ''"
@@ -300,13 +417,17 @@ onMounted(async () => {
           </el-select>
         </template>
       </el-table-column>
-      <el-table-column :label="$t('admin.actions')" width="240" fixed="right">
+      <el-table-column
+        :label="$t('admin.actions')"
+        :width="instanceStore.capabilities.classification_enabled ? 240 : 100"
+        fixed="right"
+      >
         <template #default="{ row }">
           <el-button :icon="View" circle size="small" @click="router.push(`/music/${row.id}`)" />
-          <el-tooltip :content="$t('classification.evidence')">
+          <el-tooltip v-if="instanceStore.capabilities.classification_enabled" :content="$t('classification.evidence')">
             <el-button :icon="Document" circle size="small" @click="evidenceMusic = row" />
           </el-tooltip>
-          <el-tooltip :content="$t('classification.reclassify')">
+          <el-tooltip v-if="instanceStore.capabilities.classification_enabled" :content="$t('classification.reclassify')">
             <el-button
               :icon="Refresh"
               circle
@@ -315,7 +436,7 @@ onMounted(async () => {
               @click="reclassify(row)"
             />
           </el-tooltip>
-          <el-tooltip :content="$t('classification.analyze')">
+          <el-tooltip v-if="instanceStore.capabilities.classification_enabled" :content="$t('classification.analyze')">
             <el-button
               :icon="DataAnalysis"
               circle
@@ -359,6 +480,12 @@ onMounted(async () => {
           </el-descriptions-item>
           <el-descriptions-item :label="$t('classification.rule_version')">
             {{ evidenceMusic.preset_classification.rule_version }}
+          </el-descriptions-item>
+          <el-descriptions-item
+            v-if="evidenceMusic.preset_classification.audio_analysis_id"
+            :label="$t('classification.audio_analysis_id')"
+          >
+            #{{ evidenceMusic.preset_classification.audio_analysis_id }}
           </el-descriptions-item>
         </el-descriptions>
         <h3>{{ $t("classification.score_breakdown") }}</h3>
@@ -415,6 +542,15 @@ onMounted(async () => {
 
 .classification-filter {
   width: 190px;
+}
+
+.batch-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-md;
+  color: var(--text-secondary);
 }
 
 .classification-source {
