@@ -230,6 +230,16 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version: 11,
+		name:    "add_user_sessions",
+		up: func(db *gorm.DB) error {
+			if err := db.AutoMigrate(&domain.Session{}); err != nil {
+				return fmt.Errorf("add user session schema: %w", err)
+			}
+			return nil
+		},
+	},
 }
 
 func addLibraryBrowseAndPlaylists(db *gorm.DB) error {
