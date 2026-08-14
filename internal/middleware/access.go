@@ -16,32 +16,32 @@ import (
 	"github.com/kyangconn/music-online-go/internal/pkg/mediatoken"
 )
 
-func LibraryReadMiddleware(db *gorm.DB, mode string) gin.HandlerFunc {
+func LibraryReadMiddleware(db *gorm.DB, mode, jwtSecret string) gin.HandlerFunc {
 	if mode == config.LibraryAccessAuthenticated {
-		authenticate := AuthMiddleware(db)
+		authenticate := AuthMiddleware(db, jwtSecret)
 		return func(c *gin.Context) {
 			c.Header("Cache-Control", "private, no-store")
 			authenticate(c)
 		}
 	}
-	return OptionalAuthMiddleware()
+	return OptionalAuthMiddleware(db, jwtSecret)
 }
 
-func LibraryMediaAccessMiddleware(db *gorm.DB, mode, secret, kind string) gin.HandlerFunc {
+func LibraryMediaAccessMiddleware(db *gorm.DB, mode, mediaSecret, jwtSecret, kind string) gin.HandlerFunc {
 	if mode != config.LibraryAccessAuthenticated {
-		return OptionalAuthMiddleware()
+		return OptionalAuthMiddleware(db, jwtSecret)
 	}
 	return func(c *gin.Context) {
 		c.Header("Cache-Control", "private, no-store")
 		musicID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 		if err == nil {
 			token := c.Query("media_token")
-			if token != "" && mediatoken.Validate(token, secret, uint(musicID), kind, time.Now()) == nil {
+			if token != "" && mediatoken.Validate(token, mediaSecret, uint(musicID), kind, time.Now()) == nil {
 				c.Next()
 				return
 			}
 		}
-		AuthMiddleware(db)(c)
+		AuthMiddleware(db, jwtSecret)(c)
 	}
 }
 

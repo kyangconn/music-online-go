@@ -74,8 +74,14 @@ type DatabaseConfig struct {
 }
 
 type JWTConfig struct {
-	Secret     string
-	ExpireHour int
+	Secret string
+	// AccessTokenTTLMinutes is the lifetime of the short-lived access token.
+	AccessTokenTTLMinutes int
+	// RefreshTokenTTLDays is the lifetime of a server-side session (refresh token).
+	RefreshTokenTTLDays int
+	// RefreshCookieSecure sets the Secure attribute on the refresh httpOnly cookie.
+	// Enable it only when the instance is served over HTTPS.
+	RefreshCookieSecure bool
 }
 
 type MetricsConfig struct {
@@ -214,7 +220,10 @@ func DefaultConfig() Config {
 			ConnectionMaxLifetimeMinutes: 60,
 			ConnectionMaxIdleTimeMinutes: 10,
 		},
-		JWT: JWTConfig{ExpireHour: 24},
+		JWT: JWTConfig{
+			AccessTokenTTLMinutes: 15,
+			RefreshTokenTTLDays:   30,
+		},
 		AdminBootstrap: AdminBootstrapConfig{
 			FullName: "Administrator",
 		},
@@ -387,8 +396,10 @@ func LoadConfig() error {
 			ConnectionMaxIdleTimeMinutes: v.GetInt("database.connection_max_idle_time_minutes"),
 		},
 		JWT: JWTConfig{
-			Secret:     jwtSecret,
-			ExpireHour: v.GetInt("jwt.expire_hour"),
+			Secret:                jwtSecret,
+			AccessTokenTTLMinutes: v.GetInt("jwt.access_token_ttl_minutes"),
+			RefreshTokenTTLDays:   v.GetInt("jwt.refresh_token_ttl_days"),
+			RefreshCookieSecure:   v.GetBool("jwt.refresh_cookie_secure"),
 		},
 		Metrics: MetricsConfig{
 			Enabled: v.GetBool("metrics.enabled"),
@@ -505,7 +516,9 @@ func setViperDefaults(v *viper.Viper, defaults Config) {
 	v.SetDefault("database.max_idle_connections", defaults.Database.MaxIdleConnections)
 	v.SetDefault("database.connection_max_lifetime_minutes", defaults.Database.ConnectionMaxLifetimeMinutes)
 	v.SetDefault("database.connection_max_idle_time_minutes", defaults.Database.ConnectionMaxIdleTimeMinutes)
-	v.SetDefault("jwt.expire_hour", defaults.JWT.ExpireHour)
+	v.SetDefault("jwt.access_token_ttl_minutes", defaults.JWT.AccessTokenTTLMinutes)
+	v.SetDefault("jwt.refresh_token_ttl_days", defaults.JWT.RefreshTokenTTLDays)
+	v.SetDefault("jwt.refresh_cookie_secure", defaults.JWT.RefreshCookieSecure)
 	v.SetDefault("metrics.enabled", defaults.Metrics.Enabled)
 	v.SetDefault("metrics.token", defaults.Metrics.Token)
 	v.SetDefault("admin.bootstrap.enabled", defaults.AdminBootstrap.Enabled)
@@ -696,11 +709,11 @@ func Validate(cfg *Config) error {
 	if err := ValidateJWTSecret(cfg.JWT.Secret, cfg.Server.Mode); err != nil {
 		return err
 	}
-	if cfg.JWT.ExpireHour <= 0 {
-		return errors.New("jwt.expire_hour must be greater than zero")
+	if cfg.JWT.AccessTokenTTLMinutes <= 0 {
+		return errors.New("jwt.access_token_ttl_minutes must be greater than zero")
 	}
-	if err := validateDurationFits("jwt.expire_hour", cfg.JWT.ExpireHour, time.Hour); err != nil {
-		return err
+	if cfg.JWT.RefreshTokenTTLDays <= 0 {
+		return errors.New("jwt.refresh_token_ttl_days must be greater than zero")
 	}
 	if err := ValidateMetricsConfig(cfg.Metrics); err != nil {
 		return err

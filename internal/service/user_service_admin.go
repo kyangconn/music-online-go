@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/pquerna/otp/totp"
@@ -18,7 +19,14 @@ var (
 )
 
 func (s *userService) UpdateUserStatus(ctx context.Context, id uint, isActive bool) error {
-	return s.userRepo.UpdateStatus(ctx, id, isActive)
+	if err := s.userRepo.UpdateStatus(ctx, id, isActive); err != nil {
+		return err
+	}
+	if !isActive {
+		// 禁用账户时立即失效其所有会话。
+		return s.sessionRepo.RevokeAllForUser(ctx, id, time.Now())
+	}
+	return nil
 }
 
 func (s *userService) UpdateUserRole(ctx context.Context, id uint, role string) error {

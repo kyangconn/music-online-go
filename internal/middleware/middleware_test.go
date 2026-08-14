@@ -17,7 +17,7 @@ import (
 func TestMain(m *testing.M) {
 	config.AppConfig = &config.Config{
 		Server: config.ServerConfig{Mode: "debug"},
-		JWT:    config.JWTConfig{Secret: "test-secret", ExpireHour: 1},
+		JWT:    config.JWTConfig{Secret: "test-secret", AccessTokenTTLMinutes: 1, RefreshTokenTTLDays: 30},
 	}
 	gin.SetMode(gin.TestMode)
 	os.Exit(m.Run())

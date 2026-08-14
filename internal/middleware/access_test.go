@@ -28,14 +28,18 @@ func accessTestDatabase(t *testing.T) (*gorm.DB, domain.User, string) {
 		t.Fatalf("open SQL database: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&domain.User{}); err != nil {
+	if err := db.AutoMigrate(&domain.User{}, &domain.Session{}); err != nil {
 		t.Fatalf("migrate user: %v", err)
 	}
 	user := domain.User{Username: "listener", Email: "listener@example.com", Password: "unused", Role: "user", IsActive: true}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create user: %v", err)
 	}
-	token, err := jwt.GenerateToken(user.ID, user.Username, user.Role)
+	session := domain.Session{UserID: user.ID, RefreshHash: "hash", ExpiresAt: time.Now().Add(time.Hour)}
+	if err := db.Create(&session).Error; err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	token, err := jwt.GenerateToken(user.ID, user.Username, user.Role, session.ID, 60, config.AppConfig.JWT.Secret)
 	if err != nil {
 		t.Fatalf("generate token: %v", err)
 	}
@@ -46,7 +50,7 @@ func TestLibraryReadMiddlewareModes(t *testing.T) {
 	db, _, token := accessTestDatabase(t)
 	serve := func(mode, authorization string) int {
 		router := gin.New()
-		router.GET("/library", LibraryReadMiddleware(db, mode), func(c *gin.Context) { c.Status(http.StatusOK) })
+		router.GET("/library", LibraryReadMiddleware(db, mode, config.AppConfig.JWT.Secret), func(c *gin.Context) { c.Status(http.StatusOK) })
 		request := httptest.NewRequest(http.MethodGet, "/library", nil)
 		if authorization != "" {
 			request.Header.Set("Authorization", authorization)
@@ -71,7 +75,7 @@ func TestLibraryMediaAccessAcceptsOnlyBoundSignedURLOrActiveBearer(t *testing.T)
 	db, _, bearer := accessTestDatabase(t)
 	serve := func(mediaToken, authorization string) int {
 		router := gin.New()
-		router.GET("/musics/:id/stream", LibraryMediaAccessMiddleware(db, config.LibraryAccessAuthenticated, config.AppConfig.JWT.Secret, "stream"), func(c *gin.Context) {
+		router.GET("/musics/:id/stream", LibraryMediaAccessMiddleware(db, config.LibraryAccessAuthenticated, config.AppConfig.JWT.Secret, config.AppConfig.JWT.Secret, "stream"), func(c *gin.Context) {
 			c.Status(http.StatusOK)
 		})
 		request := httptest.NewRequest(http.MethodGet, "/musics/42/stream?media_token="+mediaToken, nil)

@@ -128,7 +128,8 @@ func setEnvIfNotEmpty(key, val string) {
 
 func initDependencies() (*router.Handlers, service.MediaLibraryService, service.MusicAnalysisService, error) {
 	userRepo := repository.NewUserRepository(database.DB)
-	userService := service.NewUserService(userRepo, config.AppConfig.Server.UploadDir)
+	sessionRepo := repository.NewSessionRepository(database.DB)
+	userService := service.NewUserService(userRepo, sessionRepo, config.AppConfig.Server.UploadDir, config.AppConfig.JWT)
 
 	classificationConfig := config.AppConfig.Classification
 	presetPolicy := classificationConfig.PresetRulePolicy()
@@ -150,7 +151,7 @@ func initDependencies() (*router.Handlers, service.MediaLibraryService, service.
 	}
 
 	return &router.Handlers{
-		User:     handler.NewUserHandler(userService),
+		User:     handler.NewUserHandler(userService, config.AppConfig.JWT),
 		Music:    handler.NewMusicHandler(subsystem.Music, config.AppConfig.Access),
 		Browse:   handler.NewBrowseHandler(browseService),
 		Playlist: handler.NewPlaylistHandler(playlistService),
@@ -168,7 +169,8 @@ func bootstrapAdmin(ctx context.Context) error {
 	}
 
 	userRepo := repository.NewUserRepository(database.DB)
-	userService := service.NewUserService(userRepo, config.AppConfig.Server.UploadDir)
+	sessionRepo := repository.NewSessionRepository(database.DB)
+	userService := service.NewUserService(userRepo, sessionRepo, config.AppConfig.Server.UploadDir, config.AppConfig.JWT)
 	user, created, err := userService.BootstrapAdmin(ctx, service.BootstrapAdminRequest{
 		Username:      cfg.Username,
 		Email:         cfg.Email,

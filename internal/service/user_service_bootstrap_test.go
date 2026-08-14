@@ -37,14 +37,14 @@ func newBootstrapUserService(t *testing.T) service.UserService {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&domain.User{}); err != nil {
+	if err := db.AutoMigrate(&domain.User{}, &domain.Session{}); err != nil {
 		t.Fatalf("migrate users: %v", err)
 	}
 	config.AppConfig = &config.Config{
-		JWT: config.JWTConfig{Secret: "test-secret", ExpireHour: 24},
+		JWT: config.JWTConfig{Secret: "test-secret", AccessTokenTTLMinutes: 60, RefreshTokenTTLDays: 30},
 	}
 
-	return service.NewUserService(repository.NewUserRepository(db), t.TempDir())
+	return service.NewUserService(repository.NewUserRepository(db), repository.NewSessionRepository(db), t.TempDir(), config.AppConfig.JWT)
 }
 
 func TestBootstrapAdminCreatesAdmin(t *testing.T) {

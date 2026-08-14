@@ -1,5 +1,5 @@
 // Package handler user_handler.go - 用户处理器
-// 处理用户相关的 HTTP 请求：注册、登录、资料管理、TOTP 设置
+// 处理用户相关的 HTTP 请求：注册、登录、资料管理、TOTP 设置、会话刷新与登出
 package handler
 
 import (
@@ -9,19 +9,24 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/kyangconn/music-online-go/internal/config"
 	"github.com/kyangconn/music-online-go/internal/domain"
 	"github.com/kyangconn/music-online-go/internal/pkg/password"
 	"github.com/kyangconn/music-online-go/internal/repository"
 	"github.com/kyangconn/music-online-go/internal/service"
 )
 
+// refreshCookieName is the httpOnly cookie carrying the opaque refresh token.
+const refreshCookieName = "mo_refresh"
+
 // UserHandler handles HTTP requests related to user operations.
 type UserHandler struct {
 	userService service.UserService
+	jwtCfg      config.JWTConfig
 }
 
-func NewUserHandler(userService service.UserService) *UserHandler {
-	return &UserHandler{userService: userService}
+func NewUserHandler(userService service.UserService, jwtCfg config.JWTConfig) *UserHandler {
+	return &UserHandler{userService: userService, jwtCfg: jwtCfg}
 }
 
 // Register godoc
@@ -97,7 +102,118 @@ func (h *UserHandler) Login(c *gin.Context) {
 		return
 	}
 
+	h.setRefreshCookie(c, response.RefreshToken)
+	response.RefreshToken = ""
 	Success(c, response)
+}
+
+// Refresh godoc
+// @Summary 刷新访问令牌
+// @Description 使用 httpOnly cookie 或请求体中的 refresh token 轮换会话并签发新的短期 access token
+// @Tags users
+// @Accept json
+// @Produce json
+// @Success 200 {object} Response "刷新成功"
+// @Failure 401 {object} Response "refresh token 无效、过期或会话已撤销"
+// @Router /api/v1/users/refresh [post]
+func (h *UserHandler) Refresh(c *gin.Context) {
+	refreshToken, _ := c.Cookie(refreshCookieName)
+	if refreshToken == "" {
+		var req struct {
+			RefreshToken string `json:"refresh_token"`
+		}
+		if err := c.ShouldBindJSON(&req); err == nil {
+			refreshToken = req.RefreshToken
+		}
+	}
+
+	response, err := h.userService.RefreshSession(
+		c.Request.Context(),
+		refreshToken,
+		c.Request.UserAgent(),
+		c.ClientIP(),
+	)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidRefreshToken), errors.Is(err, service.ErrSessionExpired):
+			h.clearRefreshCookie(c)
+			Unauthorized(c, "Session is no longer valid, please log in again")
+		case errors.Is(err, service.ErrConcurrentRefresh):
+			// 多标签页同时刷新：提示客户端用新 cookie 重试一次。
+			Unauthorized(c, "Session refreshed concurrently, please retry")
+		case errors.Is(err, service.ErrSessionRevoked):
+			h.clearRefreshCookie(c)
+			Unauthorized(c, "Session has been revoked")
+		default:
+			InternalServerError(c, "Failed to refresh session")
+		}
+		return
+	}
+
+	h.setRefreshCookie(c, response.RefreshToken)
+	response.RefreshToken = ""
+	Success(c, response)
+}
+
+// Logout godoc
+// @Summary 登出当前设备
+// @Description 撤销当前会话并清除 refresh cookie；其他设备不受影响。
+// @Description access token 有效时按会话撤销；已过期时退回使用 refresh cookie 撤销。
+// @Tags users
+// @Success 200 {object} Response "登出成功"
+// @Router /api/v1/users/logout [post]
+func (h *UserHandler) Logout(c *gin.Context) {
+	// OptionalAuthMiddleware 会在 access token 有效时设置 sessionID；
+	// 否则用 refresh cookie 兜底，保证 access token 过期后仍能登出。
+	sessionID := c.GetUint("sessionID")
+	if sessionID > 0 {
+		if err := h.userService.LogoutSession(c.Request.Context(), c.GetUint("userID"), sessionID); err != nil {
+			InternalServerError(c, "Failed to logout")
+			return
+		}
+	} else if refreshToken, err := c.Cookie(refreshCookieName); err == nil && refreshToken != "" {
+		if err := h.userService.LogoutByRefreshToken(c.Request.Context(), refreshToken); err != nil {
+			InternalServerError(c, "Failed to logout")
+			return
+		}
+	}
+	h.clearRefreshCookie(c)
+	Success(c, gin.H{"message": "Logged out successfully"})
+}
+
+// LogoutAll godoc
+// @Summary 登出所有设备
+// @Description 撤销当前用户的所有会话；所有设备都需要重新登录
+// @Tags users
+// @Security BearerAuth
+// @Success 200 {object} Response "登出成功"
+// @Router /api/v1/users/logout-all [post]
+func (h *UserHandler) LogoutAll(c *gin.Context) {
+	userID := c.GetUint("userID")
+	if err := h.userService.LogoutAllSessions(c.Request.Context(), userID); err != nil {
+		InternalServerError(c, "Failed to logout all devices")
+		return
+	}
+	h.clearRefreshCookie(c)
+	Success(c, gin.H{"message": "Logged out all devices successfully"})
+}
+
+func (h *UserHandler) setRefreshCookie(c *gin.Context, refreshToken string) {
+	c.SetSameSite(http.SameSiteStrictMode)
+	c.SetCookie(
+		refreshCookieName,
+		refreshToken,
+		h.jwtCfg.RefreshTokenTTLDays*24*3600,
+		"/api/v1/users",
+		"",
+		h.jwtCfg.RefreshCookieSecure,
+		true, // HttpOnly: JavaScript 永远无法读取 refresh token
+	)
+}
+
+func (h *UserHandler) clearRefreshCookie(c *gin.Context) {
+	c.SetSameSite(http.SameSiteStrictMode)
+	c.SetCookie(refreshCookieName, "", -1, "/api/v1/users", "", h.jwtCfg.RefreshCookieSecure, true)
 }
 
 // GetUserProfile godoc
@@ -246,7 +362,7 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if err := h.userService.ChangePassword(c.Request.Context(), userID, req.OldPassword, req.NewPassword); err != nil {
+	if err := h.userService.ChangePassword(c.Request.Context(), userID, c.GetUint("sessionID"), req.OldPassword, req.NewPassword); err != nil {
 		switch {
 		case errors.Is(err, service.ErrOldPasswordIncorrect):
 			BadRequest(c, "Old password is incorrect")

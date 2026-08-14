@@ -89,10 +89,13 @@ type UserResponse struct {
 	TOTPEnabled bool      `json:"totp_enabled"`
 }
 
-// LoginResponse 登录响应DTO
+// LoginResponse 登录/刷新响应DTO
+// RefreshToken 仅在服务层内部使用（通过 httpOnly cookie 下发），永不写入 JSON 响应体。
 type LoginResponse struct {
-	User  *UserResponse `json:"user"`
-	Token string        `json:"token"`
+	User         *UserResponse `json:"user,omitempty"`
+	AccessToken  string        `json:"access_token"`
+	RefreshToken string        `json:"-"`
+	ExpiresIn    int           `json:"expires_in"` // access token 剩余秒数
 }
 
 // ToResponse 转换为响应DTO

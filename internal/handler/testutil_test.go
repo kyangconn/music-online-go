@@ -41,7 +41,7 @@ func TestMain(m *testing.M) {
 	testConfig.Server.UploadDir = testUploadDir
 	testConfig.Server.MaxAudioSizeMB = 1
 	testConfig.Server.MaxCoverSizeMB = 1
-	testConfig.JWT = config.JWTConfig{Secret: "test-secret", ExpireHour: 24}
+	testConfig.JWT = config.JWTConfig{Secret: "test-secret", AccessTokenTTLMinutes: 60, RefreshTokenTTLDays: 30}
 	testConfig.Library.Scanner.MaxFileSizeMB = 1
 	config.AppConfig = &testConfig
 
@@ -55,7 +55,8 @@ func TestMain(m *testing.M) {
 	}
 
 	userRepo := repository.NewUserRepository(database.DB)
-	userService := service.NewUserService(userRepo, config.AppConfig.Server.UploadDir)
+	sessionRepo := repository.NewSessionRepository(database.DB)
+	userService := service.NewUserService(userRepo, sessionRepo, config.AppConfig.Server.UploadDir, config.AppConfig.JWT)
 
 	presetPolicy := domain.DefaultPresetRulePolicy()
 	musicRepo := repository.NewMusicRepository(database.DB, presetPolicy)
@@ -72,7 +73,7 @@ func TestMain(m *testing.M) {
 	playlistService := service.NewPlaylistService(playlistRepo, subsystem.Music)
 	presetService := service.NewPresetClassificationService(presetRepo, true)
 
-	userHandler := handler.NewUserHandler(userService)
+	userHandler := handler.NewUserHandler(userService, config.AppConfig.JWT)
 	musicHandler := handler.NewMusicHandler(subsystem.Music, config.AppConfig.Access)
 	browseHandler := handler.NewBrowseHandler(browseService)
 	playlistHandler := handler.NewPlaylistHandler(playlistService)
@@ -112,15 +113,18 @@ func TestMain(m *testing.M) {
 	{
 		public.POST("/register", userHandler.Register)
 		public.POST("/login", userHandler.Login)
+		public.POST("/refresh", userHandler.Refresh)
+		public.POST("/logout", middleware.OptionalAuthMiddleware(database.DB, testConfig.JWT.Secret), userHandler.Logout)
 	}
 
 	protected := api.Group("/users")
-	protected.Use(middleware.AuthMiddleware(database.DB))
+	protected.Use(middleware.AuthMiddleware(database.DB, testConfig.JWT.Secret))
 	{
 		protected.GET("/profile", userHandler.GetUserProfile)
 		protected.PUT("/profile", userHandler.UpdateUser)
 		protected.DELETE("/profile", userHandler.DeleteUser)
 		protected.POST("/change-password", userHandler.ChangePassword)
+		protected.POST("/logout-all", userHandler.LogoutAll)
 		protected.POST("/totp/setup", userHandler.SetupTOTP)
 		protected.POST("/totp/enable", userHandler.EnableTOTP)
 		protected.POST("/totp/disable", userHandler.DisableTOTP)
@@ -156,7 +160,7 @@ func TestMain(m *testing.M) {
 	}
 
 	musicPublic := api.Group("/musics")
-	musicPublic.Use(middleware.OptionalAuthMiddleware())
+	musicPublic.Use(middleware.OptionalAuthMiddleware(database.DB, testConfig.JWT.Secret))
 	{
 		musicPublic.GET("", musicHandler.Search)
 		musicPublic.GET("/filters", musicHandler.FilterOptions)
@@ -165,11 +169,11 @@ func TestMain(m *testing.M) {
 		musicPublic.GET("/:id/cover", musicHandler.Cover)
 	}
 	api.GET("/upload-policy", musicHandler.UploadPolicy)
-	api.GET("/users/:id/musics", middleware.OptionalAuthMiddleware(), musicHandler.ListUserMusic)
-	api.GET("/users/:id/likes", middleware.OptionalAuthMiddleware(), musicHandler.ListUserLikedMusic)
+	api.GET("/users/:id/musics", middleware.OptionalAuthMiddleware(database.DB, testConfig.JWT.Secret), musicHandler.ListUserMusic)
+	api.GET("/users/:id/likes", middleware.OptionalAuthMiddleware(database.DB, testConfig.JWT.Secret), musicHandler.ListUserLikedMusic)
 
 	browse := api.Group("")
-	browse.Use(middleware.OptionalAuthMiddleware())
+	browse.Use(middleware.OptionalAuthMiddleware(database.DB, testConfig.JWT.Secret))
 	{
 		browse.GET("/artists", browseHandler.ListArtists)
 		browse.GET("/artists/:key", browseHandler.GetArtist)
@@ -179,7 +183,7 @@ func TestMain(m *testing.M) {
 	}
 
 	playlists := api.Group("/playlists")
-	playlists.Use(middleware.AuthMiddleware(database.DB))
+	playlists.Use(middleware.AuthMiddleware(database.DB, testConfig.JWT.Secret))
 	{
 		playlists.GET("", playlistHandler.List)
 		playlists.POST("", playlistHandler.Create)
@@ -192,7 +196,7 @@ func TestMain(m *testing.M) {
 	}
 
 	musicProtected := api.Group("/musics")
-	musicProtected.Use(middleware.AuthMiddleware(database.DB))
+	musicProtected.Use(middleware.AuthMiddleware(database.DB, testConfig.JWT.Secret))
 	{
 		musicProtected.POST("", musicHandler.Create)
 		musicProtected.POST("/duplicate-check", musicHandler.CheckDuplicates)
@@ -204,7 +208,7 @@ func TestMain(m *testing.M) {
 	}
 
 	musicTagReads := api.Group("/music-tags")
-	musicTagReads.Use(middleware.OptionalAuthMiddleware())
+	musicTagReads.Use(middleware.OptionalAuthMiddleware(database.DB, testConfig.JWT.Secret))
 	{
 		musicTagReads.POST("/search", musicTagHandler.SearchMusicTags)
 		musicTagReads.POST("/match", musicTagHandler.MatchTags)

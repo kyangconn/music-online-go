@@ -76,7 +76,7 @@ func TestRegisterAndLogin(t *testing.T) {
 		t.Fatalf("login response parse: %v", err)
 	}
 
-	token := resp["data"].(map[string]interface{})["token"].(string)
+	token := resp["data"].(map[string]interface{})["access_token"].(string)
 	if token == "" {
 		t.Fatal("token should not be empty")
 	}
@@ -1482,16 +1482,16 @@ func registerAndLoginWithID(t *testing.T, username string) (string, uint) {
 			User struct {
 				ID uint `json:"id"`
 			} `json:"user"`
-			Token string `json:"token"`
+			AccessToken string `json:"access_token"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("login response parse: %v", err)
 	}
-	if resp.Data.Token == "" {
+	if resp.Data.AccessToken == "" {
 		t.Fatal("token should not be empty")
 	}
-	return resp.Data.Token, resp.Data.User.ID
+	return resp.Data.AccessToken, resp.Data.User.ID
 }
 
 func loginUser(t *testing.T, username string) string {
@@ -1508,16 +1508,16 @@ func loginUser(t *testing.T, username string) string {
 
 	var resp struct {
 		Data struct {
-			Token string `json:"token"`
+			AccessToken string `json:"access_token"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("login response parse: %v", err)
 	}
-	if resp.Data.Token == "" {
+	if resp.Data.AccessToken == "" {
 		t.Fatal("token should not be empty")
 	}
-	return resp.Data.Token
+	return resp.Data.AccessToken
 }
 
 func registerAndLogin(t *testing.T, username string) string {
@@ -1543,16 +1543,16 @@ func registerAndLogin(t *testing.T, username string) string {
 
 	var resp struct {
 		Data struct {
-			Token string `json:"token"`
+			AccessToken string `json:"access_token"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("login response parse: %v", err)
 	}
-	if resp.Data.Token == "" {
+	if resp.Data.AccessToken == "" {
 		t.Fatal("token should not be empty")
 	}
-	return resp.Data.Token
+	return resp.Data.AccessToken
 }
 
 func createMusic(t *testing.T, token string, title string) uint {

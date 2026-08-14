@@ -188,11 +188,11 @@ func registerAPIRoutes(router *gin.Engine, h *Handlers, db *gorm.DB, rateLimit c
 		})
 	})
 
-	registerUserRoutes(api, h.User, h.Admin, h.Preset, h.Analysis, db, rateLimit, access)
+	registerUserRoutes(api, h.User, h.Admin, h.Preset, h.Analysis, db, rateLimit, access, jwtSecret)
 	registerMusicRoutes(api, h.Music, db, access, jwtSecret)
-	registerBrowseRoutes(api, h.Browse, h.Preset, db, access)
-	registerPlaylistRoutes(api, h.Playlist, db)
-	registerMusicTagRoutes(api, h.MusicTag, db, access, integrations.MusicBee)
+	registerBrowseRoutes(api, h.Browse, h.Preset, db, access, jwtSecret)
+	registerPlaylistRoutes(api, h.Playlist, db, jwtSecret)
+	registerMusicTagRoutes(api, h.MusicTag, db, access, jwtSecret, integrations.MusicBee)
 }
 
 func registerBrowseRoutes(
@@ -201,9 +201,10 @@ func registerBrowseRoutes(
 	presetHandler *handler.PresetClassificationHandler,
 	db *gorm.DB,
 	access config.AccessConfig,
+	jwtSecret string,
 ) {
 	browse := api.Group("")
-	browse.Use(middleware.LibraryReadMiddleware(db, access.LibraryMode))
+	browse.Use(middleware.LibraryReadMiddleware(db, access.LibraryMode, jwtSecret))
 	{
 		browse.GET("/artists", browseHandler.ListArtists)
 		browse.GET("/artists/:key", browseHandler.GetArtist)
@@ -215,9 +216,9 @@ func registerBrowseRoutes(
 	}
 }
 
-func registerPlaylistRoutes(api *gin.RouterGroup, playlistHandler *handler.PlaylistHandler, db *gorm.DB) {
+func registerPlaylistRoutes(api *gin.RouterGroup, playlistHandler *handler.PlaylistHandler, db *gorm.DB, jwtSecret string) {
 	playlists := api.Group("/playlists")
-	playlists.Use(middleware.AuthMiddleware(db))
+	playlists.Use(middleware.AuthMiddleware(db, jwtSecret))
 	{
 		playlists.GET("", playlistHandler.List)
 		playlists.POST("", playlistHandler.Create)
@@ -240,6 +241,7 @@ func registerUserRoutes(
 	db *gorm.DB,
 	rateLimit config.RateLimitConfig,
 	access config.AccessConfig,
+	jwtSecret string,
 ) {
 	public := api.Group("/users")
 	if rateLimit.Enabled {
@@ -254,15 +256,19 @@ func registerUserRoutes(
 			userHandler.Register(c)
 		})
 		public.POST("/login", userHandler.Login)
+		public.POST("/refresh", userHandler.Refresh)
+		// logout 使用可选认证：access token 过期时仍可通过 refresh cookie 撤销会话。
+		public.POST("/logout", middleware.OptionalAuthMiddleware(db, jwtSecret), userHandler.Logout)
 	}
 
 	protected := api.Group("/users")
-	protected.Use(middleware.AuthMiddleware(db))
+	protected.Use(middleware.AuthMiddleware(db, jwtSecret))
 	{
 		protected.GET("/profile", userHandler.GetUserProfile)
 		protected.PUT("/profile", userHandler.UpdateUser)
 		protected.DELETE("/profile", userHandler.DeleteUser)
 		protected.POST("/change-password", userHandler.ChangePassword)
+		protected.POST("/logout-all", userHandler.LogoutAll)
 
 		protected.POST("/totp/setup", userHandler.SetupTOTP)
 		protected.POST("/totp/enable", userHandler.EnableTOTP)
@@ -309,22 +315,22 @@ func registerMusicRoutes(api *gin.RouterGroup, musicHandler *handler.MusicHandle
 	api.GET("/upload-policy", musicHandler.UploadPolicy)
 
 	musicPublic := api.Group("/musics")
-	musicPublic.Use(middleware.LibraryReadMiddleware(db, access.LibraryMode))
+	musicPublic.Use(middleware.LibraryReadMiddleware(db, access.LibraryMode, jwtSecret))
 	{
 		musicPublic.GET("", musicHandler.Search)
 		musicPublic.GET("/filters", musicHandler.FilterOptions)
 		musicPublic.GET("/:id", musicHandler.GetByID)
 	}
 
-	api.GET("/users/:id/musics", middleware.LibraryReadMiddleware(db, access.LibraryMode), musicHandler.ListUserMusic)
-	api.GET("/users/:id/likes", middleware.LibraryReadMiddleware(db, access.LibraryMode), musicHandler.ListUserLikedMusic)
+	api.GET("/users/:id/musics", middleware.LibraryReadMiddleware(db, access.LibraryMode, jwtSecret), musicHandler.ListUserMusic)
+	api.GET("/users/:id/likes", middleware.LibraryReadMiddleware(db, access.LibraryMode, jwtSecret), musicHandler.ListUserLikedMusic)
 
 	media := api.Group("/musics")
-	media.GET("/:id/stream", middleware.LibraryMediaAccessMiddleware(db, access.LibraryMode, jwtSecret, "stream"), musicHandler.Stream)
-	media.GET("/:id/cover", middleware.LibraryMediaAccessMiddleware(db, access.LibraryMode, jwtSecret, "cover"), musicHandler.Cover)
+	media.GET("/:id/stream", middleware.LibraryMediaAccessMiddleware(db, access.LibraryMode, jwtSecret, jwtSecret, "stream"), musicHandler.Stream)
+	media.GET("/:id/cover", middleware.LibraryMediaAccessMiddleware(db, access.LibraryMode, jwtSecret, jwtSecret, "cover"), musicHandler.Cover)
 
 	musicProtected := api.Group("/musics")
-	musicProtected.Use(middleware.AuthMiddleware(db))
+	musicProtected.Use(middleware.AuthMiddleware(db, jwtSecret))
 	{
 		musicProtected.POST("", musicHandler.Create)
 		musicProtected.POST("/duplicate-check", musicHandler.CheckDuplicates)
@@ -337,9 +343,9 @@ func registerMusicRoutes(api *gin.RouterGroup, musicHandler *handler.MusicHandle
 }
 
 // registerMusicTagRoutes 注册音乐标签相关路由
-func registerMusicTagRoutes(api *gin.RouterGroup, musicTagHandler *handler.MusicTagHandler, db *gorm.DB, access config.AccessConfig, musicBee config.MusicBeeConfig) {
+func registerMusicTagRoutes(api *gin.RouterGroup, musicTagHandler *handler.MusicTagHandler, db *gorm.DB, access config.AccessConfig, jwtSecret string, musicBee config.MusicBeeConfig) {
 	musicTagReads := api.Group("/music-tags")
-	musicTagReads.Use(middleware.LibraryReadMiddleware(db, access.LibraryMode))
+	musicTagReads.Use(middleware.LibraryReadMiddleware(db, access.LibraryMode, jwtSecret))
 	{
 		musicTagReads.POST("/search", musicTagHandler.SearchMusicTags)
 		musicTagReads.POST("/match", musicTagHandler.MatchTags)
@@ -348,7 +354,7 @@ func registerMusicTagRoutes(api *gin.RouterGroup, musicTagHandler *handler.Music
 
 	tracks := api.Group("/track")
 	{
-		tracks.POST("/search", middleware.LibraryReadMiddleware(db, access.LibraryMode), musicTagHandler.SearchTracks)
+		tracks.POST("/search", middleware.LibraryReadMiddleware(db, access.LibraryMode, jwtSecret), musicTagHandler.SearchTracks)
 		if strings.TrimSpace(musicBee.SubmitToken) != "" {
 			tracks.POST("/submit", middleware.MusicBeeSubmitTokenMiddleware(db, musicBee), musicTagHandler.SubmitTrack)
 		}

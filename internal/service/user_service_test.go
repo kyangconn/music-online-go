@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kyangconn/music-online-go/internal/config"
 	"github.com/kyangconn/music-online-go/internal/domain"
@@ -135,11 +136,91 @@ func makeActiveUser(t *testing.T, username, rawPassword string) *domain.User {
 	}
 }
 
+// stubSessionRepo 实现 repository.SessionRepository，供登录/会话测试注入行为。
+// 默认 Create 成功、查找返回 ErrSessionNotFound、轮换返回 1 行。
+type stubSessionRepo struct {
+	createFn          func(ctx context.Context, session *domain.Session) error
+	findByIDFn        func(ctx context.Context, id uint) (*domain.Session, error)
+	rotateFn          func(ctx context.Context, sessionID uint, oldHash, newHash string, userAgent, ipAddress string, now time.Time) (int64, error)
+	revokeFn          func(ctx context.Context, id uint, now time.Time) error
+	revokeAllFn       func(ctx context.Context, userID uint, now time.Time) error
+	revokeAllExceptFn func(ctx context.Context, userID uint, keepSessionID uint, now time.Time) error
+	deleteExpiredFn   func(ctx context.Context, userID uint, now time.Time) error
+	deleteByIDFn      func(ctx context.Context, id uint) error
+	deleteByUserIDFn  func(ctx context.Context, userID uint) error
+}
+
+func (s *stubSessionRepo) Create(ctx context.Context, session *domain.Session) error {
+	if s.createFn != nil {
+		return s.createFn(ctx, session)
+	}
+	return nil
+}
+
+func (s *stubSessionRepo) FindByID(ctx context.Context, id uint) (*domain.Session, error) {
+	if s.findByIDFn != nil {
+		return s.findByIDFn(ctx, id)
+	}
+	return nil, repository.ErrSessionNotFound
+}
+
+func (s *stubSessionRepo) RotateIfMatch(ctx context.Context, sessionID uint, oldHash, newHash string, userAgent, ipAddress string, now time.Time) (int64, error) {
+	if s.rotateFn != nil {
+		return s.rotateFn(ctx, sessionID, oldHash, newHash, userAgent, ipAddress, now)
+	}
+	return 1, nil
+}
+
+func (s *stubSessionRepo) Revoke(ctx context.Context, id uint, now time.Time) error {
+	if s.revokeFn != nil {
+		return s.revokeFn(ctx, id, now)
+	}
+	return nil
+}
+
+func (s *stubSessionRepo) RevokeAllForUser(ctx context.Context, userID uint, now time.Time) error {
+	if s.revokeAllFn != nil {
+		return s.revokeAllFn(ctx, userID, now)
+	}
+	return nil
+}
+
+func (s *stubSessionRepo) RevokeAllExcept(ctx context.Context, userID uint, keepSessionID uint, now time.Time) error {
+	if s.revokeAllExceptFn != nil {
+		return s.revokeAllExceptFn(ctx, userID, keepSessionID, now)
+	}
+	return nil
+}
+
+func (s *stubSessionRepo) DeleteExpiredForUser(ctx context.Context, userID uint, now time.Time) error {
+	if s.deleteExpiredFn != nil {
+		return s.deleteExpiredFn(ctx, userID, now)
+	}
+	return nil
+}
+
+func (s *stubSessionRepo) DeleteByID(ctx context.Context, id uint) error {
+	if s.deleteByIDFn != nil {
+		return s.deleteByIDFn(ctx, id)
+	}
+	return nil
+}
+
+func (s *stubSessionRepo) DeleteByUserID(ctx context.Context, userID uint) error {
+	if s.deleteByUserIDFn != nil {
+		return s.deleteByUserIDFn(ctx, userID)
+	}
+	return nil
+}
+
 func init() {
 	config.AppConfig = &config.Config{
-		JWT: config.JWTConfig{Secret: "test-secret", ExpireHour: 1},
+		JWT: config.JWTConfig{Secret: "test-secret", AccessTokenTTLMinutes: 60, RefreshTokenTTLDays: 30},
 	}
 }
+
+// testJWTConfig 供 NewUserService 使用，与 init() 中全局配置保持一致。
+var testJWTConfig = config.JWTConfig{Secret: "test-secret", AccessTokenTTLMinutes: 60, RefreshTokenTTLDays: 30}
 
 // TestLoginFallbackToEmail 验证：按用户名找不到时，回退到邮箱查询可成功。
 func TestLoginFallbackToEmail(t *testing.T) {
@@ -152,14 +233,14 @@ func TestLoginFallbackToEmail(t *testing.T) {
 			return user, nil
 		},
 	}
-	svc := service.NewUserService(repo, t.TempDir())
+	svc := service.NewUserService(repo, &stubSessionRepo{}, t.TempDir(), testJWTConfig)
 
 	resp, err := svc.Login(context.Background(), &domain.LoginRequest{Username: "u@example.com", Password: "pwd12345"})
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
-	if resp.Token == "" {
-		t.Fatal("token should not be empty")
+	if resp.AccessToken == "" {
+		t.Fatal("access token should not be empty")
 	}
 }
 
@@ -172,7 +253,7 @@ func TestLoginDBErrorNotSwallowed(t *testing.T) {
 			return nil, dbErr
 		},
 	}
-	svc := service.NewUserService(repo, t.TempDir())
+	svc := service.NewUserService(repo, &stubSessionRepo{}, t.TempDir(), testJWTConfig)
 
 	_, err := svc.Login(context.Background(), &domain.LoginRequest{Username: "someone", Password: "x"})
 	if err == nil {
@@ -193,7 +274,7 @@ func TestLoginUserNotFound(t *testing.T) {
 			return nil, repository.ErrUserNotFound
 		},
 	}
-	svc := service.NewUserService(repo, t.TempDir())
+	svc := service.NewUserService(repo, &stubSessionRepo{}, t.TempDir(), testJWTConfig)
 
 	_, err := svc.Login(context.Background(), &domain.LoginRequest{Username: "ghost", Password: "x"})
 	assertLoginErrIs(t, err, service.ErrInvalidCredentials)
@@ -207,7 +288,7 @@ func TestLoginWrongPassword(t *testing.T) {
 			return user, nil
 		},
 	}
-	svc := service.NewUserService(repo, t.TempDir())
+	svc := service.NewUserService(repo, &stubSessionRepo{}, t.TempDir(), testJWTConfig)
 
 	_, err := svc.Login(context.Background(), &domain.LoginRequest{Username: "alice", Password: "wrong"})
 	assertLoginErrIs(t, err, service.ErrInvalidCredentials)
@@ -220,7 +301,7 @@ func TestLoginOversizedPasswordIsInvalidCredentials(t *testing.T) {
 			return user, nil
 		},
 	}
-	svc := service.NewUserService(repo, t.TempDir())
+	svc := service.NewUserService(repo, &stubSessionRepo{}, t.TempDir(), testJWTConfig)
 
 	_, err := svc.Login(context.Background(), &domain.LoginRequest{
 		Username: "alice",
@@ -237,14 +318,17 @@ func TestLoginValidCredentials(t *testing.T) {
 			return user, nil
 		},
 	}
-	svc := service.NewUserService(repo, t.TempDir())
+	svc := service.NewUserService(repo, &stubSessionRepo{}, t.TempDir(), testJWTConfig)
 
 	resp, err := svc.Login(context.Background(), &domain.LoginRequest{Username: "bob", Password: "secret123"})
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
-	if resp.Token == "" {
-		t.Fatal("token should not be empty")
+	if resp.AccessToken == "" {
+		t.Fatal("access token should not be empty")
+	}
+	if resp.RefreshToken == "" {
+		t.Fatal("refresh token should not be empty")
 	}
 	if resp.User.Username != "bob" {
 		t.Fatalf("username = %q, want bob", resp.User.Username)
@@ -257,7 +341,7 @@ func TestRegisterRejectsOversizedPasswordBeforeCreate(t *testing.T) {
 		created = true
 		return nil
 	}}
-	svc := service.NewUserService(repo, t.TempDir())
+	svc := service.NewUserService(repo, &stubSessionRepo{}, t.TempDir(), testJWTConfig)
 
 	_, err := svc.Register(context.Background(), &domain.RegisterRequest{
 		Username: "too-long",
@@ -283,9 +367,9 @@ func TestChangePasswordRejectsOversizedPasswordBeforeUpdate(t *testing.T) {
 			return nil
 		},
 	}
-	svc := service.NewUserService(repo, t.TempDir())
+	svc := service.NewUserService(repo, &stubSessionRepo{}, t.TempDir(), testJWTConfig)
 
-	err := svc.ChangePassword(context.Background(), 1, "current-password", strings.Repeat("a", 73))
+	err := svc.ChangePassword(context.Background(), 1, 0, "current-password", strings.Repeat("a", 73))
 
 	if !errors.Is(err, password.ErrPasswordTooLong) {
 		t.Fatalf("ChangePassword() error = %v, want ErrPasswordTooLong", err)
@@ -305,7 +389,7 @@ func TestDeleteUserRejectsIncorrectPassword(t *testing.T) {
 			return nil
 		},
 	}
-	svc := service.NewUserService(repo, t.TempDir())
+	svc := service.NewUserService(repo, &stubSessionRepo{}, t.TempDir(), testJWTConfig)
 
 	err := svc.DeleteUser(context.Background(), 1, "wrong-password")
 
@@ -327,7 +411,7 @@ func TestDeleteUserProtectsLastActiveAdmin(t *testing.T) {
 			return nil
 		},
 	}
-	svc := service.NewUserService(repo, t.TempDir())
+	svc := service.NewUserService(repo, &stubSessionRepo{}, t.TempDir(), testJWTConfig)
 
 	err := svc.DeleteUser(context.Background(), 1, "correct-password")
 
@@ -359,7 +443,7 @@ func TestDeleteUserCleansOwnedMusicDirectoriesAfterDatabaseDelete(t *testing.T) 
 			return nil
 		},
 	}
-	svc := service.NewUserService(repo, uploadDir)
+	svc := service.NewUserService(repo, &stubSessionRepo{}, uploadDir, testJWTConfig)
 
 	if err := svc.DeleteUser(context.Background(), 1, "correct-password"); err != nil {
 		t.Fatalf("delete user: %v", err)
