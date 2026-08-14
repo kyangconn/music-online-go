@@ -36,8 +36,15 @@ export interface UserInfo {
 }
 
 export interface LoginData {
-  token: string;
+  access_token: string;
+  expires_in: number;
   user: UserInfo;
+}
+
+/** /users/refresh 响应：仅包含新的短期 access token 与有效期 */
+export interface RefreshData {
+  access_token: string;
+  expires_in: number;
 }
 
 export interface UpdateUserProfileData {

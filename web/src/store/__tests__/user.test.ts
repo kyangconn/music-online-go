@@ -7,9 +7,15 @@ const requestMock = vi.hoisted(() => ({
   delete: vi.fn(),
   post: vi.fn(),
   put: vi.fn(),
+  setAccessToken: vi.fn(),
+  clearAccessToken: vi.fn(),
 }));
 
-vi.mock("@/utils/request", () => ({ default: requestMock }));
+vi.mock("@/utils/request", () => ({
+  default: requestMock,
+  setAccessToken: requestMock.setAccessToken,
+  clearAccessToken: requestMock.clearAccessToken,
+}));
 
 const makeUser = (overrides: Partial<UserInfo> = {}): UserInfo => ({
   id: 1,
@@ -45,20 +51,21 @@ describe("useUserStore", () => {
     expect(localStorage.getItem("user")).toBeNull();
   });
 
-  it("restores the token and user from localStorage", () => {
+  it("restores only the cached user from localStorage; token stays in memory", () => {
     const user = makeUser({ username: "cached-user" });
-    localStorage.setItem("token", "pre-existing-token");
+    localStorage.setItem("token", "leaked-token");
     localStorage.setItem("user", JSON.stringify(user));
     setActivePinia(createPinia());
 
     const store = useUserStore();
 
-    expect(store.token).toBe("pre-existing-token");
+    // access token 永不从 localStorage 恢复（旧版本遗留的 token 被忽略）。
+    expect(store.token).toBe("");
     expect(store.user?.username).toBe("cached-user");
-    expect(store.isLoggedIn).toBe(true);
+    expect(store.isLoggedIn).toBe(false);
   });
 
-  it("persists token and user updates", () => {
+  it("persists the token only in memory and user only in localStorage", () => {
     const store = useUserStore();
     const user = makeUser();
 
@@ -66,7 +73,7 @@ describe("useUserStore", () => {
     store.setUser(user);
 
     expect(store.token).toBe("my-jwt-token");
-    expect(localStorage.getItem("token")).toBe("my-jwt-token");
+    expect(localStorage.getItem("token")).toBeNull();
     expect(store.user).toEqual(user);
     expect(JSON.parse(localStorage.getItem("user") || "null")).toEqual(user);
   });
@@ -81,17 +88,60 @@ describe("useUserStore", () => {
     expect(store.isAdmin).toBe(false);
   });
 
-  it("clears memory and persistent authentication on logout", () => {
+  it("clears memory and localStorage state on logout and revokes the server session", async () => {
     const store = useUserStore();
     store.setToken("some-token");
     store.setUser(makeUser());
+    requestMock.post.mockResolvedValue({ code: 200, data: {}, message: "success" });
 
-    store.logout();
+    await store.logout();
+
+    expect(requestMock.post).toHaveBeenCalledWith("/users/logout", undefined, { skipAuthRefresh: true });
+    expect(store.token).toBe("");
+    expect(store.user).toBeNull();
+    expect(store.isLoggedIn).toBe(false);
+    expect(localStorage.getItem("user")).toBeNull();
+  });
+
+  it("clears local state even when the server logout request fails", async () => {
+    const store = useUserStore();
+    store.setToken("some-token");
+    store.setUser(makeUser());
+    requestMock.post.mockRejectedValue(new Error("network down"));
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await store.logout();
 
     expect(store.token).toBe("");
     expect(store.user).toBeNull();
     expect(store.isLoggedIn).toBe(false);
+  });
+
+  it("restores the session through the refresh endpoint and stores the token in memory", async () => {
+    const store = useUserStore();
+    requestMock.post.mockResolvedValue({
+      code: 200,
+      data: { access_token: "refreshed-token", expires_in: 900 },
+      message: "success",
+    });
+
+    await expect(store.refreshSession()).resolves.toBe(true);
+
+    expect(requestMock.post).toHaveBeenCalledWith("/users/refresh");
+    expect(store.token).toBe("refreshed-token");
+    expect(store.isLoggedIn).toBe(true);
     expect(localStorage.getItem("token")).toBeNull();
+  });
+
+  it("fails session restore and clears local state when refresh is rejected", async () => {
+    const store = useUserStore();
+    store.setUser(makeUser());
+    requestMock.post.mockRejectedValue(new Error("session revoked"));
+
+    await expect(store.refreshSession()).resolves.toBe(false);
+
+    expect(store.token).toBe("");
+    expect(store.isLoggedIn).toBe(false);
     expect(localStorage.getItem("user")).toBeNull();
   });
 

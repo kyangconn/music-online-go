@@ -50,9 +50,9 @@ const handleLogin = async (formEl: FormInstance | undefined) => {
     if (valid) {
       loading.value = true;
       try {
-        const res = await request.post<LoginData>("/users/login", loginForm);
-        userStore.setToken(res.data.token);
-        userStore.setUser(res.data.user);
+		const res = await request.post<LoginData>("/users/login", loginForm);
+		userStore.setToken(res.data.access_token);
+		userStore.setUser(res.data.user);
         ElMessage.success(t("common.login_successful"));
         const redirect = router.currentRoute.value.query.redirect;
         router.push(typeof redirect === "string" ? redirect : "/");

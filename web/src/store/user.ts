@@ -1,15 +1,18 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import type { UserInfo, UpdateUserProfileData, TOTPSetupData } from "@/types/api";
-import request from "@/utils/request";
+import type { UserInfo, UpdateUserProfileData, TOTPSetupData, RefreshData } from "@/types/api";
+import request, { setAccessToken, clearAccessToken } from "@/utils/request";
 
 /**
  * 用户状态管理存储
- * 管理用户认证状态、用户信息和相关操作
+ *
+ * 认证模型：短期 access token 只保存在内存（刷新页面后通过 /users/refresh
+ * 的 httpOnly cookie 静默恢复），refresh token 由服务端 cookie 持有，
+ * JavaScript 永远无法读取。用户信息属于非敏感展示数据，保留在 localStorage。
  */
 export const useUserStore = defineStore("user", () => {
-  /** 用户认证令牌 */
-  const token = ref(localStorage.getItem("token") || "");
+  /** 短期访问令牌（内存态，不落 localStorage） */
+  const token = ref("");
 
   /** 用户信息对象 */
   let storedUser: UserInfo | null = null;
@@ -27,21 +30,16 @@ export const useUserStore = defineStore("user", () => {
   const isAdmin = computed(() => user.value?.role === "admin");
 
   /**
-   * 设置用户认证令牌
+   * 设置短期访问令牌（仅内存），并同步给 axios 请求层
    * @param newToken - 新的认证令牌
    */
   function setToken(newToken: string) {
     token.value = newToken;
-    try {
-      localStorage.setItem("token", newToken);
-    } catch (error) {
-      console.error("保存令牌失败:", error);
-      // 即使存储失败，也更新内存中的状态
-    }
+    setAccessToken(newToken);
   }
 
   /**
-   * 设置用户信息
+   * 设置用户信息（localStorage 保存非敏感展示数据）
    * @param newUser - 新的用户信息对象
    */
   function setUser(newUser: UserInfo | null) {
@@ -51,6 +49,21 @@ export const useUserStore = defineStore("user", () => {
     } catch (error) {
       console.error("保存用户信息失败:", error);
       // 即使存储失败，也更新内存中的状态
+    }
+  }
+
+  /**
+   * 用 refresh cookie 恢复会话：刷新页面后 access token 丢失，路由守卫
+   * 在进入受保护页面前调用本方法。失败（会话过期/撤销）返回 false。
+   */
+  async function refreshSession(): Promise<boolean> {
+    try {
+      const res = await request.post<RefreshData>("/users/refresh");
+      setToken(res.data.access_token);
+      return true;
+    } catch {
+      clearLocalSession();
+      return false;
     }
   }
 
@@ -90,7 +103,7 @@ export const useUserStore = defineStore("user", () => {
 
   async function deleteAccount(currentPassword: string) {
     await request.delete("/users/profile", { data: { password: currentPassword } });
-    logout();
+    await logout();
   }
 
   /**
@@ -122,19 +135,29 @@ export const useUserStore = defineStore("user", () => {
     setUser(user.value);
   }
 
-  /**
-   * 用户登出
-   * 清除用户认证状态和本地存储的用户信息
-   */
-  function logout() {
+  /** 清除本地内存与 localStorage 中的会话状态 */
+  function clearLocalSession() {
     token.value = "";
     user.value = null;
+    clearAccessToken();
     try {
-      localStorage.removeItem("token");
       localStorage.removeItem("user");
     } catch (error) {
       console.error("清除本地存储失败:", error);
-      // 即使清除存储失败，也清除内存中的状态
+    }
+  }
+
+  /**
+   * 用户登出：先撤销服务端当前会话，再清除本地状态。
+   * 请求失败（断网等）时仍然清除本地状态。
+   */
+  async function logout() {
+    try {
+      await request.post("/users/logout", undefined, { skipAuthRefresh: true });
+    } catch (error) {
+      console.warn("服务端登出失败（本地会话仍会被清除）:", error);
+    } finally {
+      clearLocalSession();
     }
   }
 
@@ -145,6 +168,7 @@ export const useUserStore = defineStore("user", () => {
     isAdmin,
     setToken,
     setUser,
+    refreshSession,
     updateUser,
     changePassword,
     deleteAccount,

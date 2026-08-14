@@ -31,8 +31,8 @@ const handleSearch = () => {
 const hideSearch = computed(() => route.name === "Login" || route.name === "Register");
 const copyright = computed(() => t("common.copyright", { year: new Date().getFullYear() }));
 
-const handleLogout = () => {
-  userStore.logout();
+const handleLogout = async () => {
+  await userStore.logout();
   if (instanceStore.libraryRequiresAuth) {
     playerStore.clear();
     playerStore.clearRecent();

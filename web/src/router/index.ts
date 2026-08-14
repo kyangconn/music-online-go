@@ -210,17 +210,16 @@ router.beforeEach(async (to) => {
   const redirect = { path: "/login", query: { redirect: to.fullPath } };
   const sessionUnavailable = !userStore.isLoggedIn || isTokenExpired(userStore.token);
 
-  if (instanceStore.libraryRequiresAuth && sessionUnavailable) {
-    userStore.logout();
-    const playerStore = usePlayerStore();
-    if (playerStore.hasTrack) playerStore.clear();
-    if (playerStore.recentTracks.length) playerStore.clearRecent();
-  }
-
-  // 检查是否需要认证
+  // 刷新页面后 access token 只存在于内存：需要登录时先尝试用 httpOnly
+  // refresh cookie 静默恢复会话，失败才跳转登录页。
   if (requiresAuth && sessionUnavailable) {
-    userStore.logout();
-    return redirect;
+    const restored = await userStore.refreshSession();
+    if (!restored) {
+      const playerStore = usePlayerStore();
+      if (playerStore.hasTrack) playerStore.clear();
+      if (playerStore.recentTracks.length) playerStore.clearRecent();
+      return redirect;
+    }
   }
   // 检查是否需要管理员权限
   if (to.meta.requiresAdmin && !userStore.isAdmin) {
