@@ -39,7 +39,13 @@ database:
 jwt:
   # 所有模式至少需要 32 个 UTF-8 字节；release/test 还会拒绝此占位值。
   secret: "your-secret-key-change-in-production"
-  expire_hour: 24
+  # 短期 access token 有效期（分钟）。access token 只存于前端内存。
+  access_token_ttl_minutes: 15
+  # 服务端会话（refresh token）有效期（天）；到期后必须重新登录。
+  refresh_token_ttl_days: 30
+  # refresh token 通过 httpOnly + SameSite=Strict cookie 下发；
+  # 仅在 HTTPS 部署时开启 Secure 标志。
+  refresh_cookie_secure: false
 
 access:
   # public: 匿名可浏览和播放；authenticated: 列表、详情、封面和音频都需要登录。

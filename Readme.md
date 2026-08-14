@@ -532,7 +532,9 @@ DATABASE_TYPE=postgres DATABASE_HOST=localhost DATABASE_PORT=5432 DATABASE_USER=
 | YAML 字段 | 环境变量 | 默认值 | 说明 |
 |---|---|---|---|
 | `jwt.secret` | `JWT_SECRET` | 无 | JWT 签名密钥，至少 32 个 UTF-8 字节；release/test 还会拒绝示例占位值 |
-| `jwt.expire_hour` | `JWT_EXPIRE_HOUR` | `24` | JWT 有效期（小时） |
+| `jwt.access_token_ttl_minutes` | `JWT_ACCESS_TOKEN_TTL_MINUTES` | `15` | 短期 access token 有效期（分钟）；前端只把 access token 保存在内存 |
+| `jwt.refresh_token_ttl_days` | `JWT_REFRESH_TOKEN_TTL_DAYS` | `30` | 服务端会话（refresh token）有效期（天）；到期后必须重新登录 |
+| `jwt.refresh_cookie_secure` | `JWT_REFRESH_COOKIE_SECURE` | `false` | 为 refresh httpOnly cookie 附加 `Secure` 标志；仅 HTTPS 部署时开启 |
 | `metrics.enabled` | `METRICS_ENABLED` | `false` | 是否开放 `/metrics` |
 | `metrics.token` | `METRICS_TOKEN` | `""` | 抓取用 Bearer token；启用指标时必填 |
 | `admin.bootstrap.enabled` | `ADMIN_BOOTSTRAP_ENABLED` | `false` | 启动时确保首个管理员存在 |
@@ -541,6 +543,8 @@ DATABASE_TYPE=postgres DATABASE_HOST=localhost DATABASE_PORT=5432 DATABASE_USER=
 | `admin.bootstrap.password` | `ADMIN_BOOTSTRAP_PASSWORD` | `""` | 新建/重置密码：至少 8 个 Unicode 字符、最多 72 个 UTF-8 字节 |
 | `admin.bootstrap.full_name` | `ADMIN_BOOTSTRAP_FULL_NAME` | `"Administrator"` | 管理员显示名 |
 | `admin.bootstrap.reset_password` | `ADMIN_BOOTSTRAP_RESET_PASSWORD` | `false` | 已存在用户是否重置密码 |
+
+认证与会话模型：登录成功后服务端为每个设备创建一条可撤销的会话记录，refresh token 只以 SHA-256 哈希形式入库，并通过 `HttpOnly; SameSite=Strict; Path=/api/v1/users` cookie 下发（JavaScript 无法读取）。access token 是短期的（默认 15 分钟）并在每次请求时校验对应会话仍未被撤销，因此单设备登出、全部设备登出或管理员禁用账户都会立即生效。`POST /api/v1/users/refresh` 每次轮换 refresh token；旧 token 在 30 秒宽限窗口内的重放按并发处理，窗口之外的重放会撤销整个会话（防盗窃）。改密码会撤销当前设备之外的所有会话。纯 API 客户端可以在 `POST /api/v1/users/refresh` 请求体中提交 `refresh_token`（登录响应只通过 cookie 下发 refresh token，不写入 JSON 响应体）。
 
 密码使用 bcrypt 哈希保存；所有新密码统一要求至少 8 个 Unicode 字符、最多 72 个 UTF-8 字节（bcrypt 的输入上限）。当前不存在 RSA 字段加密配置。
 
