@@ -53,6 +53,32 @@ A small self-hosted music platform for individuals, families, and small teams. I
 └── Makefile                    # Canonical build and development commands
 ```
 
+## Fresh Clone / First Build
+
+The Go backend embeds the frontend via `//go:embed dist/*`, but `cmd/server/dist/` is a build artifact and is not committed.
+**Do not run `go build` / `go test` / `go run` immediately after cloning**; you will see `pattern dist/*: no matching files found`.
+
+Build the frontend assets first, then run backend commands:
+
+```bash
+make build-fe   # Build frontend only, output to cmd/server/dist/
+# Or do everything in one step:
+make build      # Frontend + backend
+```
+
+Then you can use the normal flow:
+
+```bash
+make dev       # Development mode
+go test ./...  # Run backend tests
+```
+
+If you also want to sync frontend dependencies and Go vendor in one shot:
+
+```bash
+make fetch
+```
+
 ## Quick Start
 
 ```bash
@@ -102,6 +128,7 @@ Frontend output goes to `cmd/server/dist/` and is embedded into the Go binary.
 ```bash
 make test       # Backend and frontend tests
 make test-cover-fe # Frontend coverage summary
+make test-postgres # Optional: local PostgreSQL integration tests (set MUSIC_ONLINE_TEST_POSTGRES_DSN)
 make check      # Non-mutating Go vet, frontend typecheck, and ESLint
 make verify     # Tests plus all non-mutating checks
 make lint       # Go fmt/vet plus frontend ESLint fixes

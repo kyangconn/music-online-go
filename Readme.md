@@ -52,6 +52,33 @@
 └── config-example.yaml  # 配置文件模板
 ```
 
+## 新克隆 / 首次构建
+
+后端通过 `//go:embed dist/*` 内嵌前端产物，而 `cmd/server/dist/` 是构建产物、不入库。
+因此**新克隆后不要直接 `go build` / `go test` / `go run`**，否则会报
+`pattern dist/*: no matching files found`。
+
+先构建前端产物，再执行后端相关命令：
+
+```bash
+make build-fe   # 只构建前端到 cmd/server/dist/
+# 或者直接一步到位：
+make build      # 前端 + 后端一起构建
+```
+
+之后就可以正常使用：
+
+```bash
+make dev       # 开发模式
+go test ./...  # 运行后端测试
+```
+
+如果需要一次性同步前端依赖和 Go vendor，可以先用：
+
+```bash
+make fetch
+```
+
 ## 快速开始
 
 ```bash
@@ -102,6 +129,7 @@ make build-be   # 仅后端（需已有前端产物）
 make test       # Go 测试 + 前端 Vitest
 make test-cover # Go 测试 + 函数级覆盖率汇总
 make test-cover-fe # 前端覆盖率汇总
+make test-postgres # 可选：本地 PostgreSQL 集成测试（需设置 MUSIC_ONLINE_TEST_POSTGRES_DSN）
 make check      # 非修改型检查：Go vet + 前端 typecheck/ESLint
 make verify     # Go 测试 + check
 make lint       # 修改型检查：Go fmt + Go vet + 前端 ESLint --fix

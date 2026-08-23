@@ -31,6 +31,7 @@ The `Makefile` at the project root provides the canonical shortcuts. **Always pr
 
 | Command             | What it does                                       |
 | ------------------- | -------------------------------------------------- |
+| `make fetch`        | Fetch frontend deps and sync Go vendor |
 | `make dev-fe`       | Start frontend dev server (hot reload, port 5173)  |
 | `make dev-be`       | Start Go backend (port matches config)             |
 | `make build`        | Build frontend then backend (production)           |
