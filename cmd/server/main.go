@@ -29,7 +29,7 @@ import (
 	"github.com/kyangconn/music-online-go/internal/version"
 )
 
-//go:embed dist/*
+//go:embed all:dist
 var webDist embed.FS
 
 var fingerprintedAssetPattern = regexp.MustCompile(`(?:^|/)[^/]+-[A-Za-z0-9_-]{8,}\.[^/]+$`)
