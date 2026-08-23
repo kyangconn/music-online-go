@@ -1,4 +1,4 @@
-.PHONY: help install-fe install-fe-dev build build-fe build-be build-silent dev dev-fe dev-be test test-be test-fe test-cover test-cover-fe benchmark-analysis check verify check-fe check-be typecheck-fe lint lint-fe lint-be audit-be docker docker-config docker-config-media docker-config-postgres docker-config-secrets docker-config-musicbee-secrets docker-config-postgres-secrets docker-config-analyzer docker-config-analyzer-secrets docker-up docker-up-media docker-up-postgres docker-up-secrets docker-up-musicbee-secrets docker-up-postgres-secrets docker-up-analyzer docker-up-analyzer-secrets docker-down clean
+.PHONY: help fetch install-fe install-fe-dev build build-fe build-be build-silent dev dev-fe dev-be test test-be test-fe test-cover test-cover-fe test-postgres benchmark-analysis check verify check-fe check-be typecheck-fe lint lint-fe lint-be audit-be docker docker-config docker-config-media docker-config-postgres docker-config-secrets docker-config-musicbee-secrets docker-config-postgres-secrets docker-config-analyzer docker-config-analyzer-secrets docker-up docker-up-media docker-up-postgres docker-up-secrets docker-up-musicbee-secrets docker-up-postgres-secrets docker-up-analyzer docker-up-analyzer-secrets docker-down clean
 
 .DEFAULT_GOAL := help
 
@@ -20,6 +20,9 @@ endif
 
 help: ## Show available commands
 	@echo "Music Online Go - Available Commands"
+	@echo ""
+	@echo "=== Dependencies ==="
+	@echo "  make fetch          Fetch frontend deps and sync Go vendor"
 	@echo ""
 	@echo "=== Install ==="
 	@echo "  make install-fe      Install frontend deps from lockfile"
@@ -46,6 +49,7 @@ help: ## Show available commands
 	@echo "  make test           Run backend + frontend tests"
 	@echo "  make test-cover     Run Go tests with a coverage summary"
 	@echo "  make test-cover-fe  Run frontend tests with a coverage summary"
+	@echo "  make test-postgres  Run opt-in PostgreSQL integration tests"
 	@echo "  make benchmark-analysis ARGS='...' Compare analyzer result files"
 	@echo ""
 	@echo "=== Docker ==="
@@ -74,6 +78,10 @@ install-fe: ## Install frontend dependencies from lockfile
 
 install-fe-dev: ## Install/update frontend dependencies for local development
 	pnpm --dir $(FE_DIR) install
+
+fetch: ## Fetch frontend deps and sync Go vendor
+	pnpm --dir $(FE_DIR) install --frozen-lockfile
+	go mod vendor
 
 build: build-fe build-be ## Build frontend then backend
 
@@ -113,6 +121,9 @@ test-cover: ## Run Go tests and print statement coverage by function
 
 test-cover-fe: ## Run frontend tests and print coverage
 	pnpm --dir $(FE_DIR) test:coverage
+
+test-postgres: ## Run opt-in PostgreSQL integration tests (set MUSIC_ONLINE_TEST_POSTGRES_DSN)
+	go test -v ./internal/repository -run 'Postgres'
 
 benchmark-analysis: ## Compare analyzer candidates (pass -manifest/-result through ARGS)
 	go run ./cmd/analysis-benchmark $(ARGS)
@@ -209,4 +220,4 @@ docker-down: ## Stop Compose services without deleting persistent volumes
 
 clean: ## Remove build artifacts
 	rm -rf cmd/server/dist
-	rm -f music-server music-server.exe
+	rm -f $(BINARY)

@@ -7,6 +7,7 @@
 *.dll
 *.so
 *.dylib
+/music-online
 
 # Test binary, built with `go test -c`
 *.test
