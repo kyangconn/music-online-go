@@ -288,15 +288,17 @@ onMounted(() => void loadFilterOptions());
 				</router-link>
 				<span v-else>{{ music.artist || $t("music.unknown_artist") }}</span>
 			</p>
-			<p class="music-album">
-				<router-link v-if="music.album_key" :to="{ name: 'AlbumDetail', params: { key: music.album_key } }">
-					{{ music.album || $t("music.unknown_album") }}
-				</router-link>
-				<span v-else>{{ $t("music.unknown_album") }}</span>
-			</p>
-            <div class="music-meta">
-              <el-icon class="like-icon"><StarFilled /></el-icon>
-              <span class="like-count">{{ music.like_count ?? 0 }}</span>
+            <div class="music-footer">
+              <p class="music-album">
+                <router-link v-if="music.album_key" :to="{ name: 'AlbumDetail', params: { key: music.album_key } }">
+                  {{ music.album || $t("music.unknown_album") }}
+                </router-link>
+                <span v-else>{{ $t("music.unknown_album") }}</span>
+              </p>
+              <div class="music-meta">
+                <el-icon class="like-icon"><StarFilled /></el-icon>
+                <span class="like-count">{{ music.like_count ?? 0 }}</span>
+              </div>
             </div>
           </div>
         </el-card>
@@ -439,17 +441,27 @@ onMounted(() => void loadFilterOptions());
 	}
 }
 
+.music-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: $spacing-sm;
+  margin-top: 6px;
+}
+
 .music-album {
-	margin: 3px 0 0;
-	color: var(--text-light);
-	font-size: $fs-xs;
+  margin: 0;
+  color: var(--text-light);
+  font-size: $fs-xs;
+  @include text-ellipsis;
+  min-width: 0;
 }
 
 .music-meta {
-  margin-top: 6px;
   @include inline-flex($spacing-xs);
   font-size: $fs-sm;
   color: var(--text-light);
+  flex-shrink: 0;
 }
 
 .like-icon {
@@ -485,7 +497,7 @@ onMounted(() => void loadFilterOptions());
     margin: 0 $spacing-md;
   }
 
-  .music-meta {
+  .music-footer {
     margin: 6px $spacing-md $spacing-md;
   }
 }
@@ -498,7 +510,7 @@ onMounted(() => void loadFilterOptions());
   }
 
   .music-artist,
-  .music-meta {
+  .music-footer {
     margin-right: $spacing-sm;
     margin-left: $spacing-sm;
   }
