@@ -1,0 +1,11 @@
+# 可选：把应用端口发布到宿主机。
+# 本机直接访问时由 `make docker-up` 自动叠加；
+# 如果你用 Traefik/反代，不需要这个文件。
+services:
+  app:
+    ports:
+      - name: http
+        target: ${SERVER_PORT:-${APP_CONTAINER_PORT:-8080}}
+        published: "${APP_PORT:-8080}"
+        host_ip: ${APP_BIND_ADDRESS:-127.0.0.1}
+        protocol: tcp

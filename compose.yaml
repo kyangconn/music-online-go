@@ -17,12 +17,23 @@ services:
       options:
         max-size: ${LOG_MAX_SIZE:-10m}
         max-file: "${LOG_MAX_FILE:-3}"
-    ports:
-      - name: http
-        target: ${SERVER_PORT:-${APP_CONTAINER_PORT:-8080}}
-        published: "${APP_PORT:-8080}"
-        host_ip: ${APP_BIND_ADDRESS:-127.0.0.1}
-        protocol: tcp
+    # 本文件默认不发布宿主机端口，方便直接放进 Traefik/反代网络。
+    # 本机直接访问时使用 make docker-up，它会自动叠加 compose.ports.yaml。
+    # 也可以自己取消下面 ports 注释，或写一个只包含本服务的自定义 compose。
+    expose:
+      - "${SERVER_PORT:-${APP_CONTAINER_PORT:-8080}}"
+    # ports:
+    #   - name: http
+    #     target: ${SERVER_PORT:-${APP_CONTAINER_PORT:-8080}}
+    #     published: "${APP_PORT:-8080}"
+    #     host_ip: ${APP_BIND_ADDRESS:-127.0.0.1}
+    #     protocol: tcp
+    # labels:  # Traefik 示例
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.music.rule=Host(`music.example.com`)"
+    #   - "traefik.http.services.music.loadbalancer.server.port=${SERVER_PORT:-${APP_CONTAINER_PORT:-8080}}"
+    # networks:
+    #   - traefik
     environment:
       MO_CONFIG_FILE: ${MO_CONFIG_FILE:-/etc/music-online/config.yaml}
       JWT_SECRET: ${JWT_SECRET:-}
