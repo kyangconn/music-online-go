@@ -139,202 +139,116 @@ make audit-be   # Non-mutating golangci-lint audit
 
 ## Docker
 
-### Configuration model: `.env` vs `config*.yaml`
-
-There are two layers of configuration. Keeping them separate makes the rest easier:
-
-| File | What it controls | Used by |
-|---|---|---|
-| `.env` | Docker Compose ports, volumes, image names, secret paths | Only `docker compose` / `make docker-*` |
-| `config-example.yaml` | Application settings: database, JWT, scanner, classification, etc. | Bare-metal runs of `./music-online` |
-| `config-docker-example.yaml` | Same shape as `config-example.yaml`, but with container-friendly paths | Docker; mounted read-only into the container |
-
-In short:
-
-- Non-Docker: ignore `.env`; copy `config-example.yaml` to `config.yaml`.
-- Docker: `.env` only tells Compose how to run; the app still reads a YAML file inside the container (by default from `config-docker-example.yaml`).
-- Prefer editing YAML for normal application changes. The `SERVER_*`, `DATABASE_*`, etc. entries in `.env` are temporary overrides, not the primary configuration surface.
-
-### Compose file roles
-
-| File | Role | Required |
-|---|---|---|
-| `compose.yaml` | Base application container | Yes |
-| `compose.media.yaml` | Mount a host music directory read-only | Optional |
-| `compose.postgres.yaml` | **Start an additional PostgreSQL container** | Optional |
-| `compose.secrets.yaml` | Pass JWT and other secrets via files | Optional |
-| `compose.musicbee-secrets.yaml` | Pass MusicBee token via file | Optional |
-| `compose.postgres-secrets.yaml` | Pass PostgreSQL password via file | Optional |
-| `compose.analyzer.yaml` | Enable the optional audio analyzer | Optional |
-
-Common full combinations:
+### Quick start: local access with SQLite
 
 ```bash
-# Minimal: SQLite
-docker compose -f compose.yaml up -d
-
-# SQLite + local music directory
-docker compose -f compose.yaml -f compose.media.yaml up -d
-
-# SQLite + music directory + bundled PostgreSQL
-docker compose -f compose.yaml -f compose.media.yaml -f compose.postgres.yaml up -d
-```
-
-> `compose.postgres.yaml` **starts a new PostgreSQL container alongside the app**.
-> If you already have PostgreSQL, do not add this file. Instead point the app at your existing database
-> with `DATABASE_TYPE=postgres`, `DATABASE_HOST`, `DATABASE_USER`, etc.
-
-### SQLite Compose quick start
-
-The default Compose deployment uses SQLite and is the simplest production-style setup:
-
-```bash
-cp .env.example .env                 # PowerShell: Copy-Item .env.example .env
-openssl rand -hex 32                 # Paste the result into JWT_SECRET in .env
-make docker-config
+cp .env.example .env
+# Edit .env and set JWT_SECRET to a random value:
+# openssl rand -hex 32
 make docker-up
-docker compose ps
 ```
 
-Open `http://127.0.0.1:8080`. Use `docker compose logs -f app` to follow logs and `make docker-down` to stop the deployment without deleting persistent volumes.
+Open:
 
-The default Compose contract is intentionally explicit:
+```text
+http://localhost:8080
+```
 
-- `config-docker-example.yaml` is bind-mounted read-only at `/etc/music-online/config.yaml`.
-- A named volume persists the SQLite database and uploads under `/data`.
-- `JWT_SECRET` is injected at runtime; it is not baked into the image or example YAML.
-- The application runs as UID/GID `10001`, with a read-only root filesystem, all Linux capabilities dropped, `no-new-privileges`, and an isolated `/tmp` tmpfs.
-- The `/ready` health check verifies both database access and writable upload storage.
-- Graceful shutdown gets 30 seconds by default, while the application uses its configured shutdown timeout.
+What this does:
 
-If `DATA_PATH` or `POSTGRES_DATA_PATH` is changed from a named volume to a host directory, create it first and grant container UID `10001` write access. Otherwise SQLite, uploads, or PostgreSQL startup will fail rather than weakening the container user.
+- `make docker-up` uses `compose.yaml + compose.ports.yaml`, publishing the port on the host.
+- Data is stored in the Docker named volume `music-online-data`.
+- The app reads `config-docker-example.yaml`, mounted read-only into the container.
 
-`.env` is ignored by Git. Treat it as deployment-only secret material: do not commit it, paste it into tickets, or reuse example passwords. For orchestrated production deployments, prefer the platform's protected secret injection mechanism.
+### Use with Traefik / reverse proxy
 
-The published port binds to `127.0.0.1` by default. Set `APP_BIND_ADDRESS=0.0.0.0` only when direct remote access is intentional, and normally place the service behind an HTTPS reverse proxy. PWA installation and the offline app shell work on `localhost`; other devices require HTTPS for secure-context browser features.
-
-### Read-only media-library mount
-
-External libraries are optional and are never mounted by the application. Mount NFS/SMB on the host first, then expose an existing directory read-only to the container:
+`compose.yaml` does **not publish host ports by default**; it only exposes the port on the container network. That makes it suitable for Traefik or another container gateway:
 
 ```bash
+docker compose -f compose.yaml up -d
+```
+
+Then attach your own network/labels, for example in an override:
+
+```yaml
+services:
+  app:
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.music.rule=Host(`music.example.com`)"
+      - "traefik.http.services.music.loadbalancer.server.port=8080"
+
+networks:
+  traefik:
+    external: true
+```
+
+You can also copy `compose.yaml` and write your own complete compose file; you are not forced to use `.env` or Makefile.
+
+### Use an existing PostgreSQL
+
+If you already have PostgreSQL, **do not use `compose.postgres.yaml`**.
+Point the app at your existing database instead:
+
+```bash
+DATABASE_TYPE=postgres
+DATABASE_HOST=your-postgres-host
+DATABASE_PORT=5432
+DATABASE_USER=music_online
+DATABASE_PASSWORD=...
+DATABASE_NAME=music_online
+```
+
+Then run `make docker-up` normally.
+
+### Start a bundled PostgreSQL container
+
+If you want the project to start PostgreSQL for you:
+
+```bash
+make docker-up-postgres
+```
+
+This starts an official PostgreSQL container and connects the app to it.
+
+### Mount a local music directory
+
+```bash
+# Uncomment and set these in .env:
 MEDIA_PATH=/srv/music
 MEDIA_CONTAINER_PATH=/media/music
-make docker-config-media
+
 make docker-up-media
 ```
 
-Register `/media/music` in the admin UI, not the host path. A root may declare `auto`, `local`, `nfs`, or `smb`, an exact expected filesystem such as `nfs4`, and an optional relative sentinel file. On Linux the application combines `/proc/self/mountinfo` evidence with a real directory/sentinel read; it does not treat ping as proof of NFS availability and never runs `mount` or `net use`. Native Windows deployments should prefer UNC paths over session-scoped mapped drives.
+After startup, register `/media/music` in the admin UI and start a scan.
 
-The default bind propagation is `rprivate`, which assumes the host mount exists before the container starts. On a Linux engine, set `MEDIA_BIND_PROPAGATION=rslave` only when mount/remount events made after container startup must propagate and the runtime supports it. Do not rely on bind propagation on Docker Desktop.
+### Optional: file-backed secrets
 
-### PostgreSQL Compose override
-
-Set at least `JWT_SECRET` and `POSTGRES_PASSWORD` in `.env`, then validate and start both files:
-
-```bash
-make docker-config-postgres
-make docker-up-postgres
-docker compose -f compose.yaml -f compose.postgres.yaml ps
-```
-
-The override starts PostgreSQL on the internal Compose network, waits for its health check, and switches the application to PostgreSQL. PostgreSQL is not published to the host by default. An incomplete PostgreSQL configuration now fails startup; the application never silently falls back to SQLite.
-
-The default PostgreSQL 18 volume mounts at `/var/lib/postgresql`, allowing the image to create its major-version-specific data directory. Do not change `POSTGRES_IMAGE` across major versions while reusing the volume without a supported `pg_upgrade` or dump/restore migration.
-
-### Compose secrets
-
-For production-style local deployments, use file-backed Compose secrets instead of exposing plaintext values in the container environment:
+If you do not want plaintext secrets in `.env`:
 
 ```bash
 mkdir -p secrets
 openssl rand -hex 32 > secrets/jwt_secret
-make docker-config-secrets
 make docker-up-secrets
-
-# Add an independent database password for PostgreSQL
-openssl rand -hex 24 > secrets/postgres_password
-make docker-config-postgres-secrets
-make docker-up-postgres-secrets
 ```
 
-On PowerShell, create the directory with `New-Item -ItemType Directory -Force secrets` and write the generated value with `Set-Content -NoNewline`. The ignored `secrets/` directory is never part of the image build context. `compose.secrets.yaml` mounts the JWT file; the PostgreSQL secrets override mounts one database-password file into both the application and the official PostgreSQL image.
+### Compose files at a glance
 
-### Docker Make targets
-
-| Target | Purpose |
+| File | Purpose |
 |---|---|
-| `make docker` | Build the multi-stage image; override `DOCKER_IMAGE`, `VERSION`, `VCS_REF`, or `BUILD_DATE` as needed |
-| `make docker-config` | Resolve and validate the SQLite Compose model without starting it |
-| `make docker-config-postgres` | Resolve and validate the base model plus PostgreSQL override |
-| `make docker-config-secrets` | Validate SQLite plus the JWT secret-file override |
-| `make docker-config-postgres-secrets` | Validate PostgreSQL plus JWT and database secret-file overrides |
-| `make docker-up` | Build and start the SQLite deployment |
-| `make docker-up-postgres` | Build and start the PostgreSQL deployment |
-| `make docker-up-secrets` | Build and start SQLite with a file-backed JWT secret |
-| `make docker-up-postgres-secrets` | Build and start PostgreSQL with file-backed JWT/database secrets |
-| `make docker-down` | Stop either deployment and remove orphan containers while preserving volumes |
+| `compose.yaml` | Base app; no host port, suitable for Traefik/reverse proxy |
+| `compose.ports.yaml` | Publish the port on the host; added automatically by `make docker-up` |
+| `compose.postgres.yaml` | Start an additional PostgreSQL container |
+| `compose.media.yaml` | Mount a local music directory |
+| `compose.secrets.yaml` | Pass JWT and other secrets via files |
+| `compose.musicbee-secrets.yaml` | Pass MusicBee token via file |
+| `compose.postgres-secrets.yaml` | Pass PostgreSQL password via file |
+| `compose.analyzer.yaml` | Enable the optional audio analyzer |
 
-### Compose customization
-
-Copy `.env.example` instead of editing Compose YAML for routine deployment changes. Application settings listed under [Configuration reference](#configuration-reference) can also be set there.
-
-| Variable | Default | Purpose |
-|---|---:|---|
-| `COMPOSE_PROJECT_NAME` | `music-online` | Compose project name |
-| `MUSIC_ONLINE_IMAGE` | `music-online-go:local` | Image name/tag used by Compose |
-| `APP_BIND_ADDRESS` | `127.0.0.1` | Host address for the published HTTP port |
-| `APP_PORT` | `8080` | Published host port |
-| `APP_CONTAINER_PORT` | `8080` | Container-port fallback; Compose passes it to the app as `SERVER_PORT` |
-| `CONFIG_FILE` | `./config-docker-example.yaml` | Existing host config file to bind; Compose will not create a missing path |
-| `MO_CONFIG_FILE` | `/etc/music-online/config.yaml` | Config path inside the container and explicit application config path |
-| `DATA_PATH` | `music-online-data` | `/data` source; keep this value for the declared named volume, or use a host path such as `./data` |
-| `DATA_VOLUME_NAME` | `music-online-data` | Engine-level name of the default application data volume |
-| `MEDIA_PATH` | none | Existing host media directory consumed by the optional `compose.media.yaml` override |
-| `MEDIA_CONTAINER_PATH` | `/media/music` | Read-only media path visible inside the container |
-| `MEDIA_BIND_PROPAGATION` | `rprivate` | Linux bind propagation; use `rslave` only for deliberate post-start host remount propagation |
-| `RESTART_POLICY` | `unless-stopped` | Restart policy for application and PostgreSQL services |
-| `READ_ONLY_ROOTFS` | `true` | Make the application root filesystem read-only; disabling is not recommended |
-| `LOG_DRIVER` | `local` | Docker stdout/stderr logging driver for both services |
-| `LOG_MAX_SIZE` / `LOG_MAX_FILE` | `10m` / `3` | Docker log rotation limits; separate from application file logging |
-| `TMPFS_SIZE` | `256m` | Size of the application `/tmp` tmpfs used while parsing multipart uploads; raise it with upload limits |
-| `STOP_GRACE_PERIOD` | `30s` | Application container stop grace period |
-| `HEALTHCHECK_INTERVAL` | `30s` | Application health-check interval |
-| `HEALTHCHECK_TIMEOUT` | `5s` | Application health-check timeout |
-| `HEALTHCHECK_START_PERIOD` | `15s` | Application startup grace period |
-| `HEALTHCHECK_RETRIES` | `3` | Failed checks before the application is unhealthy |
-| `VERSION` | `dev` | Image/application version embedded at build time |
-| `VCS_REF` | `unknown` | Source revision embedded at build time |
-| `BUILD_DATE` | `1970-01-01T00:00:00Z` | OCI image/application build timestamp |
-| `ANALYZER_IMAGE` | none | Image implementing the optional HTTP analyzer contract |
-| `ANALYZER_ID` / `ANALYZER_VERSION` / `ANALYZER_MODEL_VERSION` | none | Three explicit cache/contract versions required by the analyzer overlay |
-| `ANALYZER_TOKEN` / `ANALYZER_PORT` | none / `8090` | Shared analyzer secret and Compose-network-only port |
-| `ANALYZER_TIMEOUT_SECONDS` / `ANALYZER_CONCURRENCY` / `ANALYZER_QUEUE_LIMIT` | `300` / `1` / `1000` | Request timeout, workers, and queue backpressure |
-| `ANALYZER_MAX_FILE_SIZE_MB` / `ANALYZER_MAX_DURATION_SECONDS` | `2048` / `1800` | Analyzer input-size and decode-duration ceilings |
-| `ANALYZER_RETRY_MAX_ATTEMPTS` / `ANALYZER_RETRY_INITIAL_SECONDS` / `ANALYZER_RETRY_MAX_SECONDS` | `3` / `30` / `900` | Bounded exponential-backoff settings |
-| `ANALYZER_RESTART_POLICY` / `ANALYZER_STOP_GRACE_PERIOD` | `unless-stopped` / `30s` | Analyzer restart and shutdown policy |
-| `ANALYZER_CPUS` / `ANALYZER_MEMORY_LIMIT` / `ANALYZER_PIDS_LIMIT` / `ANALYZER_TMPFS_SIZE` | `2.0` / `2g` / `256` / `512m` | Analyzer container resource guardrails |
-| `POSTGRES_IMAGE` | `postgres:18-alpine3.23` | PostgreSQL image used by the override |
-| `POSTGRES_USER` | `music_online` | PostgreSQL role and application database user |
-| `POSTGRES_PASSWORD` | required unless file-backed | PostgreSQL role password |
-| `POSTGRES_PASSWORD_FILE` | `""` | Password-file path inside the PostgreSQL container; the secrets override sets `/run/secrets/postgres_password` |
-| `POSTGRES_DB` | `music_online` | PostgreSQL database name |
-| `POSTGRES_PORT` | `5432` | PostgreSQL port on the internal Compose network |
-| `POSTGRES_DATA_PATH` | `music-online-postgres-data` | PostgreSQL data source; keep this for the declared volume, or use a host path |
-| `POSTGRES_DATA_VOLUME_NAME` | `music-online-postgres-data` | Engine-level name of the default PostgreSQL volume |
-| `POSTGRES_STOP_GRACE_PERIOD` | `30s` | PostgreSQL stop grace period |
-| `POSTGRES_HEALTHCHECK_INTERVAL` | `10s` | PostgreSQL health-check interval |
-| `POSTGRES_HEALTHCHECK_TIMEOUT` | `5s` | PostgreSQL health-check timeout |
-| `POSTGRES_HEALTHCHECK_START_PERIOD` | `10s` | PostgreSQL startup grace period |
-| `POSTGRES_HEALTHCHECK_RETRIES` | `5` | Failed checks before PostgreSQL is unhealthy |
-| `JWT_SECRET_HOST_FILE` | `./secrets/jwt_secret` | Host file consumed by `compose.secrets.yaml` |
-| `MUSICBEE_SUBMIT_TOKEN_HOST_FILE` | `./secrets/musicbee_submit_token` | Host file consumed by `compose.musicbee-secrets.yaml` |
-| `POSTGRES_PASSWORD_HOST_FILE` | `./secrets/postgres_password` | Host file consumed by `compose.postgres-secrets.yaml` |
-| `ANALYZER_TOKEN_HOST_FILE` | `./secrets/analyzer_token` | Host file consumed by `compose.analyzer-secrets.yaml` |
-
-`DOCKER_IMAGE` is a Make variable used by `make docker`; `MUSIC_ONLINE_IMAGE` is the corresponding Compose setting used by `make docker-up*`.
-
-Compose always passes the resolved `SERVER_PORT`/`APP_CONTAINER_PORT` into the application, so the listener, port mapping, and health check cannot drift from a different YAML port. Other unset application variables do not override the read-only YAML. Startup requires a valid JWT secret from `JWT_SECRET`, `JWT_SECRET_FILE`, or YAML.
+`make docker-*` already composes the common combinations for you. For custom setups, write your own compose file instead of fighting the `.env` layer.
 
 ## Configuration
 

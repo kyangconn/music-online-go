@@ -144,185 +144,116 @@ make audit-be   # 非修改型 golangci-lint 全量审计
 
 ## Docker
 
-### 配置体系：`.env` 和 `config*.yaml` 的分工
-
-先分清楚两层配置，后面就不会乱：
-
-| 文件 | 管什么 | 谁在用 |
-|---|---|---|
-| `.env` | Docker Compose 的端口、数据卷、镜像名、密钥路径 | 只有 `docker compose` / `make docker-*` 用 |
-| `config-example.yaml` | 应用自身配置：数据库、JWT、扫描、分类等 | 非 Docker 直接运行 `./music-online` 时用 |
-| `config-docker-example.yaml` | 和 `config-example.yaml` 同构，但路径面向容器 | Docker 部署时被只读挂载进容器 |
-
-所以：
-
-- 非 Docker 部署：不需要 `.env`，复制 `config-example.yaml` 为 `config.yaml` 即可。
-- Docker 部署：`.env` 只决定 Compose 怎么跑；应用真正读的是容器内的 YAML，默认来自 `config-docker-example.yaml`。
-- 日常想改应用行为，优先改 YAML；`.env` 里那些 `SERVER_*`、`DATABASE_*` 是“临时覆盖”手段，不是主入口。
-
-### Compose 文件角色
-
-| 文件 | 作用 | 是否必选 |
-|---|---|---|
-| `compose.yaml` | 基础应用容器 | 必选 |
-| `compose.media.yaml` | 把本机音乐目录只读挂载进容器 | 可选 |
-| `compose.postgres.yaml` | **额外启动一个 PostgreSQL 容器** | 可选 |
-| `compose.secrets.yaml` | 用文件传递 JWT 等密钥 | 可选 |
-| `compose.musicbee-secrets.yaml` | 用文件传递 MusicBee token | 可选 |
-| `compose.postgres-secrets.yaml` | 用文件传递 PostgreSQL 密码 | 可选 |
-| `compose.analyzer.yaml` | 启用可选音频分析器 | 可选 |
-
-常用完整组合：
-
-```bash
-# 最简：SQLite
-docker compose -f compose.yaml up -d
-
-# SQLite + 本机音乐目录
-docker compose -f compose.yaml -f compose.media.yaml up -d
-
-# SQLite + 音乐目录 + 自带 PostgreSQL
-docker compose -f compose.yaml -f compose.media.yaml -f compose.postgres.yaml up -d
-```
-
-> `compose.postgres.yaml` 会**连带部署一个新的 PostgreSQL 容器**。
-> 如果你已经有 PostgreSQL，不要叠加这个文件；直接在应用配置里设置
-> `DATABASE_TYPE=postgres`、`DATABASE_HOST`、`DATABASE_USER` 等指向已有数据库即可。
+### 快速开始：本机直接访问（SQLite）
 
 ```bash
 cp .env.example .env
-# 用 `openssl rand -hex 32` 等方式生成随机值，填入 .env 的 JWT_SECRET
-make docker-config
+# 编辑 .env，把 JWT_SECRET 改成随机值：
+# openssl rand -hex 32
 make docker-up
 ```
 
-默认 Compose 部署使用 SQLite，发布到 `127.0.0.1:8080`。配置模板
-`config-docker-example.yaml` 以只读方式映射到容器，数据库和上传文件位于命名卷
-`music-online-data`。`.env` 已被 Git 忽略，不要提交其中的 JWT、数据库或管理员密码。
+启动后访问：
 
-已有音乐目录用只读 Compose override 挂载。宿主路径必须预先存在；启动后在“管理面板 →
-媒体库”中登记同一个容器内路径并手动扫描：
-
-```bash
-# .env
-MEDIA_PATH=/srv/music
-MEDIA_CONTAINER_PATH=/media/music
-
-make docker-config-media
-make docker-up-media
+```text
+http://localhost:8080
 ```
 
-`compose.media.yaml` 始终以只读方式挂载来源。需要多个目录时，新建一个本地 override，
-为每个宿主目录选择不同的容器目标，然后在管理面板逐个登记，例如：
+这里做了什么：
+
+- `make docker-up` 使用 `compose.yaml + compose.ports.yaml`，把端口发布到宿主机。
+- 数据默认存放在 Docker 命名卷 `music-online-data`。
+- 应用配置默认来自 `config-docker-example.yaml`，会被只读挂载进容器。
+
+### 和 Traefik / 反向代理一起用
+
+`compose.yaml` 默认**不发布宿主机端口**，只对容器网络暴露端口，因此可以直接放进 Traefik 这类容器网关：
+
+```bash
+docker compose -f compose.yaml up -d
+```
+
+然后在你的 Traefik 网络里给它加路由。例如在自定义 compose override 中：
 
 ```yaml
 services:
   app:
-    volumes:
-      - type: bind
-        source: /mnt/archive
-        target: /media/archive
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: /mnt/shared
-        target: /media/shared
-        read_only: true
-        bind:
-          create_host_path: false
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.music.rule=Host(`music.example.com`)"
+      - "traefik.http.services.music.loadbalancer.server.port=8080"
+
+networks:
+  traefik:
+    external: true
 ```
 
-容器以 UID/GID `10001` 运行；宿主媒体目录无需对它可写，但必须允许该身份读取文件并遍历目录。
+如果你不想用 Makefile，也可以复制 `compose.yaml` 改成自己的完整 compose。
 
-PostgreSQL 部署需在 `.env` 中设置 `POSTGRES_PASSWORD`，然后叠加 override：
+### 使用已有的 PostgreSQL
+
+如果你已经有一个 PostgreSQL，**不要使用 `compose.postgres.yaml`**。
+直接在 `.env` 或 YAML 里告诉应用连接它：
 
 ```bash
-make docker-config-postgres
-make docker-up-postgres
-
-# 停止服务但保留数据卷
-make docker-down
+DATABASE_TYPE=postgres
+DATABASE_HOST=your-postgres-host
+DATABASE_PORT=5432
+DATABASE_USER=music_online
+DATABASE_PASSWORD=...
+DATABASE_NAME=music_online
 ```
 
-生产部署可改用 Compose secrets，避免把明文密钥放进容器环境：
+然后正常 `make docker-up` 即可。
+
+### 让项目同时启动一个 PostgreSQL
+
+如果你想连 PostgreSQL 容器一起部署：
+
+```bash
+make docker-up-postgres
+```
+
+这会额外启动一个官方 PostgreSQL 容器，应用会自动连接它。
+
+### 挂载本机音乐目录
+
+```bash
+# 在 .env 里取消注释并填写：
+MEDIA_PATH=/srv/music
+MEDIA_CONTAINER_PATH=/media/music
+
+make docker-up-media
+```
+
+启动后到管理后台 → 媒体库，登记容器内路径 `/media/music`，然后手动扫描。
+
+### 更安全的密钥传递（可选）
+
+如果不想把明文密钥写进 `.env`，可以使用 Docker secrets：
 
 ```bash
 mkdir -p secrets
 openssl rand -hex 32 > secrets/jwt_secret
-make docker-config-secrets
 make docker-up-secrets
-
-# PostgreSQL 再创建一个独立密码文件
-openssl rand -hex 24 > secrets/postgres_password
-make docker-config-postgres-secrets
-make docker-up-postgres-secrets
 ```
 
-PowerShell 可先运行 `New-Item -ItemType Directory -Force secrets`，再用
-`Set-Content -NoNewline secrets/jwt_secret '<随机值>'` 写入。`secrets/` 已被 Git 忽略。
-`compose.secrets.yaml` 挂载 JWT 文件；PostgreSQL 部署再叠加
-`compose.postgres-secrets.yaml`，同一个数据库密码文件会同时提供给应用与官方 PostgreSQL 镜像。
+### Compose 文件说明
 
-启用 MusicBee 提交兼容时，可再把独立 token 作为 Compose secret 提供：
+| 文件 | 用途 |
+|---|---|
+| `compose.yaml` | 基础应用，不发布宿主机端口，适合反代/Traefik |
+| `compose.ports.yaml` | 把端口发布到宿主机；`make docker-up` 会自动叠加 |
+| `compose.postgres.yaml` | 额外启动一个 PostgreSQL 容器 |
+| `compose.media.yaml` | 挂载本机音乐目录 |
+| `compose.secrets.yaml` | 用文件传递 JWT 等密钥 |
+| `compose.musicbee-secrets.yaml` | 用文件传递 MusicBee token |
+| `compose.postgres-secrets.yaml` | 用文件传递 PostgreSQL 密码 |
+| `compose.analyzer.yaml` | 启用可选音频分析器 |
 
-```bash
-openssl rand -hex 32 > secrets/musicbee_submit_token
-# 同时在 .env 设置 INTEGRATIONS_MUSICBEE_SUBMIT_USERNAME
-make docker-config-musicbee-secrets
-make docker-up-musicbee-secrets
-```
-
-该目标组合基础 Compose、JWT secret 和 `compose.musicbee-secrets.yaml`；PostgreSQL 或其他自定义部署可按相同顺序叠加所需 override。
-
-默认 PostgreSQL 18 数据卷映射到 `/var/lib/postgresql`，由镜像在其下使用带主版本号的目录。
-不要只改 `POSTGRES_IMAGE` 跨主版本复用旧卷；先按 PostgreSQL 的 `pg_upgrade` 或导出/导入流程升级。
-
-镜像采用 Node → Go → Alpine 多阶段构建，并固定基础镜像版本；运行时使用 UID/GID
-`10001` 的非 root 用户、只读根文件系统、`no-new-privileges`、移除 Linux capabilities、
-`/tmp` tmpfs 和 `/ready` 健康检查。`/data` 是唯一持久写入点。若把 `DATA_PATH`
-改为宿主机目录而非命名卷，需要预先保证 UID `10001` 对该目录可写。
-
-常用 Compose 参数都在 [.env.example](./.env.example) 中：
-
-| 变量 | 默认值 | 说明 |
-|---|---|---|
-| `COMPOSE_PROJECT_NAME` | `music-online` | Compose 项目名 |
-| `MUSIC_ONLINE_IMAGE` | `music-online-go:local` | 构建/运行的镜像名 |
-| `APP_BIND_ADDRESS` / `APP_PORT` | `127.0.0.1` / `8080` | 宿主机监听地址与端口；对外开放前应配防火墙或 HTTPS 反代 |
-| `APP_CONTAINER_PORT` | `8080` | 容器内端口 fallback；Compose 会把它作为 `SERVER_PORT` 传给应用 |
-| `CONFIG_FILE` / `MO_CONFIG_FILE` | `./config-docker-example.yaml` / `/etc/music-online/config.yaml` | 宿主配置来源与容器内只读目标 |
-| `DATA_PATH` / `DATA_VOLUME_NAME` | `music-online-data` | `/data` 的来源及默认命名卷名称 |
-| `MEDIA_PATH` / `MEDIA_CONTAINER_PATH` | 无 / `/media/music` | `compose.media.yaml` 使用的现有宿主媒体目录及容器内只读目标；默认部署不挂载外部媒体 |
-| `MEDIA_BIND_PROPAGATION` | `rprivate` | 媒体 bind propagation；仅当 Linux 宿主会在容器启动后挂载/重挂 NFS 时按需改为 `rslave`，Docker Desktop 不应依赖此能力 |
-| `RESTART_POLICY` / `READ_ONLY_ROOTFS` | `unless-stopped` / `true` | 重启策略与只读根文件系统开关 |
-| `LOG_DRIVER`, `LOG_MAX_SIZE`, `LOG_MAX_FILE` | `local`, `10m`, `3` | Docker stdout/stderr 日志驱动和轮转上限；不同于应用文件日志 |
-| `TMPFS_SIZE` / `STOP_GRACE_PERIOD` | `256m` / `30s` | multipart 临时空间与停止宽限期；提高上传上限时也要相应提高 |
-| `HEALTHCHECK_INTERVAL`, `HEALTHCHECK_TIMEOUT`, `HEALTHCHECK_START_PERIOD`, `HEALTHCHECK_RETRIES` | `30s`, `5s`, `15s`, `3` | 应用健康检查参数 |
-| `VERSION`, `VCS_REF`, `BUILD_DATE` | `dev`, `unknown`, epoch | 镜像标签和二进制版本元数据 |
-| `ANALYZER_IMAGE`, `ANALYZER_ID`, `ANALYZER_VERSION`, `ANALYZER_MODEL_VERSION` | 无 | 可选 analyzer profile 的镜像和三个缓存/契约版本；启用 overlay 时必须明确设置 |
-| `ANALYZER_TOKEN`, `ANALYZER_PORT` | 无 / `8090` | analyzer 共享密钥与仅在 Compose 网络暴露的端口 |
-| `ANALYZER_TIMEOUT_SECONDS`, `ANALYZER_CONCURRENCY`, `ANALYZER_QUEUE_LIMIT` | `300`, `1`, `1000` | 请求超时、worker 数和任务背压上限 |
-| `ANALYZER_MAX_FILE_SIZE_MB`, `ANALYZER_MAX_DURATION_SECONDS` | `2048`, `1800` | analyzer 输入大小与解码时长上限 |
-| `ANALYZER_RETRY_MAX_ATTEMPTS`, `ANALYZER_RETRY_INITIAL_SECONDS`, `ANALYZER_RETRY_MAX_SECONDS` | `3`, `30`, `900` | analyzer 有限指数退避参数 |
-| `ANALYZER_RESTART_POLICY`, `ANALYZER_STOP_GRACE_PERIOD` | `unless-stopped`, `30s` | analyzer 容器重启与停止策略 |
-| `ANALYZER_CPUS`, `ANALYZER_MEMORY_LIMIT`, `ANALYZER_PIDS_LIMIT`, `ANALYZER_TMPFS_SIZE` | `2.0`, `2g`, `256`, `512m` | analyzer 容器资源护栏 |
-| `POSTGRES_IMAGE`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT` | 见 `.env.example` | PostgreSQL override 的镜像和连接参数；密码可直接提供或改用 secret 文件 |
-| `POSTGRES_PASSWORD_FILE` | `""` | 官方 PostgreSQL 容器内的密码文件路径；secrets override 会设为 `/run/secrets/postgres_password` |
-| `POSTGRES_DATA_PATH` / `POSTGRES_DATA_VOLUME_NAME` | `music-online-postgres-data` | PostgreSQL 数据来源和默认卷名 |
-| `POSTGRES_STOP_GRACE_PERIOD` | `30s` | PostgreSQL 停止宽限期 |
-| `POSTGRES_HEALTHCHECK_INTERVAL`, `POSTGRES_HEALTHCHECK_TIMEOUT`, `POSTGRES_HEALTHCHECK_START_PERIOD`, `POSTGRES_HEALTHCHECK_RETRIES` | `10s`, `5s`, `10s`, `5` | PostgreSQL 健康检查参数 |
-| `JWT_SECRET_HOST_FILE` | `./secrets/jwt_secret` | `compose.secrets.yaml` 在宿主机读取的 JWT secret 文件 |
-| `MUSICBEE_SUBMIT_TOKEN_HOST_FILE` | `./secrets/musicbee_submit_token` | `compose.musicbee-secrets.yaml` 在宿主机读取的 MusicBee scoped token 文件 |
-| `POSTGRES_PASSWORD_HOST_FILE` | `./secrets/postgres_password` | `compose.postgres-secrets.yaml` 在宿主机读取的数据库密码文件 |
-| `ANALYZER_TOKEN_HOST_FILE` | `./secrets/analyzer_token` | `compose.analyzer-secrets.yaml` 在宿主机读取的 analyzer 共享密钥文件 |
-
-`make docker` 也接受 Make 变量 `DOCKER_IMAGE`、`VERSION`、`VCS_REF`、`BUILD_DATE`。
-Compose 中未设置的应用变量保持为空，不会覆盖 YAML；应用启动时要求通过 `JWT_SECRET`、
-`JWT_SECRET_FILE` 或 YAML 提供有效密钥。容器端口也由 `SERVER_PORT` 或 `APP_CONTAINER_PORT` 统一传入，避免端口映射、
-健康检查和 YAML 监听端口彼此漂移。其他环境变量有值时会覆盖只读 YAML，因此可在不改模板的情况下定制每项应用配置。
-
-PWA 安装和离线应用壳在 `localhost` 可直接使用；从其他设备访问自部署实例时，需要通过 HTTPS 反向代理暴露服务，普通局域网 HTTP 地址不会启用这些安全上下文能力。
+`make docker-*` 命令已经帮你把常用组合拼好了；需要自定义时也可以直接写自己的 compose 文件，不必依赖 `.env`。
 
 ## 配置
 
