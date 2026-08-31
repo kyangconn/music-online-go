@@ -139,6 +139,51 @@ make audit-be   # Non-mutating golangci-lint audit
 
 ## Docker
 
+### Configuration model: `.env` vs `config*.yaml`
+
+There are two layers of configuration. Keeping them separate makes the rest easier:
+
+| File | What it controls | Used by |
+|---|---|---|
+| `.env` | Docker Compose ports, volumes, image names, secret paths | Only `docker compose` / `make docker-*` |
+| `config-example.yaml` | Application settings: database, JWT, scanner, classification, etc. | Bare-metal runs of `./music-online` |
+| `config-docker-example.yaml` | Same shape as `config-example.yaml`, but with container-friendly paths | Docker; mounted read-only into the container |
+
+In short:
+
+- Non-Docker: ignore `.env`; copy `config-example.yaml` to `config.yaml`.
+- Docker: `.env` only tells Compose how to run; the app still reads a YAML file inside the container (by default from `config-docker-example.yaml`).
+- Prefer editing YAML for normal application changes. The `SERVER_*`, `DATABASE_*`, etc. entries in `.env` are temporary overrides, not the primary configuration surface.
+
+### Compose file roles
+
+| File | Role | Required |
+|---|---|---|
+| `compose.yaml` | Base application container | Yes |
+| `compose.media.yaml` | Mount a host music directory read-only | Optional |
+| `compose.postgres.yaml` | **Start an additional PostgreSQL container** | Optional |
+| `compose.secrets.yaml` | Pass JWT and other secrets via files | Optional |
+| `compose.musicbee-secrets.yaml` | Pass MusicBee token via file | Optional |
+| `compose.postgres-secrets.yaml` | Pass PostgreSQL password via file | Optional |
+| `compose.analyzer.yaml` | Enable the optional audio analyzer | Optional |
+
+Common full combinations:
+
+```bash
+# Minimal: SQLite
+docker compose -f compose.yaml up -d
+
+# SQLite + local music directory
+docker compose -f compose.yaml -f compose.media.yaml up -d
+
+# SQLite + music directory + bundled PostgreSQL
+docker compose -f compose.yaml -f compose.media.yaml -f compose.postgres.yaml up -d
+```
+
+> `compose.postgres.yaml` **starts a new PostgreSQL container alongside the app**.
+> If you already have PostgreSQL, do not add this file. Instead point the app at your existing database
+> with `DATABASE_TYPE=postgres`, `DATABASE_HOST`, `DATABASE_USER`, etc.
+
 ### SQLite Compose quick start
 
 The default Compose deployment uses SQLite and is the simplest production-style setup:

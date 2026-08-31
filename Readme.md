@@ -144,6 +144,51 @@ make audit-be   # 非修改型 golangci-lint 全量审计
 
 ## Docker
 
+### 配置体系：`.env` 和 `config*.yaml` 的分工
+
+先分清楚两层配置，后面就不会乱：
+
+| 文件 | 管什么 | 谁在用 |
+|---|---|---|
+| `.env` | Docker Compose 的端口、数据卷、镜像名、密钥路径 | 只有 `docker compose` / `make docker-*` 用 |
+| `config-example.yaml` | 应用自身配置：数据库、JWT、扫描、分类等 | 非 Docker 直接运行 `./music-online` 时用 |
+| `config-docker-example.yaml` | 和 `config-example.yaml` 同构，但路径面向容器 | Docker 部署时被只读挂载进容器 |
+
+所以：
+
+- 非 Docker 部署：不需要 `.env`，复制 `config-example.yaml` 为 `config.yaml` 即可。
+- Docker 部署：`.env` 只决定 Compose 怎么跑；应用真正读的是容器内的 YAML，默认来自 `config-docker-example.yaml`。
+- 日常想改应用行为，优先改 YAML；`.env` 里那些 `SERVER_*`、`DATABASE_*` 是“临时覆盖”手段，不是主入口。
+
+### Compose 文件角色
+
+| 文件 | 作用 | 是否必选 |
+|---|---|---|
+| `compose.yaml` | 基础应用容器 | 必选 |
+| `compose.media.yaml` | 把本机音乐目录只读挂载进容器 | 可选 |
+| `compose.postgres.yaml` | **额外启动一个 PostgreSQL 容器** | 可选 |
+| `compose.secrets.yaml` | 用文件传递 JWT 等密钥 | 可选 |
+| `compose.musicbee-secrets.yaml` | 用文件传递 MusicBee token | 可选 |
+| `compose.postgres-secrets.yaml` | 用文件传递 PostgreSQL 密码 | 可选 |
+| `compose.analyzer.yaml` | 启用可选音频分析器 | 可选 |
+
+常用完整组合：
+
+```bash
+# 最简：SQLite
+docker compose -f compose.yaml up -d
+
+# SQLite + 本机音乐目录
+docker compose -f compose.yaml -f compose.media.yaml up -d
+
+# SQLite + 音乐目录 + 自带 PostgreSQL
+docker compose -f compose.yaml -f compose.media.yaml -f compose.postgres.yaml up -d
+```
+
+> `compose.postgres.yaml` 会**连带部署一个新的 PostgreSQL 容器**。
+> 如果你已经有 PostgreSQL，不要叠加这个文件；直接在应用配置里设置
+> `DATABASE_TYPE=postgres`、`DATABASE_HOST`、`DATABASE_USER` 等指向已有数据库即可。
+
 ```bash
 cp .env.example .env
 # 用 `openssl rand -hex 32` 等方式生成随机值，填入 .env 的 JWT_SECRET
