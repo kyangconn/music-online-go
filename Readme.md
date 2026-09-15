@@ -2,6 +2,33 @@
 
 面向个人、家庭或小团队的 self-hosted 小型音乐平台：管理、检索和播放自己的音乐库，离线运行不依赖外部服务，并兼容 MusicBrainz Picard 常用标签。Go 后端与 Vue 3 前端会编译为单一静态二进制；SQLite 是默认路径，PostgreSQL 可选。
 
+## 快速开始
+
+两种方式任选其一，都能在 <http://localhost:8080> 打开。
+
+### Docker（推荐）
+
+```bash
+cp config-docker-example.yaml config.yaml   # 把 jwt.secret 改成随机值：openssl rand -hex 32
+docker compose up -d --build
+```
+
+数据存放在命名卷 `music-online-data`，配置来自只读挂载进容器的 `config.yaml`。
+
+### 本地运行
+
+```bash
+cp config-example.yaml config.yaml   # 把 jwt.secret 改成随机值
+make build                            # 首次必须先构建前端产物
+./music-online
+```
+
+> 新克隆后必须先用 `make build`（或 `make build-fe`）生成 `cmd/server/dist/`：后端用
+> `go:embed` 内嵌前端产物，而该目录是构建产物、不入库，直接 `go build` 会报
+> `pattern dist/*: no matching files found`。
+
+默认不创建管理员；如需初始化首个管理员，见[配置](#配置)中的 `admin.bootstrap`。
+
 ## 技术栈
 
 **后端**
@@ -52,51 +79,6 @@
 └── config-example.yaml  # 配置文件模板
 ```
 
-## 新克隆 / 首次构建
-
-后端通过 `//go:embed dist/*` 内嵌前端产物，而 `cmd/server/dist/` 是构建产物、不入库。
-因此**新克隆后不要直接 `go build` / `go test` / `go run`**，否则会报
-`pattern dist/*: no matching files found`。
-
-先构建前端产物，再执行后端相关命令：
-
-```bash
-make build-fe   # 只构建前端到 cmd/server/dist/
-# 或者直接一步到位：
-make build      # 前端 + 后端一起构建
-```
-
-之后就可以正常使用：
-
-```bash
-make dev       # 开发模式
-go test ./...  # 运行后端测试
-```
-
-如果需要一次性同步前端依赖和 Go vendor，可以先用：
-
-```bash
-make fetch
-```
-
-## 快速开始
-
-```bash
-# 1. 复制配置，并把 jwt.secret 替换为强随机值
-cp config-example.yaml config.yaml
-openssl rand -hex 32
-# 可选：在 config.yaml 里启用 admin.bootstrap 创建首个管理员
-
-# 2. 构建（前端 + 后端）
-make build
-
-# 3. 运行
-./music-online
-```
-
-Windows PowerShell 可用 `Copy-Item config-example.yaml config.yaml`，构建后运行
-`./music-online.exe`。访问 `http://localhost:8080`。
-
 ## 开发
 
 ```bash
@@ -144,116 +126,104 @@ make audit-be   # 非修改型 golangci-lint 全量审计
 
 ## Docker
 
-### 快速开始：本机直接访问（SQLite）
+上面[快速开始](#快速开始)就是默认的 Docker 部署（SQLite）。项目只内置两个 compose 文件：
+`compose.yaml` 和 `compose.postgres.yaml`；其它场景把下面片段加进 `compose.yaml`，
+再 `docker compose up -d --build` 即可（也可另存为 override 文件用 `-f` 叠加）。
+
+### 使用 PostgreSQL
+
+`compose.postgres.yaml` 会额外启动一个 Postgres 容器：
 
 ```bash
-cp .env.example .env
-# 编辑 .env，把 JWT_SECRET 改成随机值：
-# openssl rand -hex 32
-make docker-up
+POSTGRES_PASSWORD='强密码' make docker-up-postgres
 ```
 
-启动后访问：
+已有 PostgreSQL 则不要用该文件，改在 `config.yaml` 里指向它：
 
-```text
-http://localhost:8080
+```yaml
+database:
+  type: postgres
+  host: your-postgres-host
+  port: "5432"
+  user: music_online
+  password: ...
+  name: music_online
+  sslmode: require
 ```
 
-这里做了什么：
+### 挂载本机音乐目录
 
-- `make docker-up` 使用 `compose.yaml + compose.ports.yaml`，把端口发布到宿主机。
-- 数据默认存放在 Docker 命名卷 `music-online-data`。
-- 应用配置默认来自 `config-docker-example.yaml`，会被只读挂载进容器。
-
-### 和 Traefik / 反向代理一起用
-
-`compose.yaml` 默认**不发布宿主机端口**，只对容器网络暴露端口，因此可以直接放进 Traefik 这类容器网关：
-
-```bash
-docker compose -f compose.yaml up -d
-```
-
-然后在你的 Traefik 网络里给它加路由。例如在自定义 compose override 中：
+在 `compose.yaml` 的 `app` 服务里加一个只读 bind mount：
 
 ```yaml
 services:
   app:
-    networks:
-      - traefik
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.music.rule=Host(`music.example.com`)"
-      - "traefik.http.services.music.loadbalancer.server.port=8080"
-
-networks:
-  traefik:
-    external: true
+    volumes:
+      - type: bind
+        source: /srv/music
+        target: /media/music
+        read_only: true
 ```
 
-如果你不想用 Makefile，也可以复制 `compose.yaml` 改成自己的完整 compose。
+启动后在管理后台登记容器内路径 `/media/music` 并手动扫描。
 
-### 使用已有的 PostgreSQL
+### 用 Docker secret 传密钥（可选）
 
-如果你已经有一个 PostgreSQL，**不要使用 `compose.postgres.yaml`**。
-直接在 `.env` 或 YAML 里告诉应用连接它：
-
-```bash
-DATABASE_TYPE=postgres
-DATABASE_HOST=your-postgres-host
-DATABASE_PORT=5432
-DATABASE_USER=music_online
-DATABASE_PASSWORD=...
-DATABASE_NAME=music_online
-```
-
-然后正常 `make docker-up` 即可。
-
-### 让项目同时启动一个 PostgreSQL
-
-如果你想连 PostgreSQL 容器一起部署：
-
-```bash
-make docker-up-postgres
-```
-
-这会额外启动一个官方 PostgreSQL 容器，应用会自动连接它。
-
-### 挂载本机音乐目录
-
-```bash
-# 在 .env 里取消注释并填写：
-MEDIA_PATH=/srv/music
-MEDIA_CONTAINER_PATH=/media/music
-
-make docker-up-media
-```
-
-启动后到管理后台 → 媒体库，登记容器内路径 `/media/music`，然后手动扫描。
-
-### 更安全的密钥传递（可选）
-
-如果不想把明文密钥写进 `.env`，可以使用 Docker secrets：
+不想把密钥明文写进 `config.yaml` 时，用文件传（`config.yaml` 里对应字段留空）：
 
 ```bash
 mkdir -p secrets
 openssl rand -hex 32 > secrets/jwt_secret
-make docker-up-secrets
 ```
 
-### Compose 文件说明
+```yaml
+services:
+  app:
+    environment:
+      JWT_SECRET: ""
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+    secrets:
+      - jwt_secret
 
-| 文件 | 用途 |
-|---|---|
-| `compose.yaml` | 基础应用，不发布宿主机端口，适合反代/Traefik |
-| `compose.ports.yaml` | 把端口发布到宿主机；`make docker-up` 会自动叠加 |
-| `compose.postgres.yaml` | 额外启动一个 PostgreSQL 容器 |
-| `compose.media.yaml` | 挂载本机音乐目录 |
-| `compose.secrets.yaml` | 用文件传递 JWT 等密钥 |
-| `compose.musicbee-secrets.yaml` | 用文件传递 MusicBee token |
-| `compose.postgres-secrets.yaml` | 用文件传递 PostgreSQL 密码 |
-| `compose.analyzer.yaml` | 启用可选音频分析器 |
+secrets:
+  jwt_secret:
+    file: ./secrets/jwt_secret
+```
 
-`make docker-*` 命令已经帮你把常用组合拼好了；需要自定义时也可以直接写自己的 compose 文件，不必依赖 `.env`。
+其它敏感字段同理：`DATABASE_PASSWORD_FILE`、`METRICS_TOKEN_FILE`、`ADMIN_BOOTSTRAP_PASSWORD_FILE`、
+`INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN_FILE`、`CLASSIFICATION_ANALYZER_TOKEN_FILE`。
+
+### 可选音频分析器
+
+需要实现下方「可选 HTTP analyzer 与持久任务」契约的 analyzer 镜像。在 `compose.yaml` 里加：
+
+```yaml
+services:
+  app:
+    environment:
+      CLASSIFICATION_ANALYZER_MODE: http
+      CLASSIFICATION_ANALYZER_ENDPOINT: http://analyzer:8090/v1/analyze
+      CLASSIFICATION_ANALYZER_ID: implementation-id
+      CLASSIFICATION_ANALYZER_VERSION: 1.0.0
+      CLASSIFICATION_ANALYZER_MODEL_VERSION: model-v1
+      CLASSIFICATION_ANALYZER_TOKEN: shared-secret
+    depends_on:
+      - analyzer
+
+  analyzer:
+    image: your-analyzer-image
+    environment:
+      ANALYZER_LISTEN_ADDRESS: 0.0.0.0
+      ANALYZER_PORT: "8090"
+      ANALYZER_TOKEN: shared-secret
+```
+
+`CLASSIFICATION_ANALYZER_ID` / `_VERSION` / `_MODEL_VERSION` 必须与 analyzer 返回的版本一致，
+`ANALYZER_TOKEN` 至少 32 字节；完整字段与返回契约见下方「可选 HTTP analyzer 与持久任务」。
+
+### 反向代理 / Traefik
+
+默认发布到 `127.0.0.1:8080` 不影响容器网络；在自定义 override 中把 `app` 加入你的网络并加 labels 即可。
 
 ## 配置
 
@@ -488,14 +458,9 @@ NFS/SMB 只用于媒体来源，不建议承载 SQLite 数据库文件或 `/data
 除 `bpm` 外，上述标量都必须由 analyzer 按其版本化定义归一化到 `0..1`；不要把原始 LUFS、Hz 或未标定距离直接塞入同名字段。模型标签会经过同一流派规范化器，权重上限低于本地标签；DSP 再低一级。“纯音乐”只有同时获得低能量和低唤醒度/平滑动态证据时才支持静谧心流。分析产物还必须与曲目当前 SHA-256 匹配，旧文件结果不会被误用于新内容。
 
 仓库暂不指定默认模型镜像。候选筛选、许可证边界、gold set 拆分和可复现命令见
-[音频分析候选与基准协议](docs/audio-analysis-benchmark.md)。准备好通过该门槛、实现上述契约的镜像和至少 32 字节密钥后，可使用隔离的可选 profile：
-
-```bash
-make docker-config-analyzer
-make docker-up-analyzer
-```
-
-推荐把共享密钥写入 `./secrets/analyzer_token`，并改用 `make docker-config-analyzer-secrets` / `make docker-up-analyzer-secrets`；analyzer 镜像也必须支持 `ANALYZER_TOKEN_FILE`。该 overlay 默认不发布 analyzer 端口，并限制只读根文件系统、capabilities、PID、CPU、内存和临时目录。管理员可通过后台或 `/api/v1/users/admin/analysis/*` 显式回填、查看指标、重试和取消任务。
+[音频分析候选与基准协议](docs/audio-analysis-benchmark.md)。准备好通过该门槛、实现上述契约的镜像和
+至少 32 字节密钥后，按 [Docker](#docker) 一节的「可选音频分析器」片段接入（共享密钥推荐用 Docker
+secret 传入）。管理员可通过后台或 `/api/v1/users/admin/analysis/*` 显式回填、查看指标、重试和取消任务。
 
 #### database
 

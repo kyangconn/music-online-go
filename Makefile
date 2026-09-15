@@ -1,4 +1,4 @@
-.PHONY: help fetch install-fe install-fe-dev build build-fe build-be build-silent dev dev-fe dev-be test test-be test-fe test-cover test-cover-fe test-postgres benchmark-analysis check verify check-fe check-be typecheck-fe lint lint-fe lint-be audit-be docker docker-config docker-config-media docker-config-postgres docker-config-secrets docker-config-musicbee-secrets docker-config-postgres-secrets docker-config-analyzer docker-config-analyzer-secrets docker-up docker-up-media docker-up-postgres docker-up-secrets docker-up-musicbee-secrets docker-up-postgres-secrets docker-up-analyzer docker-up-analyzer-secrets docker-down clean
+.PHONY: help fetch install-fe install-fe-dev build build-fe build-be build-silent dev dev-fe dev-be test test-be test-fe test-cover test-cover-fe test-postgres benchmark-analysis check verify check-fe check-be typecheck-fe lint lint-fe lint-be audit-be docker docker-up docker-up-postgres docker-down clean
 
 .DEFAULT_GOAL := help
 
@@ -53,24 +53,10 @@ help: ## Show available commands
 	@echo "  make benchmark-analysis ARGS='...' Compare analyzer result files"
 	@echo ""
 	@echo "=== Docker ==="
-	@echo "  make docker                 Build Docker image"
-	@echo "  make docker-config          Validate the SQLite Compose configuration"
-	@echo "  make docker-config-media    Validate Compose with a read-only media mount"
-	@echo "  make docker-config-postgres Validate the PostgreSQL Compose configuration"
-	@echo "  make docker-config-secrets  Validate the SQLite Compose secrets override"
-	@echo "  make docker-config-musicbee-secrets Validate JWT + MusicBee secret overrides"
-	@echo "  make docker-config-postgres-secrets Validate PostgreSQL + secrets overrides"
-	@echo "  make docker-config-analyzer Validate the optional analyzer profile"
-	@echo "  make docker-config-analyzer-secrets Validate analyzer with a file-backed token"
-	@echo "  make docker-up              Start the SQLite Compose deployment"
-	@echo "  make docker-up-media        Start SQLite with a read-only media mount"
-	@echo "  make docker-up-postgres     Start the PostgreSQL Compose deployment"
-	@echo "  make docker-up-secrets      Start SQLite with a Docker secret"
-	@echo "  make docker-up-musicbee-secrets Start SQLite with JWT + MusicBee secrets"
-	@echo "  make docker-up-postgres-secrets Start PostgreSQL with Docker secrets"
-	@echo "  make docker-up-analyzer      Start SQLite with the optional analyzer profile"
-	@echo "  make docker-up-analyzer-secrets Start analyzer with a file-backed token"
-	@echo "  make docker-down            Stop Compose services (preserves data volumes)"
+	@echo "  make docker             Build Docker image"
+	@echo "  make docker-up          Start the default (SQLite) deployment"
+	@echo "  make docker-up-postgres Start with an extra PostgreSQL container"
+	@echo "  make docker-down        Stop Compose services (preserves data volumes)"
 	@echo "  make clean          Remove build artifacts"
 
 install-fe: ## Install frontend dependencies from lockfile
@@ -166,54 +152,11 @@ docker: ## Build multi-stage Docker image
 		--build-arg BUILD_DATE="$(BUILD_DATE)" \
 		-t "$(DOCKER_IMAGE)" .
 
-docker-config: ## Validate the default SQLite Compose configuration
-	docker compose -f compose.yaml -f compose.ports.yaml config --quiet
-
-docker-config-media: export MEDIA_PATH := $(CURDIR)
-docker-config-media: ## Validate the default deployment with a read-only media mount
-	docker compose -f compose.yaml -f compose.ports.yaml -f compose.media.yaml config --quiet
-
-docker-config-postgres: ## Validate the PostgreSQL Compose override
-	docker compose -f compose.yaml -f compose.ports.yaml -f compose.postgres.yaml config --quiet
-
-docker-config-secrets: ## Validate the default deployment with the JWT secret override
-	docker compose -f compose.yaml -f compose.ports.yaml -f compose.secrets.yaml config --quiet
-
-docker-config-musicbee-secrets: ## Validate SQLite with JWT and MusicBee secrets
-	docker compose -f compose.yaml -f compose.ports.yaml -f compose.secrets.yaml -f compose.musicbee-secrets.yaml config --quiet
-
-docker-config-postgres-secrets: ## Validate PostgreSQL with JWT and database secrets
-	docker compose -f compose.yaml -f compose.ports.yaml -f compose.postgres.yaml -f compose.secrets.yaml -f compose.postgres-secrets.yaml config --quiet
-
-docker-config-analyzer: ## Validate the optional HTTP analyzer profile
-	docker compose -f compose.yaml -f compose.ports.yaml -f compose.analyzer.yaml --profile analyzer config --quiet
-
-docker-config-analyzer-secrets: ## Validate analyzer with a file-backed shared token
-	docker compose -f compose.yaml -f compose.ports.yaml -f compose.analyzer.yaml -f compose.analyzer-secrets.yaml --profile analyzer config --quiet
-
 docker-up: ## Start the default SQLite Compose deployment
-	docker compose -f compose.yaml -f compose.ports.yaml up -d --build
+	docker compose -f compose.yaml up -d --build
 
-docker-up-media: ## Start SQLite with a read-only media mount
-	docker compose -f compose.yaml -f compose.ports.yaml -f compose.media.yaml up -d --build
-
-docker-up-postgres: ## Start the PostgreSQL Compose deployment
-	docker compose -f compose.yaml -f compose.ports.yaml -f compose.postgres.yaml up -d --build
-
-docker-up-secrets: ## Start SQLite with JWT supplied as a Docker secret
-	docker compose -f compose.yaml -f compose.ports.yaml -f compose.secrets.yaml up -d --build
-
-docker-up-musicbee-secrets: ## Start SQLite with JWT and MusicBee credentials supplied as Docker secrets
-	docker compose -f compose.yaml -f compose.ports.yaml -f compose.secrets.yaml -f compose.musicbee-secrets.yaml up -d --build
-
-docker-up-postgres-secrets: ## Start PostgreSQL with JWT and database passwords supplied as Docker secrets
-	docker compose -f compose.yaml -f compose.ports.yaml -f compose.postgres.yaml -f compose.secrets.yaml -f compose.postgres-secrets.yaml up -d --build
-
-docker-up-analyzer: ## Start SQLite with the optional HTTP analyzer profile
-	docker compose -f compose.yaml -f compose.ports.yaml -f compose.analyzer.yaml --profile analyzer up -d --build
-
-docker-up-analyzer-secrets: ## Start analyzer with a file-backed shared token
-	docker compose -f compose.yaml -f compose.ports.yaml -f compose.analyzer.yaml -f compose.analyzer-secrets.yaml --profile analyzer up -d --build
+docker-up-postgres: ## Start with an extra PostgreSQL container
+	docker compose -f compose.yaml -f compose.postgres.yaml up -d --build
 
 docker-down: ## Stop Compose services without deleting persistent volumes
 	docker compose -f compose.yaml down --remove-orphans

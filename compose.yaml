@@ -12,135 +12,14 @@ services:
     restart: ${RESTART_POLICY:-unless-stopped}
     init: true
     read_only: ${READ_ONLY_ROOTFS:-true}
-    logging:
-      driver: ${LOG_DRIVER:-local}
-      options:
-        max-size: ${LOG_MAX_SIZE:-10m}
-        max-file: "${LOG_MAX_FILE:-3}"
-    # 本文件默认不发布宿主机端口，方便直接放进 Traefik/反代网络。
-    # 本机直接访问时使用 make docker-up，它会自动叠加 compose.ports.yaml。
-    # 也可以自己取消下面 ports 注释，或写一个只包含本服务的自定义 compose。
-    expose:
-      - "${SERVER_PORT:-${APP_CONTAINER_PORT:-8080}}"
-    # ports:
-    #   - name: http
-    #     target: ${SERVER_PORT:-${APP_CONTAINER_PORT:-8080}}
-    #     published: "${APP_PORT:-8080}"
-    #     host_ip: ${APP_BIND_ADDRESS:-127.0.0.1}
-    #     protocol: tcp
-    # labels:  # Traefik 示例
-    #   - "traefik.enable=true"
-    #   - "traefik.http.routers.music.rule=Host(`music.example.com`)"
-    #   - "traefik.http.services.music.loadbalancer.server.port=${SERVER_PORT:-${APP_CONTAINER_PORT:-8080}}"
-    # networks:
-    #   - traefik
-    environment:
-      MO_CONFIG_FILE: ${MO_CONFIG_FILE:-/etc/music-online/config.yaml}
-      JWT_SECRET: ${JWT_SECRET:-}
-      JWT_SECRET_FILE: ${JWT_SECRET_FILE:-}
-      MO_LOG_FILE:
-      MO_LOG_MAX_SIZE:
-      MO_LOG_MAX_BACKUPS:
-      MO_LOG_MAX_AGE:
-      SERVER_LISTEN_ADDRESS:
-      SERVER_PORT: ${SERVER_PORT:-${APP_CONTAINER_PORT:-8080}}
-      SERVER_MODE:
-      SERVER_READ_HEADER_TIMEOUT:
-      SERVER_READ_TIMEOUT:
-      SERVER_WRITE_TIMEOUT:
-      SERVER_IDLE_TIMEOUT:
-      SERVER_SHUTDOWN_TIMEOUT:
-      SERVER_READINESS_TIMEOUT:
-      SERVER_UPLOAD_DIR:
-      SERVER_LOG_FILE:
-      SERVER_MAX_JSON_BODY_SIZE_MB:
-      SERVER_MAX_AUDIO_SIZE_MB:
-      SERVER_MAX_COVER_SIZE_MB:
-      SERVER_ALLOWED_ORIGINS:
-      SERVER_TRUSTED_PROXIES:
-      DATABASE_TYPE:
-      DATABASE_PATH:
-      DATABASE_HOST:
-      DATABASE_PORT:
-      DATABASE_USER:
-      DATABASE_PASSWORD:
-      DATABASE_PASSWORD_FILE:
-      DATABASE_NAME:
-      DATABASE_SSLMODE:
-      DATABASE_LOG_LEVEL:
-      DATABASE_CONNECT_TIMEOUT_SECONDS:
-      DATABASE_MAX_OPEN_CONNECTIONS:
-      DATABASE_MAX_IDLE_CONNECTIONS:
-      DATABASE_CONNECTION_MAX_LIFETIME_MINUTES:
-      DATABASE_CONNECTION_MAX_IDLE_TIME_MINUTES:
-      JWT_ACCESS_TOKEN_TTL_MINUTES:
-      JWT_REFRESH_TOKEN_TTL_DAYS:
-      JWT_REFRESH_COOKIE_SECURE:
-      ACCESS_LIBRARY_MODE:
-      ACCESS_REGISTRATION_MODE:
-      ACCESS_MEDIA_URL_TTL_MINUTES:
-      LIBRARY_SCANNER_ENABLED:
-      LIBRARY_HEALTH_CHECK_INTERVAL_SECONDS:
-      LIBRARY_SCANNER_MAX_FILE_SIZE_MB:
-      LIBRARY_SCANNER_MAX_TAG_SIZE_MB:
-      LIBRARY_SCANNER_MIN_FILE_AGE_SECONDS:
-      LIBRARY_SCANNER_HASH_RECHECK_HOURS:
-      LIBRARY_SCANNER_RETRY_MAX_ATTEMPTS:
-      LIBRARY_SCANNER_RETRY_INITIAL_SECONDS:
-      LIBRARY_SCANNER_RETRY_MAX_SECONDS:
-      CLASSIFICATION_ENABLED:
-      CLASSIFICATION_ANALYZE_ON_UPLOAD:
-      CLASSIFICATION_AUTO_THRESHOLD:
-      CLASSIFICATION_REVIEW_MARGIN:
-      CLASSIFICATION_WEIGHTS_CALM_FLOW:
-      CLASSIFICATION_WEIGHTS_KINETIC_PULSE:
-      CLASSIFICATION_WEIGHTS_COSMIC_DRIFT:
-      CLASSIFICATION_WEIGHTS_BASS_IMPACT:
-      CLASSIFICATION_ANALYZER_MODE:
-      CLASSIFICATION_ANALYZER_ENDPOINT:
-      CLASSIFICATION_ANALYZER_TOKEN:
-      CLASSIFICATION_ANALYZER_TOKEN_FILE:
-      CLASSIFICATION_ANALYZER_ID:
-      CLASSIFICATION_ANALYZER_VERSION:
-      CLASSIFICATION_ANALYZER_MODEL_VERSION:
-      CLASSIFICATION_ANALYZER_TIMEOUT_SECONDS:
-      CLASSIFICATION_ANALYZER_CONCURRENCY:
-      CLASSIFICATION_ANALYZER_QUEUE_LIMIT:
-      CLASSIFICATION_ANALYZER_MAX_FILE_SIZE_MB:
-      CLASSIFICATION_ANALYZER_MAX_DURATION_SECONDS:
-      CLASSIFICATION_ANALYZER_RETRY_MAX_ATTEMPTS:
-      CLASSIFICATION_ANALYZER_RETRY_INITIAL_SECONDS:
-      CLASSIFICATION_ANALYZER_RETRY_MAX_SECONDS:
-      INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN:
-      INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN_FILE:
-      INTEGRATIONS_MUSICBEE_SUBMIT_USERNAME:
-      METRICS_ENABLED:
-      METRICS_TOKEN:
-      METRICS_TOKEN_FILE:
-      ADMIN_BOOTSTRAP_ENABLED:
-      ADMIN_BOOTSTRAP_USERNAME:
-      ADMIN_BOOTSTRAP_EMAIL:
-      ADMIN_BOOTSTRAP_PASSWORD:
-      ADMIN_BOOTSTRAP_PASSWORD_FILE:
-      ADMIN_BOOTSTRAP_FULL_NAME:
-      ADMIN_BOOTSTRAP_RESET_PASSWORD:
-      RATE_LIMIT_ENABLED:
-      RATE_LIMIT_GLOBAL_REQUESTS_PER_SECOND:
-      RATE_LIMIT_GLOBAL_BURST:
-      RATE_LIMIT_AUTH_REQUESTS_PER_SECOND:
-      RATE_LIMIT_AUTH_BURST:
-      LOGGING_MAX_SIZE_MB:
-      LOGGING_LEVEL:
-      LOGGING_ACCESS_LOG:
-      LOGGING_MAX_BACKUPS:
-      LOGGING_MAX_AGE_DAYS:
-      LOGGING_COMPRESS:
-      LOGGING_LOCAL_TIME:
-      TZ:
+    # 默认发布到宿主机 127.0.0.1:8080，本机可直接访问；对外开放改成 APP_BIND_ADDRESS=0.0.0.0。
+    ports:
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8080}:8080"
     volumes:
+      # 先 `cp config-docker-example.yaml config.yaml` 并填好 jwt.secret，再启动。
       - type: bind
-        source: ${CONFIG_FILE:-./config-docker-example.yaml}
-        target: ${MO_CONFIG_FILE:-/etc/music-online/config.yaml}
+        source: ${CONFIG_FILE:-./config.yaml}
+        target: /etc/music-online/config.yaml
         read_only: true
         bind:
           create_host_path: false
@@ -155,7 +34,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - wget -q -T 3 --spider http://127.0.0.1:${SERVER_PORT:-${APP_CONTAINER_PORT:-8080}}/ready || exit 1
+        - wget -q -T 3 --spider http://127.0.0.1:8080/ready || exit 1
       interval: ${HEALTHCHECK_INTERVAL:-30s}
       timeout: ${HEALTHCHECK_TIMEOUT:-5s}
       start_period: ${HEALTHCHECK_START_PERIOD:-15s}

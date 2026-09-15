@@ -32,10 +32,12 @@ database:
   connection_max_lifetime_minutes: 60
   connection_max_idle_time_minutes: 10
 
-# Inject a JWT_SECRET of at least 32 UTF-8 bytes at runtime; never store it here.
+# 复制为 config.yaml 后，把 secret 换成随机值（openssl rand -hex 32）；不要把 config.yaml 提交到仓库。
 jwt:
   secret: ""
-  expire_hour: 24
+  access_token_ttl_minutes: 15
+  refresh_token_ttl_days: 30
+  refresh_cookie_secure: false
 
 access:
   library_mode: "public"

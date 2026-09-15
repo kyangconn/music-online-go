@@ -2,6 +2,34 @@
 
 A small self-hosted music platform for individuals, families, and small teams. It manages, searches, and plays a local library offline, preserves common MusicBrainz Picard tags, and compiles its Go backend and Vue 3 frontend into one static binary.
 
+## Quick Start
+
+Pick either path; both open at <http://localhost:8080>.
+
+### Docker (recommended)
+
+```bash
+cp config-docker-example.yaml config.yaml   # Set jwt.secret to a random value: openssl rand -hex 32
+docker compose up -d --build
+```
+
+Data is stored in the named volume `music-online-data`; config comes from the read-only-mounted `config.yaml`.
+
+### Run locally
+
+```bash
+cp config-example.yaml config.yaml   # Replace jwt.secret with a random value
+make build                            # Must build the frontend assets first
+./music-online
+```
+
+> On a fresh clone you must run `make build` (or `make build-fe`) first to generate
+> `cmd/server/dist/`: the backend embeds the frontend via `go:embed`, and that directory
+> is a build artifact that is not committed. Running `go build` directly fails with
+> `pattern dist/*: no matching files found`.
+
+No admin is created by default; to bootstrap the first admin, see `admin.bootstrap` under [Configuration reference](#configuration-reference).
+
 ## Technology Stack
 
 **Backend**
@@ -53,50 +81,6 @@ A small self-hosted music platform for individuals, families, and small teams. I
 └── Makefile                    # Canonical build and development commands
 ```
 
-## Fresh Clone / First Build
-
-The Go backend embeds the frontend via `//go:embed dist/*`, but `cmd/server/dist/` is a build artifact and is not committed.
-**Do not run `go build` / `go test` / `go run` immediately after cloning**; you will see `pattern dist/*: no matching files found`.
-
-Build the frontend assets first, then run backend commands:
-
-```bash
-make build-fe   # Build frontend only, output to cmd/server/dist/
-# Or do everything in one step:
-make build      # Frontend + backend
-```
-
-Then you can use the normal flow:
-
-```bash
-make dev       # Development mode
-go test ./...  # Run backend tests
-```
-
-If you also want to sync frontend dependencies and Go vendor in one shot:
-
-```bash
-make fetch
-```
-
-## Quick Start
-
-```bash
-# 1. Copy the template and replace jwt.secret with a strong random value
-cp config-example.yaml config.yaml
-openssl rand -hex 32
-
-# Optional: enable admin.bootstrap in config.yaml to create the first admin
-
-# 2. Build the frontend and backend
-make build
-
-# 3. Run
-./music-online
-```
-
-On Windows, use `Copy-Item config-example.yaml config.yaml` and run `music-online.exe`. Visit `http://localhost:8080`.
-
 ## Development
 
 ```bash
@@ -139,116 +123,106 @@ make audit-be   # Non-mutating golangci-lint audit
 
 ## Docker
 
-### Quick start: local access with SQLite
+The [Quick Start](#quick-start) above is the default Docker deployment (SQLite). The project ships only two
+compose files, `compose.yaml` and `compose.postgres.yaml`; for other scenarios, merge the snippets below into
+`compose.yaml` and run `docker compose up -d --build` again (or save one as an override and add it with `-f`).
+
+### Use PostgreSQL
+
+`compose.postgres.yaml` starts an extra Postgres container:
 
 ```bash
-cp .env.example .env
-# Edit .env and set JWT_SECRET to a random value:
-# openssl rand -hex 32
-make docker-up
+POSTGRES_PASSWORD='strong-password' make docker-up-postgres
 ```
 
-Open:
+For an existing PostgreSQL, do not use that file; point the app at it in `config.yaml`:
 
-```text
-http://localhost:8080
+```yaml
+database:
+  type: postgres
+  host: your-postgres-host
+  port: "5432"
+  user: music_online
+  password: ...
+  name: music_online
+  sslmode: require
 ```
 
-What this does:
+### Mount a local music directory
 
-- `make docker-up` uses `compose.yaml + compose.ports.yaml`, publishing the port on the host.
-- Data is stored in the Docker named volume `music-online-data`.
-- The app reads `config-docker-example.yaml`, mounted read-only into the container.
-
-### Use with Traefik / reverse proxy
-
-`compose.yaml` does **not publish host ports by default**; it only exposes the port on the container network. That makes it suitable for Traefik or another container gateway:
-
-```bash
-docker compose -f compose.yaml up -d
-```
-
-Then attach your own network/labels, for example in an override:
+Add a read-only bind mount to the `app` service in `compose.yaml`:
 
 ```yaml
 services:
   app:
-    networks:
-      - traefik
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.music.rule=Host(`music.example.com`)"
-      - "traefik.http.services.music.loadbalancer.server.port=8080"
-
-networks:
-  traefik:
-    external: true
+    volumes:
+      - type: bind
+        source: /srv/music
+        target: /media/music
+        read_only: true
 ```
 
-You can also copy `compose.yaml` and write your own complete compose file; you are not forced to use `.env` or Makefile.
+After startup, register the container path `/media/music` in the admin UI and start a scan.
 
-### Use an existing PostgreSQL
+### Pass secrets via Docker secrets (optional)
 
-If you already have PostgreSQL, **do not use `compose.postgres.yaml`**.
-Point the app at your existing database instead:
-
-```bash
-DATABASE_TYPE=postgres
-DATABASE_HOST=your-postgres-host
-DATABASE_PORT=5432
-DATABASE_USER=music_online
-DATABASE_PASSWORD=...
-DATABASE_NAME=music_online
-```
-
-Then run `make docker-up` normally.
-
-### Start a bundled PostgreSQL container
-
-If you want the project to start PostgreSQL for you:
-
-```bash
-make docker-up-postgres
-```
-
-This starts an official PostgreSQL container and connects the app to it.
-
-### Mount a local music directory
-
-```bash
-# Uncomment and set these in .env:
-MEDIA_PATH=/srv/music
-MEDIA_CONTAINER_PATH=/media/music
-
-make docker-up-media
-```
-
-After startup, register `/media/music` in the admin UI and start a scan.
-
-### Optional: file-backed secrets
-
-If you do not want plaintext secrets in `.env`:
+To avoid a plaintext secret in `config.yaml`, pass it as a file (leave the field empty in `config.yaml`):
 
 ```bash
 mkdir -p secrets
 openssl rand -hex 32 > secrets/jwt_secret
-make docker-up-secrets
 ```
 
-### Compose files at a glance
+```yaml
+services:
+  app:
+    environment:
+      JWT_SECRET: ""
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+    secrets:
+      - jwt_secret
 
-| File | Purpose |
-|---|---|
-| `compose.yaml` | Base app; no host port, suitable for Traefik/reverse proxy |
-| `compose.ports.yaml` | Publish the port on the host; added automatically by `make docker-up` |
-| `compose.postgres.yaml` | Start an additional PostgreSQL container |
-| `compose.media.yaml` | Mount a local music directory |
-| `compose.secrets.yaml` | Pass JWT and other secrets via files |
-| `compose.musicbee-secrets.yaml` | Pass MusicBee token via file |
-| `compose.postgres-secrets.yaml` | Pass PostgreSQL password via file |
-| `compose.analyzer.yaml` | Enable the optional audio analyzer |
+secrets:
+  jwt_secret:
+    file: ./secrets/jwt_secret
+```
 
-`make docker-*` already composes the common combinations for you. For custom setups, write your own compose file instead of fighting the `.env` layer.
+The same pattern applies to `DATABASE_PASSWORD_FILE`, `METRICS_TOKEN_FILE`, `ADMIN_BOOTSTRAP_PASSWORD_FILE`,
+`INTEGRATIONS_MUSICBEE_SUBMIT_TOKEN_FILE`, and `CLASSIFICATION_ANALYZER_TOKEN_FILE`.
+
+### Optional audio analyzer
+
+You need an analyzer image that implements the contract in the "Optional HTTP analyzer and durable jobs"
+section below. Add to `compose.yaml`:
+
+```yaml
+services:
+  app:
+    environment:
+      CLASSIFICATION_ANALYZER_MODE: http
+      CLASSIFICATION_ANALYZER_ENDPOINT: http://analyzer:8090/v1/analyze
+      CLASSIFICATION_ANALYZER_ID: implementation-id
+      CLASSIFICATION_ANALYZER_VERSION: 1.0.0
+      CLASSIFICATION_ANALYZER_MODEL_VERSION: model-v1
+      CLASSIFICATION_ANALYZER_TOKEN: shared-secret
+    depends_on:
+      - analyzer
+
+  analyzer:
+    image: your-analyzer-image
+    environment:
+      ANALYZER_LISTEN_ADDRESS: 0.0.0.0
+      ANALYZER_PORT: "8090"
+      ANALYZER_TOKEN: shared-secret
+```
+
+`CLASSIFICATION_ANALYZER_ID` / `_VERSION` / `_MODEL_VERSION` must match what the analyzer returns, and
+`ANALYZER_TOKEN` must be at least 32 bytes; see "Optional HTTP analyzer and durable jobs" for the full contract.
+
+### Reverse proxy / Traefik
+
+Publishing `127.0.0.1:8080` does not affect the container network; join the `app` service to your network and
+add labels in a custom override.
 
 ## Configuration
 
@@ -258,7 +232,7 @@ Loading uses a private parser instance and publishes only a fully validated star
 
 ### Precedence and CLI flags
 
-General values use this order: **environment variable > selected YAML file > built-in default**. Compose first interpolates `.env`, then passes the resulting application environment into the container. Five sensitive values also accept `*_FILE`; either a direct environment value or a file value overrides YAML, and setting both forms is rejected as ambiguous.
+General values use this order: **environment variable > selected YAML file > built-in default**. The Compose deployment mounts `config.yaml` read-only into the container; environment overrides (for example those added by `compose.postgres.yaml`) are passed through as-is. Five sensitive values also accept `*_FILE`; either a direct environment value or a file value overrides YAML, and setting both forms is rejected as ambiguous.
 
 Only two CLI flags exist; each takes priority by setting its dedicated environment variable before configuration is loaded:
 
@@ -431,14 +405,7 @@ All three version values must exactly match configuration. Model-label scores mu
 
 Except for `bpm`, these scalars must be normalized to `0..1` under the analyzer's versioned definition; do not place raw LUFS, Hz, or uncalibrated distances in the named fields. Model labels pass through the same genre normalizer and have a lower contribution ceiling than local tags; DSP is lower again. An Instrumental tag supports Calm Flow only when low energy and low arousal or smooth dynamics corroborate it. The artifact SHA-256 must also match the track's current content, so old-file evidence cannot classify replaced audio.
 
-No default model image is selected yet. See the [audio analyzer candidate and benchmark protocol](docs/audio-analysis-benchmark-EN.md) for candidate screening, artifact-level licensing boundaries, gold-set splits, and reproducible commands. Once an image passes that gate, implements this contract, and a secret of at least 32 bytes is available, start the isolated optional profile with:
-
-```bash
-make docker-config-analyzer
-make docker-up-analyzer
-```
-
-Prefer writing the shared secret to `./secrets/analyzer_token` and using `make docker-config-analyzer-secrets` / `make docker-up-analyzer-secrets`; the analyzer image must then support `ANALYZER_TOKEN_FILE`. The overlay does not publish the analyzer port and applies a read-only root filesystem, dropped capabilities, PID/CPU/memory bounds, and bounded temporary storage. Administrators can explicitly backfill, inspect metrics, retry, and cancel jobs through the UI or `/api/v1/users/admin/analysis/*`.
+No default model image is selected yet. See the [audio analyzer candidate and benchmark protocol](docs/audio-analysis-benchmark-EN.md) for candidate screening, artifact-level licensing boundaries, gold-set splits, and reproducible commands. Once an image passes that gate, implements this contract, and a secret of at least 32 bytes is available, wire it in with the "Optional audio analyzer" snippet in the [Docker](#docker) section (prefer passing the shared secret via a Docker secret). Administrators can explicitly backfill, inspect metrics, retry, and cancel jobs through the UI or `/api/v1/users/admin/analysis/*`.
 
 ### Database
 
@@ -567,7 +534,7 @@ For a current-directory deployment:
 tar -czf music-online-backup.tgz config.yaml music.db uploads/
 ```
 
-The default Compose deployment stores the database and uploads in the `music-online-data` named volume. Stop it with `make docker-down`, then archive the volume separately from the protected `.env` and config file:
+The default Compose deployment stores the database and uploads in the `music-online-data` named volume. Stop it with `make docker-down`, then archive the volume separately from the protected `config.yaml`:
 
 ```bash
 docker run --rm \
