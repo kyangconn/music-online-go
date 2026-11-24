@@ -4,8 +4,8 @@ import { ElMessage } from "element-plus";
 import { reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
-import { usePaginatedFetch } from "@/composables/usePaginatedFetch";
 import type { Playlist, PlaylistDetail } from "@/types/api";
+import { usePaginatedFetch } from "@/composables/usePaginatedFetch";
 import request from "@/utils/request";
 
 const router = useRouter();

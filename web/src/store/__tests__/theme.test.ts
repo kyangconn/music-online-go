@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from "vitest"
 import { setActivePinia, createPinia } from "pinia"
+import { describe, it, expect, beforeEach, vi } from "vitest"
 import { useThemeStore } from "../theme"
 
 /** 在调用 store DOM 方法前 mock 全局 document / window */

@@ -2,8 +2,8 @@
 import { Delete, VideoPlay } from "@element-plus/icons-vue";
 import { storeToRefs } from "pinia";
 import { useRouter } from "vue-router";
-import MusicCover from "@/components/music/MusicCover.vue";
 import type { RecentTrackEntry } from "@/store/player";
+import MusicCover from "@/components/music/MusicCover.vue";
 import { usePlayerStore } from "@/store/player";
 import { formatPlaybackTime } from "@/utils/playback";
 

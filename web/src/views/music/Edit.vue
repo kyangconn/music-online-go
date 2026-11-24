@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import axios, { type AxiosProgressEvent } from "axios";
-import { Delete, Headset, PictureFilled, UploadFilled } from "@element-plus/icons-vue";
 import type { FormInstance, FormRules } from "element-plus";
+import { Delete, Headset, PictureFilled, UploadFilled } from "@element-plus/icons-vue";
+import axios, { type AxiosProgressEvent } from "axios";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";

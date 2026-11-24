@@ -1,6 +1,6 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
-import { defineComponent, reactive } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { defineComponent, reactive } from "vue";
 import SecuritySettings from "../SecuritySettings.vue";
 
 const messageMock = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn(), warning: vi.fn() }));

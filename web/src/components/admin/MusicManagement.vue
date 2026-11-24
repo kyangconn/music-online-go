@@ -18,8 +18,8 @@ import MusicCover from "@/components/music/MusicCover.vue";
 import { useApiError } from "@/composables/useApiError";
 import { usePaginatedFetch } from "@/composables/usePaginatedFetch";
 import { useInstanceStore } from "@/store/instance";
-import request from "@/utils/request";
 import { presetIDs, presetTagType } from "@/utils/presets";
+import request from "@/utils/request";
 
 const router = useRouter();
 const { t } = useI18n();

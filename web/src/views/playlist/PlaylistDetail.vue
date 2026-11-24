@@ -4,9 +4,9 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { computed, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
+import type { Music, PaginatedData, PlaylistDetail } from "@/types/api";
 import MusicTrackTable from "@/components/music/MusicTrackTable.vue";
 import { usePlayerStore } from "@/store/player";
-import type { Music, PaginatedData, PlaylistDetail } from "@/types/api";
 import request from "@/utils/request";
 
 const route = useRoute();

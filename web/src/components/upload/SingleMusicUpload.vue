@@ -1,20 +1,20 @@
 <script setup lang="ts">
+import type { UploadFile, UploadInstance } from "element-plus";
 import { Headset, PictureFilled } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import type { UploadFile, UploadInstance } from "element-plus";
 import { onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
-import FileCard from "@/components/upload/FileCard.vue";
+import type { MusicDuplicateCheckData } from "@/types/api";
 import MusicMetadataEditor from "@/components/music/MusicMetadataEditor.vue";
+import FileCard from "@/components/upload/FileCard.vue";
+import { useApiError } from "@/composables/useApiError";
 import { useAudioMetadata } from "@/composables/useAudioMetadata";
 import { useAudioPreprocessor } from "@/composables/useAudioPreprocessor";
-import { useApiError } from "@/composables/useApiError";
 import { useMusicDuplicates } from "@/composables/useMusicDuplicates";
 import { useMusicUpload } from "@/composables/useMusicUpload";
 import { useUploadDraft } from "@/composables/useUploadDraft";
 import { useUploadPolicy } from "@/composables/useUploadPolicy";
-import type { MusicDuplicateCheckData } from "@/types/api";
 import { applyMetadataSuggestion, getUploadValidationMessage, validateUploadFile } from "@/utils/upload";
 
 const router = useRouter();

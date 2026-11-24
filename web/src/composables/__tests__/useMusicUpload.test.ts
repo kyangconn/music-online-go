@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useMusicUpload } from "../useMusicUpload";
 import { emptyMusicMetadataFields } from "@/utils/upload";
+import { useMusicUpload } from "../useMusicUpload";
 
 const requestMock = vi.hoisted(() => ({ post: vi.fn() }));
 const messageMock = vi.hoisted(() => ({ error: vi.fn() }));

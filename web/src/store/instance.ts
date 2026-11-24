@@ -1,5 +1,5 @@
-import { computed, ref } from "vue";
 import { defineStore } from "pinia";
+import { computed, ref } from "vue";
 import type { InstanceCapabilities } from "@/types/api";
 import request from "@/utils/request";
 

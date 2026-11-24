@@ -3,13 +3,13 @@ import { FolderOpened } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import type { MusicMetadataFields, ScannedFileItem } from "@/types/api";
+import type { BatchUploadResultItem } from "@/types/upload";
 import BatchUploadResults from "@/components/upload/BatchUploadResults.vue";
 import { useAudioPreprocessor } from "@/composables/useAudioPreprocessor";
 import { useMusicDuplicates } from "@/composables/useMusicDuplicates";
 import { useMusicUpload } from "@/composables/useMusicUpload";
 import { useUploadPolicy } from "@/composables/useUploadPolicy";
-import type { MusicMetadataFields, ScannedFileItem } from "@/types/api";
-import type { BatchUploadResultItem } from "@/types/upload";
 import {
   applyMetadataSuggestion,
   emptyMusicMetadataFields,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Plus, Search, Refresh } from "@element-plus/icons-vue";
 import type { FormInstance, FormRules } from "element-plus";
+import { Plus, Search, Refresh } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
@@ -8,8 +8,8 @@ import type { AdminCreateUserRequest, UserInfo } from "@/types/api";
 import { useApiError } from "@/composables/useApiError";
 import { usePaginatedFetch } from "@/composables/usePaginatedFetch";
 import { useUserStore } from "@/store/user";
-import request from "@/utils/request";
 import { validateNewPassword } from "@/utils/password";
+import request from "@/utils/request";
 
 const { t } = useI18n();
 const userStore = useUserStore();

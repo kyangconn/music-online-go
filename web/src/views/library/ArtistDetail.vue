@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
+import type { AlbumSummary, ArtistSummary, Music } from "@/types/api";
 import MusicCover from "@/components/music/MusicCover.vue";
 import MusicTrackTable from "@/components/music/MusicTrackTable.vue";
 import { usePaginatedFetch } from "@/composables/usePaginatedFetch";
-import type { AlbumSummary, ArtistSummary, Music } from "@/types/api";
 import request from "@/utils/request";
 
 const route = useRoute();

@@ -1,6 +1,6 @@
 import { flushPromises, mount } from "@vue/test-utils";
-import { defineComponent } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { defineComponent } from "vue";
 import AdvancedSettings from "../AdvancedSettings.vue";
 
 const messageMock = vi.hoisted(() => ({ info: vi.fn(), success: vi.fn() }));

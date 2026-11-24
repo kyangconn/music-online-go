@@ -6,8 +6,8 @@ import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import type { LoginData } from "@/types/api";
 import { useApiError } from "@/composables/useApiError";
-import { useUserStore } from "@/store/user";
 import { useInstanceStore } from "@/store/instance";
+import { useUserStore } from "@/store/user";
 import request from "@/utils/request";
 
 const router = useRouter();

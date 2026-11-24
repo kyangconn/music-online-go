@@ -4,9 +4,9 @@ import { ElMessage } from "element-plus";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
+import type { AlbumSummary, MusicFilterOptions } from "@/types/api";
 import MusicCover from "@/components/music/MusicCover.vue";
 import { usePaginatedFetch } from "@/composables/usePaginatedFetch";
-import type { AlbumSummary, MusicFilterOptions } from "@/types/api";
 import request from "@/utils/request";
 
 const route = useRoute();

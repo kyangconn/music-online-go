@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { WarningFilled } from "@element-plus/icons-vue";
 import { computed, onMounted, ref } from "vue";
+import type { PresetSummary } from "@/types/api";
 import InfoErrorState from "@/components/common/InfoErrorState.vue";
 import { useUserStore } from "@/store/user";
-import type { PresetSummary } from "@/types/api";
-import request from "@/utils/request";
 import { presetIDs } from "@/utils/presets";
+import request from "@/utils/request";
 
 const userStore = useUserStore();
 const summaries = ref<PresetSummary[]>([]);

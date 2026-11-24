@@ -2,9 +2,9 @@
 import { Search } from "@element-plus/icons-vue";
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import type { ArtistSummary } from "@/types/api";
 import MusicCover from "@/components/music/MusicCover.vue";
 import { usePaginatedFetch } from "@/composables/usePaginatedFetch";
-import type { ArtistSummary } from "@/types/api";
 
 const route = useRoute();
 const router = useRouter();

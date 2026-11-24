@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { Collection, Download, Headset, List, MagicStick, Moon, Search, Sunny, UserFilled } from "@element-plus/icons-vue";
 import type { InputInstance } from "element-plus";
+import { Collection, Download, Headset, List, MagicStick, Moon, Search, Sunny, UserFilled } from "@element-plus/icons-vue";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import GlobalPlayer from "@/components/player/GlobalPlayer.vue";
 import { useKeyboardShortcuts } from "@/composables/useKeyboardShortcuts";
 import { usePwaInstall } from "@/composables/usePwaInstall";
-import { usePlayerStore } from "@/store/player";
 import { useInstanceStore } from "@/store/instance";
+import { usePlayerStore } from "@/store/player";
 import { useThemeStore } from "@/store/theme";
 import { useUserStore } from "@/store/user";
 
